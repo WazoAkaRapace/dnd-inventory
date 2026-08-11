@@ -5,7 +5,7 @@
 #
 services:
   api:
-    image: ghcr.io/wazoakarapace/dnd-inventory-api:main
+    image: ghcr.io/wazoakarapace/dnd-inventory-api:latest
     ports:
       - "${API_PORT:-4010}:4000"
     volumes:
@@ -18,7 +18,7 @@ services:
     restart: unless-stopped
 
   web:
-    image: ghcr.io/wazoakarapace/dnd-inventory-web:main
+    image: ghcr.io/wazoakarapace/dnd-inventory-web:latest
     ports:
       - "${WEB_PORT:-8080}:80"
     depends_on:
