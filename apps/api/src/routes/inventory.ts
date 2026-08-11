@@ -169,11 +169,20 @@ export async function inventoryRoutes(app: FastifyInstance) {
         VALUES (?, ?, ?, ?, ?, 'add', ?)
       `).run(char.party_id, char.id, body.itemId, itemRow?.name || 'item', qty, userId);
 
+      // Query by character_id + item_id (not lastInsertRowid, which is unreliable on UPSERT)
       const invRow = db.prepare(`
-        SELECT inv.*, i.*
+        SELECT
+          inv.id AS id, inv.character_id AS character_id, inv.item_id AS item_id,
+          inv.quantity AS quantity, inv.equipped AS equipped, inv.notes AS notes, inv.added_at AS added_at,
+          i.id AS i_id, i.source AS i_source, i.party_id AS i_party_id, i.category AS i_category,
+          i.srd_index AS i_srd_index, i.name AS i_name, i.name_fr AS i_name_fr, i.rarity AS i_rarity,
+          i.weight_kg AS i_weight_kg, i.cost_qty AS i_cost_qty, i.cost_unit AS i_cost_unit,
+          i.description AS i_description, i.damage_dice AS i_damage_dice, i.damage_type AS i_damage_type,
+          i.ac_base AS i_ac_base, i.str_min AS i_str_min, i.stealth_disadvantage AS i_stealth_disadvantage,
+          i.properties_json AS i_properties_json, i.image_path AS i_image_path
         FROM inventory inv JOIN items i ON i.id = inv.item_id
-        WHERE inv.id = ?
-      `).get(result.lastInsertRowid);
+        WHERE inv.character_id = ? AND inv.item_id = ?
+      `).get(char.id, body.itemId);
       bus.emitChange({ type: 'inventory:change', partyId: char.party_id, characterId: char.id, action: 'add', itemName: itemRow?.name_fr || itemRow?.name, actorUserId: userId });
       return reply.code(201).send({ entry: mapInventoryEntry(invRow) });
     },
@@ -235,7 +244,16 @@ export async function inventoryRoutes(app: FastifyInstance) {
       }
 
       const row = db.prepare(`
-        SELECT inv.*, i.* FROM inventory inv JOIN items i ON i.id = inv.item_id WHERE inv.id = ?
+        SELECT
+          inv.id AS id, inv.character_id AS character_id, inv.item_id AS item_id,
+          inv.quantity AS quantity, inv.equipped AS equipped, inv.notes AS notes, inv.added_at AS added_at,
+          i.id AS i_id, i.source AS i_source, i.party_id AS i_party_id, i.category AS i_category,
+          i.srd_index AS i_srd_index, i.name AS i_name, i.name_fr AS i_name_fr, i.rarity AS i_rarity,
+          i.weight_kg AS i_weight_kg, i.cost_qty AS i_cost_qty, i.cost_unit AS i_cost_unit,
+          i.description AS i_description, i.damage_dice AS i_damage_dice, i.damage_type AS i_damage_type,
+          i.ac_base AS i_ac_base, i.str_min AS i_str_min, i.stealth_disadvantage AS i_stealth_disadvantage,
+          i.properties_json AS i_properties_json, i.image_path AS i_image_path
+        FROM inventory inv JOIN items i ON i.id = inv.item_id WHERE inv.id = ?
       `).get(inv.id);
       bus.emitChange({ type: 'inventory:change', partyId: char.party_id, characterId: char.id, action: 'adjust', actorUserId: userId });
       return reply.send({ entry: mapInventoryEntry(row) });

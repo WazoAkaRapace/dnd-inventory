@@ -81,7 +81,7 @@ export default function GmDashboardPage() {
       </div>
 
       {tab === 'characters' && (
-        <CharactersTab characters={party.characters} partyId={partyId!} />
+        <CharactersTab characters={party.characters} partyId={partyId!} onReload={load} />
       )}
 
       {tab === 'transactions' && (
@@ -108,25 +108,68 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
   );
 }
 
-function CharactersTab({ characters, partyId }: { characters: CharacterSummary[]; partyId: string }) {
+function CharactersTab({ characters, partyId, onReload }: { characters: CharacterSummary[]; partyId: string; onReload: () => void }) {
+  const [deleteTarget, setDeleteTarget] = useState<CharacterSummary | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/api/characters/${deleteTarget.id}`);
+      setDeleteTarget(null);
+      onReload();
+    } catch {
+      // error handled by parent
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   if (characters.length === 0) {
     return <EmptyState icon="🧙" title="Aucun personnage" hint="Les joueurs doivent créer leurs personnages." />;
   }
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {characters.map((c) => (
-        <Link
-          key={c.id}
-          to={`/party/${partyId}/character/${c.id}`}
-          className="card p-4 hover:shadow-md transition-shadow"
-        >
-          <h3 className="font-display text-lg font-semibold">{c.name}</h3>
-          <div className="mt-1 flex gap-4 text-sm text-ink-500">
-            <span>💪 FOR {c.strength}</span>
+        <div key={c.id} className="card p-4 hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between gap-2">
+            <Link to={`/party/${partyId}/character/${c.id}`} className="min-w-0 flex-1">
+              <h3 className="font-display text-lg font-semibold">{c.name}</h3>
+              <div className="mt-1 flex gap-4 text-sm text-ink-500">
+                <span>💪 FOR {c.strength}</span>
+              </div>
+              <p className="text-xs text-ink-400 mt-2">→ Voir l'inventaire</p>
+            </Link>
+            <button
+              onClick={() => setDeleteTarget(c)}
+              className="text-ink-400 hover:text-red-600 text-sm shrink-0 p-1"
+              aria-label={`Supprimer ${c.name}`}
+              title="Supprimer le personnage"
+            >
+              🗑
+            </button>
           </div>
-          <p className="text-xs text-ink-400 mt-2">→ Voir l'inventaire</p>
-        </Link>
+        </div>
       ))}
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40" onClick={() => !deleting && setDeleteTarget(null)}>
+          <div className="card w-full sm:max-w-sm p-5 rounded-b-none sm:rounded-b-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-display text-lg font-semibold mb-2">Supprimer {deleteTarget.name} ?</h3>
+            <p className="text-sm text-ink-500 mb-4">Cette action est irréversible. Tout l'inventaire et la monnaie seront perdus.</p>
+            <div className="flex gap-2">
+              <button onClick={() => setDeleteTarget(null)} disabled={deleting} className="btn-secondary flex-1">
+                Annuler
+              </button>
+              <button onClick={confirmDelete} disabled={deleting} className="btn-primary flex-1 bg-red-600 hover:bg-red-700">
+                {deleting ? 'Suppression…' : 'Supprimer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -105,13 +105,37 @@ export function mapCharacter(row: any): Character {
   };
 }
 
-/** Map a raw inventory row (with joined item) to InventoryEntry. */
+/** Map a raw inventory row (with joined item using i_ aliases) to InventoryEntry. */
 export function mapInventoryEntry(row: any): InventoryEntry {
+  // Detect whether row uses aliased columns (i_id) or raw (id)
+  const usesAliases = row.i_id !== undefined;
+  const itemRow = usesAliases ? {
+    id: row.i_id,
+    source: row.i_source,
+    party_id: row.i_party_id,
+    category: row.i_category,
+    srd_index: row.i_srd_index,
+    name: row.i_name,
+    name_fr: row.i_name_fr,
+    rarity: row.i_rarity,
+    weight_kg: row.i_weight_kg,
+    cost_qty: row.i_cost_qty,
+    cost_unit: row.i_cost_unit,
+    description: row.i_description,
+    damage_dice: row.i_damage_dice,
+    damage_type: row.i_damage_type,
+    ac_base: row.i_ac_base,
+    str_min: row.i_str_min,
+    stealth_disadvantage: row.i_stealth_disadvantage,
+    properties_json: row.i_properties_json,
+    image_path: row.i_image_path,
+  } : row;
+
   return {
     id: row.id,
     characterId: row.character_id,
     itemId: row.item_id,
-    item: mapItem(row),
+    item: mapItem(itemRow),
     quantity: row.quantity,
     equipped: !!row.equipped,
     notes: row.notes,
