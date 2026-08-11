@@ -69,7 +69,8 @@ const INSERT = `
   )
   ON CONFLICT(srd_index) DO UPDATE SET
     name_fr = excluded.name_fr,
-    weight_kg = excluded.weight_kg
+    weight_kg = excluded.weight_kg,
+    description = excluded.description
 `;
 
 const COUNT_SQL = `SELECT COUNT(*) as n FROM items WHERE source = 'srd'`;
