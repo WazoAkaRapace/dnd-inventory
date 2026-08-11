@@ -1,0 +1,34 @@
+{
+  "name": "dnd-inventory",
+  "version": "0.1.0",
+  "private": true,
+  "description": "D&D 5e player & party inventory management app (kg/SI, mobile-first)",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"npm -w api run dev\" \"npm -w web run dev\"",
+    "dev:api": "npm -w api run dev",
+    "dev:web": "npm -w web run dev",
+    "build": "npm -w api run build && npm -w web run build",
+    "import-items": "tsx scripts/import-items.ts",
+    "migrate": "tsx apps/api/src/db/migrate.ts",
+    "seed": "tsx apps/api/src/db/seed.ts",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "allowScripts": {
+    "better-sqlite3@11.10.0": true,
+    "esbuild@0.28.2": true,
+    "esbuild@0.21.5": true
+  }
+}

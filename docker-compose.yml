@@ -1,0 +1,29 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "${API_PORT:-4010}:4000"
+    volumes:
+      - db-data:/app/data/db
+    environment:
+      - PORT=4000
+      - DATABASE_PATH=/app/data/db/inventory.sqlite
+      - JWT_SECRET=${JWT_SECRET:-dev-only-change-me-in-production}
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        - VITE_API_URL=${VITE_API_URL:-}
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  db-data:

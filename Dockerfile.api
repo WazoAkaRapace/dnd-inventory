@@ -1,0 +1,45 @@
+# API: Fastify + better-sqlite3
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+# Install build tools for better-sqlite3 native compilation
+RUN apk add --no-cache python3 make g++
+
+# Copy workspace root for npm install
+COPY package.json package-lock.json* ./
+COPY tsconfig.base.json ./
+COPY packages/ ./packages/
+COPY apps/api/package.json ./apps/api/
+COPY apps/web/package.json ./apps/web/
+
+# Install all workspace deps
+RUN npm ci || npm install
+
+# Copy API source + shared types + seed data
+COPY apps/api/ ./apps/api/
+COPY packages/ ./packages/
+COPY data/ ./data/
+
+# --- Production stage ---
+FROM node:20-alpine
+WORKDIR /app
+
+# tsx + better-sqlite3 need these at runtime
+RUN apk add --no-cache python3 make g++
+
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/tsconfig.base.json ./
+COPY --from=builder /app/packages ./packages
+COPY --from=builder /app/apps/api ./apps/api
+COPY --from=builder /app/data ./data
+
+ENV NODE_ENV=production
+ENV PORT=4000
+ENV DATABASE_PATH=/app/data/db/inventory.sqlite
+ENV JWT_SECRET=${JWT_SECRET:-dev-only-change-me-in-production}
+
+EXPOSE 4000
+
+# Server auto-migrates + seeds on boot
+CMD ["npx", "tsx", "apps/api/src/server.ts"]
