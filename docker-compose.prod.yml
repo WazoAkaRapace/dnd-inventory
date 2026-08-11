@@ -1,0 +1,25 @@
+# Production docker-compose using pre-built images from GHCR
+# Usage: docker compose -f docker-compose.prod.yml up -d
+services:
+  api:
+    image: ghcr.io/WazoAkaRapace/dnd-inventory-api:main
+    ports:
+      - "${API_PORT:-4010}:4000"
+    volumes:
+      - db-data:/app/data/db
+    environment:
+      - PORT=4000
+      - DATABASE_PATH=/app/data/db/inventory.sqlite
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env or environment}
+    restart: unless-stopped
+
+  web:
+    image: ghcr.io/WazoAkaRapace/dnd-inventory-web:main
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  db-data:
