@@ -1,8 +1,11 @@
-# Production docker-compose using pre-built images from GHCR
-# Usage: docker compose -f docker-compose.prod.yml up -d
+# Production docker-compose using pre-built images from GHCR.
+# Usage:
+#   1. Copy .env.example to .env and set JWT_SECRET
+#   2. docker compose -f docker-compose.prod.yml up -d
+#
 services:
   api:
-    image: ghcr.io/WazoAkaRapace/dnd-inventory-api:main
+    image: ghcr.io/wazoakarapace/dnd-inventory-api:main
     ports:
       - "${API_PORT:-4010}:4000"
     volumes:
@@ -10,11 +13,12 @@ services:
     environment:
       - PORT=4000
       - DATABASE_PATH=/app/data/db/inventory.sqlite
-      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env or environment}
+      # JWT_SECRET must be set — read from .env or shell environment
+      - JWT_SECRET=${JWT_SECRET}
     restart: unless-stopped
 
   web:
-    image: ghcr.io/WazoAkaRapace/dnd-inventory-web:main
+    image: ghcr.io/wazoakarapace/dnd-inventory-web:main
     ports:
       - "${WEB_PORT:-8080}:80"
     depends_on:
