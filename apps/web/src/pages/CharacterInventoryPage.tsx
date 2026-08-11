@@ -11,17 +11,24 @@ import type {
   CharacterSummary,
   PartyDetail,
 } from '@dnd-inventory/shared';
-import { CATEGORY_LABELS_FR, RARITY_LABELS_FR, COIN_LABELS_FR } from '@dnd-inventory/shared';
+import {
+  CATEGORY_LABELS_FR,
+  RARITY_LABELS_FR,
+  COIN_LABELS_FR,
+} from '@dnd-inventory/shared';
 import {
   LoadingSpinner,
   ErrorMsg,
   EmptyState,
   Modal,
+  BottomSheet,
   RarityBadge,
   CategoryBadge,
   WeightBadge,
   CostBadge,
   EncumbranceBar,
+  ToastStack,
+  type Toast,
 } from '../components/ui';
 
 // ---------- Filter option sets ----------
@@ -40,12 +47,13 @@ const RARITY_OPTIONS: { value: '' | Rarity; label: string }[] = [
   ),
 ];
 
-const COIN_FIELDS: { key: keyof Pick<Character, 'copper' | 'silver' | 'electrum' | 'gold' | 'platinum'>; unit: 'cp' | 'sp' | 'ep' | 'gp' | 'pp'; icon: string }[] = [
-  { key: 'copper', unit: 'cp', icon: '🥉' },
-  { key: 'silver', unit: 'sp', icon: '⚪' },
-  { key: 'electrum', unit: 'ep', icon: '🟡' },
-  { key: 'gold', unit: 'gp', icon: '🟠' },
-  { key: 'platinum', unit: 'pp', icon: '⚪' },
+// Coin fields with distinct CSS-colored glyphs instead of identical emoji
+const COIN_FIELDS: { key: keyof Pick<Character, 'copper' | 'silver' | 'electrum' | 'gold' | 'platinum'>; unit: 'cp' | 'sp' | 'ep' | 'gp' | 'pp'; color: string }[] = [
+  { key: 'copper', unit: 'cp', color: '#b87333' },    // copper
+  { key: 'silver', unit: 'sp', color: '#c0c0c0' },    // silver
+  { key: 'electrum', unit: 'ep', color: '#a89968' },  // electrum (pale gold-silver)
+  { key: 'gold', unit: 'gp', color: '#d4af37' },      // gold
+  { key: 'platinum', unit: 'pp', color: '#e5e4e2' },  // platinum (white-silver)
 ];
 
 const CATALOG_PAGE_SIZE = 30;
@@ -60,18 +68,39 @@ export default function CharacterInventoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Per-entry optimistic in-flight flags (avoid double clicks)
+  // Toast system
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const toastId = useRef(0);
+  const pushToast = useCallback((message: string, kind: 'success' | 'error' = 'success') => {
+    const id = ++toastId.current;
+    setToasts((prev) => [...prev, { id, message, kind }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 2500);
+  }, []);
+  const dismissToast = useCallback((id: number) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // Row highlight (flash newly added/changed rows)
+  const [flashEntryId, setFlashEntryId] = useState<number | null>(null);
+
+  // Per-entry optimistic in-flight flags
   const [busyEntryIds, setBusyEntryIds] = useState<Set<number>>(new Set());
 
-  // Expanded entry (show description)
+  // Expanded entries (show description + actions)
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
-  // Coin purse
-  const [showCoins, setShowCoins] = useState(false);
-  const [coins, setCoins] = useState({ copper: 0, silver: 0, electrum: 0, gold: 0, platinum: 0 });
-  const [savingCoins, setSavingCoins] = useState(false);
+  // Confirm-delete state (per entry)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const confirmDeleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Catalog
+  // Coin purse (auto-save on blur)
+  const [coins, setCoins] = useState({ copper: 0, silver: 0, electrum: 0, gold: 0, platinum: 0 });
+  const [coinsDirty, setCoinsDirty] = useState(false);
+
+  // Catalog (in bottom-sheet on mobile, right column on desktop)
+  const [catalogOpen, setCatalogOpen] = useState(false); // mobile sheet
   const [catalogSearch, setCatalogSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [catalogCategory, setCatalogCategory] = useState<'' | ItemCategory>('');
@@ -79,12 +108,25 @@ export default function CharacterInventoryPage() {
   const [catalogItems, setCatalogItems] = useState<Item[]>([]);
   const [catalogTotal, setCatalogTotal] = useState(0);
   const [catalogLoading, setCatalogLoading] = useState(false);
-  const [catalogError, setCatalogError] = useState('');
   const [catalogOffset, setCatalogOffset] = useState(0);
   const [addingItemId, setAddingItemId] = useState<number | null>(null);
 
   // Transfer modal
   const [transferEntry, setTransferEntry] = useState<InventoryEntry | null>(null);
+
+  // First-run tour
+  const [showTour, setShowTour] = useState(false);
+  useEffect(() => {
+    const seen = localStorage.getItem('dnd-inv-tour-seen');
+    if (!seen && !loading) {
+      const t = setTimeout(() => setShowTour(true), 800);
+      return () => clearTimeout(t);
+    }
+  }, [loading]);
+  const dismissTour = () => {
+    setShowTour(false);
+    localStorage.setItem('dnd-inv-tour-seen', '1');
+  };
 
   // ---------- Load inventory ----------
   const load = useCallback(async () => {
@@ -122,7 +164,6 @@ export default function CharacterInventoryPage() {
   const fetchCatalog = useCallback(
     async (offset: number, append: boolean) => {
       setCatalogLoading(true);
-      setCatalogError('');
       try {
         const params: Record<string, string | number> = { limit: CATALOG_PAGE_SIZE, offset };
         if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
@@ -135,8 +176,8 @@ export default function CharacterInventoryPage() {
         setCatalogItems((prev) => (append ? [...prev, ...res.data.items] : res.data.items));
         setCatalogTotal(res.data.total);
         setCatalogOffset(offset);
-      } catch (err: any) {
-        setCatalogError(err.response?.data?.error || 'Erreur lors de la recherche');
+      } catch {
+        // silent — catalog is best-effort
       } finally {
         setCatalogLoading(false);
       }
@@ -144,7 +185,6 @@ export default function CharacterInventoryPage() {
     [debouncedSearch, catalogCategory, catalogRarity],
   );
 
-  // Re-fetch (from offset 0) when filters/search change
   useEffect(() => {
     fetchCatalog(0, false);
   }, [fetchCatalog]);
@@ -152,11 +192,7 @@ export default function CharacterInventoryPage() {
   // ---------- Mutations ----------
 
   const withBusy = async (entryId: number, fn: () => Promise<void>) => {
-    setBusyEntryIds((prev) => {
-      const next = new Set(prev);
-      next.add(entryId);
-      return next;
-    });
+    setBusyEntryIds((prev) => new Set(prev).add(entryId));
     try {
       await fn();
     } finally {
@@ -168,68 +204,86 @@ export default function CharacterInventoryPage() {
     }
   };
 
-  const refreshInventory = useCallback(async () => {
+  const refreshInventory = useCallback(async (flashId?: number) => {
     if (!charId) return;
     try {
       const res = await api.get<CharacterInventory>(`/api/characters/${charId}/inventory`);
       setData(res.data);
+      if (flashId !== undefined) {
+        setFlashEntryId(flashId);
+        setTimeout(() => setFlashEntryId(null), 1200);
+      }
     } catch {
-      // keep stale data; main error banner already handled on initial load
+      // keep stale data
     }
   }, [charId]);
 
-  // Stepper: -1 (deletes at 0), +1
+  // Stepper: -1 / +1. At 0, enter confirm-delete state instead of silent delete.
   const stepQuantity = async (entry: InventoryEntry, delta: number) => {
     const next = entry.quantity + delta;
+    if (next <= 0) {
+      // Enter confirm-delete state instead of silent deletion
+      setConfirmDeleteId(entry.id);
+      // Auto-revert after 4 seconds
+      if (confirmDeleteTimer.current) clearTimeout(confirmDeleteTimer.current);
+      confirmDeleteTimer.current = setTimeout(() => setConfirmDeleteId(null), 4000);
+      return;
+    }
     await withBusy(entry.id, async () => {
       try {
-        if (next <= 0) {
-          await api.delete(`/api/inventory/${entry.id}`);
-        } else {
-          await api.patch(`/api/inventory/${entry.id}`, { quantity: next });
-        }
-        await refreshInventory();
+        await api.patch(`/api/inventory/${entry.id}`, { quantity: next });
+        await refreshInventory(entry.id);
       } catch (err: any) {
-        setError(err.response?.data?.error || 'Erreur de mise à jour');
+        pushToast(err.response?.data?.error || 'Erreur de mise à jour', 'error');
       }
     });
   };
 
   const setQuantity = async (entry: InventoryEntry, raw: number) => {
     const qty = Math.max(0, Math.floor(Number.isFinite(raw) ? raw : 0));
+    if (qty <= 0) {
+      setConfirmDeleteId(entry.id);
+      if (confirmDeleteTimer.current) clearTimeout(confirmDeleteTimer.current);
+      confirmDeleteTimer.current = setTimeout(() => setConfirmDeleteId(null), 4000);
+      return;
+    }
     await withBusy(entry.id, async () => {
       try {
-        if (qty <= 0) {
-          await api.delete(`/api/inventory/${entry.id}`);
-        } else {
-          await api.patch(`/api/inventory/${entry.id}`, { quantity: qty });
-        }
-        await refreshInventory();
+        await api.patch(`/api/inventory/${entry.id}`, { quantity: qty });
+        await refreshInventory(entry.id);
       } catch (err: any) {
-        setError(err.response?.data?.error || 'Erreur de mise à jour');
+        pushToast(err.response?.data?.error || 'Erreur', 'error');
       }
     });
+  };
+
+  const confirmDelete = async (entry: InventoryEntry) => {
+    setConfirmDeleteId(null);
+    if (confirmDeleteTimer.current) clearTimeout(confirmDeleteTimer.current);
+    await withBusy(entry.id, async () => {
+      try {
+        await api.delete(`/api/inventory/${entry.id}`);
+        if (expandedId === entry.id) setExpandedId(null);
+        await refreshInventory();
+        pushToast(`${entry.item.nameFr || entry.item.name} retiré du sac à dos`);
+      } catch (err: any) {
+        pushToast(err.response?.data?.error || 'Erreur de suppression', 'error');
+      }
+    });
+  };
+
+  const cancelDelete = (entryId: number) => {
+    setConfirmDeleteId(null);
+    if (confirmDeleteTimer.current) clearTimeout(confirmDeleteTimer.current);
   };
 
   const toggleEquipped = async (entry: InventoryEntry) => {
     await withBusy(entry.id, async () => {
       try {
         await api.patch(`/api/inventory/${entry.id}`, { equipped: !entry.equipped });
-        await refreshInventory();
+        await refreshInventory(entry.id);
       } catch (err: any) {
-        setError(err.response?.data?.error || 'Erreur de mise à jour');
-      }
-    });
-  };
-
-  const deleteEntry = async (entry: InventoryEntry) => {
-    await withBusy(entry.id, async () => {
-      try {
-        await api.delete(`/api/inventory/${entry.id}`);
-        if (expandedId === entry.id) setExpandedId(null);
-        await refreshInventory();
-      } catch (err: any) {
-        setError(err.response?.data?.error || 'Erreur de suppression');
+        pushToast(err.response?.data?.error || 'Erreur', 'error');
       }
     });
   };
@@ -239,24 +293,25 @@ export default function CharacterInventoryPage() {
     try {
       await api.post(`/api/characters/${charId}/inventory`, { itemId: item.id, quantity: 1 });
       await refreshInventory();
+      pushToast(`+1 ${item.nameFr || item.name} ajouté au sac à dos`);
     } catch (err: any) {
-      setError(err.response?.data?.error || "Impossible d'ajouter l'objet");
+      pushToast(err.response?.data?.error || "Impossible d'ajouter l'objet", 'error');
     } finally {
       setAddingItemId(null);
     }
   };
 
-  const saveCoins = async () => {
-    setSavingCoins(true);
+  // Coin purse: auto-save on blur when dirty
+  const saveCoins = useCallback(async () => {
+    if (!coinsDirty) return;
     try {
       await api.patch(`/api/characters/${charId}`, coins);
-      await refreshInventory();
+      setCoinsDirty(false);
+      pushToast('Bourse mise à jour');
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erreur lors de la sauvegarde');
-    } finally {
-      setSavingCoins(false);
+      pushToast(err.response?.data?.error || 'Erreur de sauvegarde', 'error');
     }
-  };
+  }, [charId, coins, coinsDirty, pushToast]);
 
   const dismissError = () => setError('');
 
@@ -267,23 +322,40 @@ export default function CharacterInventoryPage() {
 
   const { character, entries, encumbrance } = data;
 
-  // Sort: equipped first, then alphabetical by name (prefer nameFr)
-  const sortedEntries = [...entries].sort((a, b) => {
-    if (a.equipped !== b.equipped) return a.equipped ? -1 : 1;
-    const na = (a.item.nameFr || a.item.name).toLowerCase();
-    const nb = (b.item.nameFr || b.item.name).toLowerCase();
-    return na.localeCompare(nb);
-  });
+  // Group entries by category for collapsible sections
+  const grouped = groupByCategory(entries);
+
+  // Catalog content (shared between desktop column and mobile bottom-sheet)
+  const catalogContent = (
+    <CatalogSearch
+      search={catalogSearch}
+      setSearch={setCatalogSearch}
+      category={catalogCategory}
+      setCategory={setCatalogCategory}
+      rarity={catalogRarity}
+      setRarity={setCatalogRarity}
+      items={catalogItems}
+      total={catalogTotal}
+      loading={catalogLoading}
+      addingItemId={addingItemId}
+      offset={catalogOffset}
+      onAdd={addFromCatalog}
+      onLoadMore={() => fetchCatalog(catalogOffset + CATALOG_PAGE_SIZE, true)}
+    />
+  );
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="space-y-4">
       {/* Back link */}
-      <Link to={`/party/${partyId}`} className="inline-flex items-center text-sm text-ink-500 hover:text-blood-600">
+      <Link
+        to={`/party/${partyId}`}
+        className="inline-flex items-center text-sm text-ink-500 hover:text-blood-600"
+      >
         ← Retour au groupe
       </Link>
 
-      {/* Top: sticky character header + encumbrance */}
-      <div className="sticky top-0 z-30 -mx-4 px-4 pt-2 pb-3 bg-parchment-50/90 backdrop-blur sm:static sm:mx-0 sm:px-0 sm:bg-transparent sm:backdrop-blur-none">
+      {/* Sticky character header + encumbrance — offset below nav on mobile */}
+      <div className="sticky top-14 z-20 -mx-4 px-4 pt-2 pb-3 bg-parchment-50/95 backdrop-blur sm:static sm:top-0 sm:mx-0 sm:px-0 sm:bg-transparent sm:backdrop-blur-none sm:z-auto">
         <div className="card p-4 sm:p-5">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div className="min-w-0">
@@ -292,13 +364,13 @@ export default function CharacterInventoryPage() {
                 {[character.race, character.className, `Niv. ${character.level}`].filter(Boolean).join(' · ') || '—'}
               </p>
             </div>
-            <div className="flex items-center gap-3 text-sm">
-              <span className="inline-flex items-center gap-1 bg-parchment-100 px-2.5 py-1 rounded-lg">
-                <span>💪</span>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="inline-flex items-center gap-1.5 bg-parchment-100 px-2.5 py-1 rounded-lg">
+                <span aria-hidden="true">💪</span>
                 <span className="font-semibold">FOR {character.strength}</span>
               </span>
-              <span className="inline-flex items-center gap-1 bg-parchment-100 px-2.5 py-1 rounded-lg">
-                <span>❤️</span>
+              <span className="inline-flex items-center gap-1.5 bg-parchment-100 px-2.5 py-1 rounded-lg">
+                <span aria-hidden="true">❤️</span>
                 <span className="font-semibold">{character.currentHp}/{character.maxHp} PV</span>
               </span>
             </div>
@@ -309,177 +381,105 @@ export default function CharacterInventoryPage() {
         </div>
       </div>
 
-      {/* Global error toast (non-blocking) */}
+      {/* Error toast (non-blocking) */}
       {error && (
         <div className="flex items-start justify-between gap-3">
           <ErrorMsg message={error} />
-          <button onClick={dismissError} className="btn-ghost text-sm shrink-0">✕</button>
+          <button onClick={dismissError} className="btn-ghost text-sm shrink-0" aria-label="Fermer l'erreur">✕</button>
         </div>
       )}
 
-      {/* Two-column layout */}
-      <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
-        {/* ---------- LEFT: current inventory ---------- */}
-        <section className="space-y-3">
-          <div className="flex items-end justify-between">
-            <h2 className="font-display text-lg font-semibold">
-              Sac à dos <span className="text-ink-400 text-sm font-normal">({entries.length})</span>
-            </h2>
+      {/* First-run tour hint */}
+      {showTour && entries.length === 0 && (
+        <div className="card p-4 border-blood-200 bg-blood-50/50">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl shrink-0" aria-hidden="true">🎲</span>
+            <div className="flex-1">
+              <p className="font-medium text-ink-900">Bienvenue !</p>
+              <p className="text-sm text-ink-700 mt-1">
+                Appuyez sur le bouton <strong>+ Ajouter</strong> en bas de l'écran pour chercher un objet dans le catalogue,
+                puis suivez la barre de poids pour voir si votre personnage est encombré.
+              </p>
+              <button onClick={dismissTour} className="btn-primary text-sm mt-2 px-3 py-1.5">
+                Compris
+              </button>
+            </div>
           </div>
+        </div>
+      )}
 
-          {sortedEntries.length === 0 ? (
+      {/* Two-column layout: backpack (3fr) + catalog (2fr) on desktop */}
+      <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
+        {/* ---------- LEFT: inventory grouped by category ---------- */}
+        <section className="space-y-3">
+          <h2 className="font-display text-lg font-semibold">
+            Sac à dos <span className="text-ink-400 text-sm font-normal">({entries.length})</span>
+          </h2>
+
+          {entries.length === 0 ? (
             <div className="card p-4">
               <EmptyState
                 icon="🎒"
                 title="Sac à dos vide"
-                hint="Cherchez un objet dans le catalogue à droite pour commencer."
+                hint="Appuyez sur + Ajouter pour chercher un objet."
               />
             </div>
           ) : (
-            <ul className="space-y-2">
-              {sortedEntries.map((entry) => (
-                <InventoryRow
-                  key={entry.id}
-                  entry={entry}
-                  busy={busyEntryIds.has(entry.id)}
-                  expanded={expandedId === entry.id}
-                  onToggleExpand={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
-                  onStep={(d) => stepQuantity(entry, d)}
-                  onSetQuantity={(n) => setQuantity(entry, n)}
-                  onToggleEquipped={() => toggleEquipped(entry)}
-                  onDelete={() => deleteEntry(entry)}
-                  onTransfer={() => setTransferEntry(entry)}
-                  charId={Number(charId)}
-                  partyId={partyId}
+            <div className="space-y-3">
+              {grouped.map((group) => (
+                <CategoryGroup
+                  key={group.category}
+                  category={group.category}
+                  entries={group.entries}
+                  busyEntryIds={busyEntryIds}
+                  expandedId={expandedId}
+                  flashEntryId={flashEntryId}
+                  confirmDeleteId={confirmDeleteId}
+                  onToggleExpand={(id) => setExpandedId(expandedId === id ? null : id)}
+                  onStep={stepQuantity}
+                  onSetQuantity={setQuantity}
+                  onToggleEquipped={toggleEquipped}
+                  onConfirmDelete={confirmDelete}
+                  onCancelDelete={cancelDelete}
+                  onTransfer={(entry) => setTransferEntry(entry)}
                 />
               ))}
-            </ul>
+            </div>
           )}
         </section>
 
-        {/* ---------- RIGHT: catalog search ---------- */}
-        <section className="space-y-3">
+        {/* ---------- RIGHT: catalog (desktop only — mobile uses FAB + bottom sheet) ---------- */}
+        <section className="hidden lg:block space-y-3">
           <h2 className="font-display text-lg font-semibold">Catalogue</h2>
-
-          <div className="card p-3 sm:p-4 space-y-3">
-            <input
-              type="search"
-              className="input"
-              placeholder="🔎 Rechercher un objet…"
-              value={catalogSearch}
-              onChange={(e) => setCatalogSearch(e.target.value)}
-            />
-            <div className="grid grid-cols-2 gap-2">
-              <select
-                className="input"
-                value={catalogCategory}
-                onChange={(e) => setCatalogCategory(e.target.value as '' | ItemCategory)}
-              >
-                {CATEGORY_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-              <select
-                className="input"
-                value={catalogRarity}
-                onChange={(e) => setCatalogRarity(e.target.value as '' | Rarity)}
-              >
-                {RARITY_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {catalogError && <ErrorMsg message={catalogError} />}
-
-          {catalogItems.length === 0 && !catalogLoading ? (
-            <div className="card p-4">
-              <EmptyState icon="🔍" title="Aucun objet trouvé" hint="Modifiez votre recherche ou vos filtres." />
-            </div>
-          ) : (
-            <>
-              <p className="text-xs text-ink-400 px-1">{catalogTotal} objet(s)</p>
-              <ul className="space-y-2">
-                {catalogItems.map((item) => (
-                  <li key={item.id} className="card p-3 flex items-center gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium truncate">{item.nameFr || item.name}</span>
-                        <CategoryBadge category={item.category} />
-                        {item.rarity !== 'none' && <RarityBadge rarity={item.rarity} />}
-                      </div>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-ink-500">
-                        <WeightBadge weightKg={item.weightKg} />
-                        <CostBadge qty={item.costQty} unit={item.costUnit} />
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => addFromCatalog(item)}
-                      disabled={addingItemId === item.id}
-                      className="btn-primary text-sm px-3 py-2 shrink-0"
-                      aria-label={`Ajouter ${item.nameFr || item.name}`}
-                    >
-                      {addingItemId === item.id ? '…' : '+ Ajouter'}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-
-              {catalogLoading && <LoadingSpinner label="Recherche…" />}
-
-              {catalogItems.length < catalogTotal && !catalogLoading && (
-                <button
-                  onClick={() => fetchCatalog(catalogOffset + CATALOG_PAGE_SIZE, true)}
-                  className="btn-secondary w-full"
-                >
-                  Charger plus ({catalogTotal - catalogItems.length} restants)
-                </button>
-              )}
-            </>
-          )}
+          {catalogContent}
         </section>
       </div>
 
-      {/* ---------- Coin purse (collapsible) ---------- */}
+      {/* ---------- Coin purse (auto-save on blur) ---------- */}
       <section className="card p-4 sm:p-5">
-        <button
-          onClick={() => setShowCoins((s) => !s)}
-          className="w-full flex items-center justify-between"
-          aria-expanded={showCoins}
-        >
-          <h2 className="font-display text-lg font-semibold">
-            Bourse <span className="text-ink-400 text-sm font-normal">({totalCopper(coins)} PC totaux)</span>
-          </h2>
-          <span className="text-ink-400 text-sm">{showCoins ? '▲' : '▼'}</span>
-        </button>
-
-        {showCoins && (
-          <div className="mt-4 space-y-3">
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-              {COIN_FIELDS.map(({ key, unit, icon }) => (
-                <label key={key} className="block">
-                  <span className="label">
-                    {icon} {COIN_LABELS_FR[unit]}
-                  </span>
-                  <input
-                    type="number"
-                    min={0}
-                    className="input"
-                    value={coins[key]}
-                    onChange={(e) => setCoins((c) => ({ ...c, [key]: Math.max(0, Number(e.target.value) || 0) }))}
-                  />
-                </label>
-              ))}
-            </div>
-            <div className="flex items-center gap-2">
-              <button onClick={saveCoins} disabled={savingCoins} className="btn-primary">
-                {savingCoins ? 'Sauvegarde…' : 'Enregistrer la bourse'}
-              </button>
-            </div>
-          </div>
-        )}
+        <CoinPurse
+          coins={coins}
+          onChange={(key, val) => {
+            setCoins((c) => ({ ...c, [key]: Math.max(0, val) }));
+            setCoinsDirty(true);
+          }}
+          onBlur={saveCoins}
+        />
       </section>
+
+      {/* ---------- Mobile FAB: open catalog as bottom sheet ---------- */}
+      <button
+        onClick={() => setCatalogOpen(true)}
+        className="lg:hidden fab-enter fixed bottom-5 right-5 z-30 w-14 h-14 rounded-full bg-blood-600 text-white shadow-lg flex items-center justify-center text-2xl font-light hover:bg-blood-700 active:scale-95 transition-all"
+        aria-label="Ajouter un objet au catalogue"
+      >
+        +
+      </button>
+
+      {/* ---------- Mobile catalog bottom sheet ---------- */}
+      <BottomSheet open={catalogOpen} onClose={() => setCatalogOpen(false)} title="Catalogue">
+        {catalogContent}
+      </BottomSheet>
 
       {/* ---------- Transfer modal ---------- */}
       <TransferModal
@@ -488,20 +488,129 @@ export default function CharacterInventoryPage() {
         charId={Number(charId)}
         partyId={partyId}
         onClose={() => setTransferEntry(null)}
-        onTransferred={async () => {
+        onTransferred={async (itemName: string) => {
           setTransferEntry(null);
           await refreshInventory();
+          pushToast(`${itemName} transféré`);
         }}
-        onError={(msg) => setError(msg)}
+        onError={(msg) => pushToast(msg, 'error')}
       />
+
+      {/* ---------- Toast stack ---------- */}
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }
 
-// ---------- Helpers ----------
+// ---------- Category grouping ----------
 
-function totalCopper(c: { copper: number; silver: number; electrum: number; gold: number; platinum: number }): number {
-  return c.copper + c.silver * 10 + c.electrum * 50 + c.gold * 100 + c.platinum * 1000;
+interface CategoryGroupData {
+  category: ItemCategory;
+  entries: InventoryEntry[];
+}
+
+function groupByCategory(entries: InventoryEntry[]): CategoryGroupData[] {
+  const map = new Map<ItemCategory, InventoryEntry[]>();
+  for (const e of entries) {
+    const cat = e.item.category;
+    if (!map.has(cat)) map.set(cat, []);
+    map.get(cat)!.push(e);
+  }
+  // Sort groups: equipped items float within their category
+  const result: CategoryGroupData[] = [];
+  for (const [category, items] of map) {
+    items.sort((a, b) => {
+      if (a.equipped !== b.equipped) return a.equipped ? -1 : 1;
+      const na = (a.item.nameFr || a.item.name).toLowerCase();
+      const nb = (b.item.nameFr || b.item.name).toLowerCase();
+      return na.localeCompare(nb);
+    });
+    result.push({ category, entries: items });
+  }
+  // Sort categories in display order
+  const order: ItemCategory[] = ['weapon', 'armor', 'ammunition', 'gear', 'tool', 'mount', 'magic', 'custom'];
+  result.sort((a, b) => order.indexOf(a.category) - order.indexOf(b.category));
+  return result;
+}
+
+// ---------- Category group (collapsible) ----------
+
+interface CategoryGroupProps {
+  category: ItemCategory;
+  entries: InventoryEntry[];
+  busyEntryIds: Set<number>;
+  expandedId: number | null;
+  flashEntryId: number | null;
+  confirmDeleteId: number | null;
+  onToggleExpand: (id: number) => void;
+  onStep: (entry: InventoryEntry, delta: number) => void;
+  onSetQuantity: (entry: InventoryEntry, n: number) => void;
+  onToggleEquipped: (entry: InventoryEntry) => void;
+  onConfirmDelete: (entry: InventoryEntry) => void;
+  onCancelDelete: (id: number) => void;
+  onTransfer: (entry: InventoryEntry) => void;
+}
+
+function CategoryGroup({
+  category,
+  entries,
+  busyEntryIds,
+  expandedId,
+  flashEntryId,
+  confirmDeleteId,
+  onToggleExpand,
+  onStep,
+  onSetQuantity,
+  onToggleEquipped,
+  onConfirmDelete,
+  onCancelDelete,
+  onTransfer,
+}: CategoryGroupProps) {
+  const [collapsed, setCollapsed] = useState(false);
+  const totalWeight = entries.reduce((sum, e) => {
+    const w = e.item.weightKg;
+    return sum + (typeof w === 'number' ? w * e.quantity : 0);
+  }, 0);
+
+  return (
+    <div>
+      <button
+        onClick={() => setCollapsed((c) => !c)}
+        className="w-full flex items-center justify-between mb-1.5 px-1"
+        aria-expanded={!collapsed}
+      >
+        <span className="flex items-center gap-2">
+          <span className="text-xs text-ink-400 w-4">{collapsed ? '▶' : '▼'}</span>
+          <span className="font-display text-sm font-semibold text-ink-700">
+            {CATEGORY_LABELS_FR[category]}
+          </span>
+          <span className="text-xs text-ink-400">({entries.length})</span>
+        </span>
+        <span className="text-xs text-ink-400">{totalWeight.toFixed(1)} kg</span>
+      </button>
+      {!collapsed && (
+        <ul className="space-y-2">
+          {entries.map((entry) => (
+            <InventoryRow
+              key={entry.id}
+              entry={entry}
+              busy={busyEntryIds.has(entry.id)}
+              expanded={expandedId === entry.id}
+              flashed={flashEntryId === entry.id}
+              confirmingDelete={confirmDeleteId === entry.id}
+              onToggleExpand={() => onToggleExpand(entry.id)}
+              onStep={(d) => onStep(entry, d)}
+              onSetQuantity={(n) => onSetQuantity(entry, n)}
+              onToggleEquipped={() => onToggleEquipped(entry)}
+              onConfirmDelete={() => onConfirmDelete(entry)}
+              onCancelDelete={() => onCancelDelete(entry.id)}
+              onTransfer={() => onTransfer(entry)}
+            />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 // ---------- Inventory row ----------
@@ -510,34 +619,38 @@ interface InventoryRowProps {
   entry: InventoryEntry;
   busy: boolean;
   expanded: boolean;
+  flashed: boolean;
+  confirmingDelete: boolean;
   onToggleExpand: () => void;
   onStep: (delta: number) => void;
   onSetQuantity: (n: number) => void;
   onToggleEquipped: () => void;
-  onDelete: () => void;
+  onConfirmDelete: () => void;
+  onCancelDelete: () => void;
   onTransfer: () => void;
-  charId: number;
-  partyId?: string;
 }
 
 function InventoryRow({
   entry,
   busy,
   expanded,
+  flashed,
+  confirmingDelete,
   onToggleExpand,
   onStep,
   onSetQuantity,
   onToggleEquipped,
-  onDelete,
+  onConfirmDelete,
+  onCancelDelete,
   onTransfer,
 }: InventoryRowProps) {
   const { item, quantity } = entry;
   const totalWeight = item.weightKg !== null ? item.weightKg * quantity : null;
-  const hasDescription = !!item.description;
-  const qtyInputRef = useRef<HTMLInputElement>(null);
+  const hasDetails = !!item.description || item.damageDice || item.acBase !== null ||
+    item.strMin !== null || item.stealthDisadvantage ||
+    (item.properties && item.properties.length > 0) || !!entry.notes;
+  const itemName = item.nameFr || item.name;
 
-  // The input is uncontrolled-ish: we reflect the live quantity but let the
-  // user type freely; commit happens on blur/Enter.
   const [draftQty, setDraftQty] = useState<string>(String(quantity));
   useEffect(() => {
     setDraftQty(String(quantity));
@@ -555,119 +668,318 @@ function InventoryRow({
   };
 
   return (
-    <li className={`card overflow-hidden ${entry.equipped ? 'ring-1 ring-blood-500/30' : ''}`}>
+    <li
+      className={`card overflow-hidden ${flashed ? 'row-flash' : ''} ${
+        entry.equipped ? 'ring-1 ring-blood-500/30' : ''
+      } ${confirmingDelete ? 'ring-2 ring-red-500 pulse-warn' : ''}`}
+    >
       <div className="p-3 sm:p-4">
-        <div className="flex items-start gap-3">
-          {/* Equipped toggle */}
-          <label className="flex flex-col items-center justify-center shrink-0 mt-0.5 cursor-pointer" title={entry.equipped ? 'Équipé' : 'Non équipé'}>
-            <input
-              type="checkbox"
-              className="w-5 h-5 accent-blood-600"
-              checked={entry.equipped}
-              onChange={onToggleEquipped}
-              disabled={busy}
-            />
-            <span className="text-[10px] text-ink-400 mt-1">équipé</span>
-          </label>
-
-          {/* Main content (click to expand) */}
-          <button
-            type="button"
-            onClick={hasDescription ? onToggleExpand : undefined}
-            className="min-w-0 flex-1 text-left"
-            aria-expanded={expanded}
-          >
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium">{item.nameFr || item.name}</span>
-              <CategoryBadge category={item.category} />
-              {item.rarity !== 'none' && <RarityBadge rarity={item.rarity} />}
+        {/* Confirm-delete state */}
+        {confirmingDelete ? (
+          <div className="flex items-center justify-between gap-3 py-1">
+            <span className="text-sm font-medium text-red-700">Retirer {itemName} ?</span>
+            <div className="flex gap-2">
+              <button onClick={onCancelDelete} className="btn-ghost text-sm">
+                Annuler
+              </button>
+              <button onClick={onConfirmDelete} className="btn-primary text-sm bg-red-600 hover:bg-red-700">
+                Retirer
+              </button>
             </div>
-            <div className="flex items-center gap-3 mt-1 text-xs text-ink-500">
-              <WeightBadge weightKg={item.weightKg} />
-              {totalWeight !== null && quantity > 1 && (
-                <span className="text-ink-400">× {quantity} = {totalWeight.toFixed(2)} kg</span>
-              )}
-              {hasDescription && (
-                <span className="text-ink-400">{expanded ? '▲ détails' : '▼ détails'}</span>
-              )}
-            </div>
-          </button>
-
-          {/* Quantity stepper */}
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              onClick={() => onStep(-1)}
-              disabled={busy}
-              className="w-8 h-8 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-lg leading-none flex items-center justify-center"
-              aria-label="Diminuer la quantité"
-            >
-              −
-            </button>
-            <input
-              ref={qtyInputRef}
-              type="number"
-              min={0}
-              className="w-12 text-center input !py-1 !px-1"
-              value={draftQty}
-              disabled={busy}
-              onChange={(e) => setDraftQty(e.target.value)}
-              onBlur={commitDraft}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-              }}
-              aria-label="Quantité"
-            />
-            <button
-              onClick={() => onStep(1)}
-              disabled={busy}
-              className="w-8 h-8 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-lg leading-none flex items-center justify-center"
-              aria-label="Augmenter la quantité"
-            >
-              +
-            </button>
           </div>
-        </div>
+        ) : (
+          <>
+            <div className="flex items-start gap-3">
+              {/* Equipped accent stripe + checkbox (accessible label includes item name) */}
+              <label
+                className="flex flex-col items-center justify-center shrink-0 mt-0.5 cursor-pointer"
+                title={entry.equipped ? 'Équipé' : 'Non équipé'}
+              >
+                <input
+                  type="checkbox"
+                  className="w-5 h-5 accent-blood-600"
+                  checked={entry.equipped}
+                  onChange={onToggleEquipped}
+                  disabled={busy}
+                  aria-label={`${entry.equipped ? 'Déséquiper' : 'Équiper'} ${itemName}`}
+                />
+              </label>
 
-        {/* Actions row */}
-        <div className="flex items-center justify-end gap-1 mt-2 -mr-1">
-          <button onClick={onTransfer} disabled={busy} className="btn-ghost text-sm" title="Transférer">
-            ↗ Transférer
-          </button>
-          <button onClick={onDelete} disabled={busy} className="btn-ghost text-sm text-red-600 hover:bg-red-50" title="Supprimer">
-            🗑
-          </button>
+              {/* Main content — click to expand details */}
+              <button
+                type="button"
+                onClick={hasDetails ? onToggleExpand : undefined}
+                className="min-w-0 flex-1 text-left"
+                aria-expanded={expanded}
+                aria-label={`${itemName}, ${quantity} exemplaire${quantity > 1 ? 's' : ''}`}
+              >
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium truncate">{itemName}</span>
+                  {item.rarity !== 'none' && <RarityBadge rarity={item.rarity} />}
+                </div>
+                <div className="flex items-center gap-3 mt-1 text-xs text-ink-500">
+                  <WeightBadge weightKg={item.weightKg} />
+                  {totalWeight !== null && quantity > 1 && (
+                    <span className="text-ink-400">× {quantity} = {totalWeight.toFixed(1)} kg</span>
+                  )}
+                  {hasDetails && (
+                    <span className="text-ink-400">{expanded ? '▲' : '▼'}</span>
+                  )}
+                </div>
+              </button>
+
+              {/* Quantity stepper */}
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => onStep(-1)}
+                  disabled={busy}
+                  className="w-9 h-9 rounded-xl bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-lg leading-none flex items-center justify-center transition-colors"
+                  aria-label={`Diminuer ${itemName}`}
+                >
+                  −
+                </button>
+                <input
+                  type="number"
+                  min={1}
+                  className="w-12 text-center input !py-1 !px-1"
+                  value={draftQty}
+                  disabled={busy}
+                  onChange={(e) => setDraftQty(e.target.value)}
+                  onBlur={commitDraft}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                  }}
+                  aria-label={`Quantité de ${itemName}`}
+                />
+                <button
+                  onClick={() => onStep(1)}
+                  disabled={busy}
+                  className="w-9 h-9 rounded-xl bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-lg leading-none flex items-center justify-center transition-colors"
+                  aria-label={`Augmenter ${itemName}`}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            {/* Expanded: details + secondary actions (progressive disclosure) */}
+            {expanded && hasDetails && (
+              <div className="mt-3 border-t border-parchment-200 pt-3 space-y-2">
+                {item.description && (
+                  <p className="text-sm text-ink-700 whitespace-pre-line">{item.description}</p>
+                )}
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-500">
+                  {item.damageDice && (
+                    <span>⚔ Dégâts : {item.damageDice}{item.damageType ? ` (${item.damageType})` : ''}</span>
+                  )}
+                  {item.acBase !== null && <span>🛡 CA : {item.acBase}</span>}
+                  {item.strMin !== null && <span>💪 FOR min. : {item.strMin}</span>}
+                  {item.stealthDisadvantage && <span>🤫 Désavantage Discrétion</span>}
+                  {item.properties && item.properties.length > 0 && (
+                    <span>Propriétés : {item.properties.join(', ')}</span>
+                  )}
+                </div>
+                {entry.notes && (
+                  <p className="text-xs text-ink-500 italic">Note : {entry.notes}</p>
+                )}
+                {/* Secondary actions live here, not on the main row */}
+                <div className="flex items-center gap-2 pt-1">
+                  <button onClick={onTransfer} disabled={busy} className="btn-ghost text-sm">
+                    ↗ Transférer
+                  </button>
+                  <button
+                    onClick={() => onStep(-1)}
+                    disabled={busy}
+                    className="btn-ghost text-sm text-red-600 hover:bg-red-50"
+                    aria-label={`Retirer ${itemName}`}
+                  >
+                    Retirer du sac
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </li>
+  );
+}
+
+// ---------- Catalog search component ----------
+
+interface CatalogSearchProps {
+  search: string;
+  setSearch: (s: string) => void;
+  category: '' | ItemCategory;
+  setCategory: (c: '' | ItemCategory) => void;
+  rarity: '' | Rarity;
+  setRarity: (r: '' | Rarity) => void;
+  items: Item[];
+  total: number;
+  loading: boolean;
+  addingItemId: number | null;
+  offset: number;
+  onAdd: (item: Item) => void;
+  onLoadMore: () => void;
+}
+
+function CatalogSearch({
+  search,
+  setSearch,
+  category,
+  setCategory,
+  rarity,
+  setRarity,
+  items,
+  total,
+  loading,
+  addingItemId,
+  offset,
+  onAdd,
+  onLoadMore,
+}: CatalogSearchProps) {
+  return (
+    <div className="space-y-3">
+      <div className="card p-3 space-y-3">
+        <input
+          type="search"
+          className="input"
+          placeholder="Rechercher un objet…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          aria-label="Rechercher dans le catalogue"
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <select
+            className="input"
+            value={category}
+            onChange={(e) => setCategory(e.target.value as '' | ItemCategory)}
+            aria-label="Filtrer par catégorie"
+          >
+            {CATEGORY_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <select
+            className="input"
+            value={rarity}
+            onChange={(e) => setRarity(e.target.value as '' | Rarity)}
+            aria-label="Filtrer par rareté"
+          >
+            {RARITY_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
         </div>
       </div>
 
-      {/* Expanded description */}
-      {expanded && hasDescription && (
-        <div className="px-4 pb-4 -mt-1">
-          <div className="border-t border-parchment-200 pt-3 text-sm text-ink-700 whitespace-pre-line">
-            {item.description}
+      {items.length === 0 && !loading ? (
+        <div className="card p-4">
+          <EmptyState icon="🔍" title="Aucun objet trouvé" hint="Modifiez votre recherche ou vos filtres." />
+        </div>
+      ) : (
+        <>
+          <p className="text-xs text-ink-400 px-1">{total} objet(s)</p>
+          <ul className="space-y-2">
+            {items.map((item) => (
+              <li key={item.id} className="card p-3 flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium truncate">{item.nameFr || item.name}</span>
+                    {item.rarity !== 'none' && <RarityBadge rarity={item.rarity} />}
+                  </div>
+                  <div className="flex items-center gap-3 mt-1 text-xs text-ink-500">
+                    <WeightBadge weightKg={item.weightKg} />
+                    <CostBadge qty={item.costQty} unit={item.costUnit} />
+                    <CategoryBadge category={item.category} />
+                  </div>
+                </div>
+                <button
+                  onClick={() => onAdd(item)}
+                  disabled={addingItemId === item.id}
+                  className="btn-primary text-sm px-3 py-2 shrink-0"
+                  aria-label={`Ajouter ${item.nameFr || item.name}`}
+                >
+                  {addingItemId === item.id ? '…' : '+ Ajouter'}
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          {loading && <LoadingSpinner label="Recherche…" />}
+
+          {offset + items.length < total && !loading && (
+            <button onClick={onLoadMore} className="btn-secondary w-full">
+              Charger plus ({total - offset - items.length} restants)
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------- Coin purse (auto-save, distinct colored glyphs) ----------
+
+function CoinPurse({
+  coins,
+  onChange,
+  onBlur,
+}: {
+  coins: { copper: number; silver: number; electrum: number; gold: number; platinum: number };
+  onChange: (key: keyof typeof coins, val: number) => void;
+  onBlur: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const totalCp = coins.copper + coins.silver * 10 + coins.electrum * 50 + coins.gold * 100 + coins.platinum * 1000;
+  const totalGp = Math.floor(totalCp / 100);
+  const remCp = totalCp % 100;
+
+  return (
+    <div>
+      <button
+        onClick={() => setExpanded((e) => !e)}
+        className="w-full flex items-center justify-between"
+        aria-expanded={expanded}
+      >
+        <h2 className="font-display text-lg font-semibold">
+          Bourse{' '}
+          <span className="text-ink-400 text-sm font-normal">
+            ({totalGp} PO{remCp > 0 ? ` ${remCp} PC` : ''})
+          </span>
+        </h2>
+        <span className="text-ink-400 text-sm">{expanded ? '▲' : '▼'}</span>
+      </button>
+
+      {expanded && (
+        <div className="mt-4">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            {COIN_FIELDS.map(({ key, unit, color }) => (
+              <label key={key} className="block">
+                <span className="label flex items-center gap-1.5">
+                  <span
+                    className="inline-block w-3 h-3 rounded-full border border-parchment-300 shrink-0"
+                    style={{ backgroundColor: color }}
+                    aria-hidden="true"
+                  />
+                  {COIN_LABELS_FR[unit]}
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  className="input"
+                  value={coins[key]}
+                  onChange={(e) => onChange(key, Number(e.target.value) || 0)}
+                  onBlur={onBlur}
+                  aria-label={`Quantité de ${COIN_LABELS_FR[unit]}`}
+                />
+              </label>
+            ))}
           </div>
-          {item.damageDice && (
-            <p className="mt-2 text-xs text-ink-500">
-              ⚔️ Dégâts : {item.damageDice}{item.damageType ? ` ({item.damageType})` : ''}
-            </p>
-          )}
-          {item.acBase !== null && (
-            <p className="mt-1 text-xs text-ink-500">🛡 CA de base : {item.acBase}</p>
-          )}
-          {item.strMin !== null && (
-            <p className="mt-1 text-xs text-ink-500">💪 Force min. : {item.strMin}</p>
-          )}
-          {item.stealthDisadvantage && (
-            <p className="mt-1 text-xs text-ink-500">🤫 Désavantage de Discrétion</p>
-          )}
-          {item.properties && item.properties.length > 0 && (
-            <p className="mt-1 text-xs text-ink-500">Propriétés : {item.properties.join(', ')}</p>
-          )}
-          {entry.notes && (
-            <p className="mt-2 text-xs text-ink-500 italic">Note : {entry.notes}</p>
-          )}
+          <p className="text-xs text-ink-400 mt-3">Sauvegarde automatique.</p>
         </div>
       )}
-    </li>
+    </div>
   );
 }
 
@@ -679,7 +991,7 @@ interface TransferModalProps {
   charId: number;
   partyId?: string;
   onClose: () => void;
-  onTransferred: () => void | Promise<void>;
+  onTransferred: (itemName: string) => void | Promise<void>;
   onError: (msg: string) => void;
 }
 
@@ -690,7 +1002,6 @@ function TransferModal({ open, entry, charId, partyId, onClose, onTransferred, o
   const [qty, setQty] = useState(1);
   const [submitting, setSubmitting] = useState(false);
 
-  // Load party members/characters when modal opens
   useEffect(() => {
     if (!open || !partyId) return;
     let cancelled = false;
@@ -711,7 +1022,6 @@ function TransferModal({ open, entry, charId, partyId, onClose, onTransferred, o
     };
   }, [open, partyId, onError]);
 
-  // Reset selections each time a different entry opens
   useEffect(() => {
     if (open && entry) {
       setQty(entry.quantity);
@@ -723,6 +1033,7 @@ function TransferModal({ open, entry, charId, partyId, onClose, onTransferred, o
 
   const others: CharacterSummary[] = party ? party.characters.filter((c) => c.id !== charId) : [];
   const maxQty = entry.quantity;
+  const itemName = entry.item.nameFr || entry.item.name;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -735,7 +1046,7 @@ function TransferModal({ open, entry, charId, partyId, onClose, onTransferred, o
         inventoryId: entry.id,
         quantity: transferQty,
       });
-      await onTransferred();
+      await onTransferred(itemName);
     } catch (err: any) {
       onError(err.response?.data?.error || 'Échec du transfert');
     } finally {
@@ -744,7 +1055,7 @@ function TransferModal({ open, entry, charId, partyId, onClose, onTransferred, o
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={`Transférer — ${entry.item.nameFr || entry.item.name}`}>
+    <Modal open={open} onClose={onClose} title={`Transférer — ${itemName}`}>
       {loadingParty ? (
         <LoadingSpinner label="Chargement du groupe…" />
       ) : others.length === 0 ? (

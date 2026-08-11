@@ -25,7 +25,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setToken(savedToken);
       setUser(JSON.parse(savedUser));
       // Verify token is still valid
-      api.get('/api/me').then((res) => {
+      api.get('/api/auth/me').then((res) => {
         setUser(res.data.user);
         localStorage.setItem('dnd-inv-user', JSON.stringify(res.data.user));
       }).catch(() => {

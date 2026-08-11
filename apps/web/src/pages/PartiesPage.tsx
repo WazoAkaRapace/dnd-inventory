@@ -130,10 +130,15 @@ export default function PartiesPage() {
           <div>
             <label className="label">Mode d'encombrement</label>
             <select className="input" value={mode} onChange={(e) => setMode(e.target.value as EncumbranceMode)}>
-              <option value="variant">Variante (5/10/15 × FOR en kg)</option>
-              <option value="standard">Standard (15 × FOR en kg)</option>
-              <option value="slots">Emplacements</option>
+              <option value="variant">Variante — 3 paliers de poids (recommandé)</option>
+              <option value="standard">Standard — un seul seuil max</option>
+              <option value="slots">Emplacements — ignorant le poids</option>
             </select>
+            <p className="text-xs text-ink-400 mt-1.5">
+              {mode === 'variant' && 'Le personnage est ralenti à FOR×2.3 kg, FOR×4.5 kg, et immobilisé à FOR×6.8 kg.'}
+              {mode === 'standard' && 'Le personnage est immobilisé au-delà de FOR×6.8 kg. Aucun palier intermédiaire.'}
+              {mode === 'slots' && 'Chaque objet compte comme un emplacement, indépendamment de son poids.'}
+            </p>
           </div>
           {error && <div className="text-red-600 text-sm">{error}</div>}
           <button type="submit" className="btn-primary w-full">Créer le groupe</button>

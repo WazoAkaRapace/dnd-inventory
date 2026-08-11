@@ -7,7 +7,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:4000',
+        target: process.env.DND_API_TARGET || 'http://localhost:4000',
         changeOrigin: true,
       },
     },
