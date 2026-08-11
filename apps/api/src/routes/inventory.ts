@@ -93,8 +93,9 @@ export async function inventoryRoutes(app: FastifyInstance) {
         return sum + (typeof w === 'number' ? w * e.quantity : 0);
       }, 0);
 
-      // Coin weight: 50 coins = 1 lb = 0.4536 kg, so 1 coin = 0.009072 kg
-      const COIN_WEIGHT_KG = 0.4536 / 50;
+      // Coin weight: official French SRD = 1 coin ≈ 10 g = 0.01 kg
+      // (50 coins = 0.5 kg, 100 coins = 1 kg)
+      const COIN_WEIGHT_KG = 0.01;
       const coinCount = char.copper + char.silver + char.electrum + char.gold + char.platinum;
       const coinWeightKg = coinCount * COIN_WEIGHT_KG;
 

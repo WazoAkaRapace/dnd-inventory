@@ -230,17 +230,19 @@ export interface TransferPayload {
 export const LB_TO_KG = 0.4536;
 
 /**
- * DMG variant encumbrance thresholds, in kg.
- * STR × 5/10/15 lb → STR × 2.27/4.54/6.80 kg.
+ * DMG variant encumbrance thresholds.
+ * Official French SRD metric values (5e-drs.fr / SRD 5.1 FR):
+ * STR × 2.5 / 5 / 7.5 kg (the French publisher rounded to clean metric numbers,
+ * instead of converting 5/10/15 lb → 2.27/4.54/6.80 kg).
  */
 export const ENCUMBRANCE_FACTORS = {
-  encumbered: 2.2679,   // 5 lb × 0.4536
-  heavily: 4.5359,      // 10 lb
-  max: 6.8039,          // 15 lb
+  encumbered: 2.5,
+  heavily: 5.0,
+  max: 7.5,
 } as const;
 
-/** Standard PHB mode: STR × 15 lb (max only). */
-export const STANDARD_MAX_FACTOR = 6.8039; // 15 lb
+/** Standard PHB mode: STR × 7.5 kg (max only). */
+export const STANDARD_MAX_FACTOR = 7.5;
 
 export function computeEncumbrance(
   totalWeightKg: number,
