@@ -3,6 +3,7 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
+import { bus } from '../sync/bus.ts';
 import {
   requireUser,
   isPartyMember,
@@ -145,6 +146,7 @@ export async function partyRoutes(app: FastifyInstance) {
         INSERT INTO party_members (party_id, user_id, role) VALUES (?, ?, 'player')
       `).run(party.id, userId);
 
+      bus.emitChange({ type: 'party:change', partyId: party.id, action: 'join', actorUserId: userId });
       return reply.code(201).send({ partyId: party.id });
     },
   );
@@ -174,6 +176,7 @@ export async function partyRoutes(app: FastifyInstance) {
         db.prepare('UPDATE parties SET encumbrance_mode = ? WHERE id = ?').run(encumbranceMode, partyId);
       }
       const row = db.prepare('SELECT * FROM parties WHERE id = ?').get(partyId) as any;
+      bus.emitChange({ type: 'party:change', partyId, action: 'stats', actorUserId: userId });
       return reply.send({
         party: {
           id: row.id,

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../api';
+import { useSyncEvent } from '../sync';
 import type { PartyDetail, CharacterSummary, CreateCharacterPayload } from '@dnd-inventory/shared';
 import { LoadingSpinner, EmptyState, Modal, ErrorMsg } from '../components/ui';
 import { useAuth } from '../auth';
@@ -36,6 +37,14 @@ export default function PartyPage() {
   }, [partyId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Real-time sync: refresh when party membership or characters change
+  const currentPartyId = Number(partyId);
+  useSyncEvent((event) => {
+    if (event.partyId === currentPartyId) {
+      load();
+    }
+  }, [currentPartyId]);
 
   async function createChar(e: React.FormEvent) {
     e.preventDefault();

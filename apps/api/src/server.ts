@@ -5,6 +5,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
+import websocket from '@fastify/websocket';
 import { migrate } from './db/index.ts';
 import { seedItems } from './db/seed.ts';
 import { authRoutes } from './routes/auth.ts';
@@ -12,6 +13,7 @@ import { partyRoutes } from './routes/parties.ts';
 import { characterRoutes } from './routes/characters.ts';
 import { inventoryRoutes } from './routes/inventory.ts';
 import { itemRoutes } from './routes/items.ts';
+import { registerWsRoutes } from './sync/ws.ts';
 
 const PORT = parseInt(process.env.PORT || '4000', 10);
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-change-me-in-production';
@@ -28,6 +30,7 @@ async function buildServer() {
     secret: JWT_SECRET,
     sign: { expiresIn: '7d' },
   });
+  await app.register(websocket);
 
   // Health check (public)
   app.get('/api/health', async () => ({ status: 'ok', time: new Date().toISOString() }));
@@ -41,14 +44,16 @@ async function buildServer() {
     }
   });
 
-  // Global auth guard: require JWT on all /api routes EXCEPT auth + health
+  // Global auth guard: require JWT on all /api routes EXCEPT public ones.
+  // /ws authenticates via query param token, so it's excluded here.
   app.addHook('onRequest', async (request: any, reply: any) => {
     const url = request.url.split('?')[0];
     if (
       url === '/api/health' ||
       url === '/api/auth/login' ||
       url === '/api/auth/register' ||
-      url === '/api/auth/logout'
+      url === '/api/auth/logout' ||
+      url === '/ws'
     ) {
       return; // public routes
     }
@@ -67,6 +72,9 @@ async function buildServer() {
   await app.register(characterRoutes, { prefix: '/api' });
   await app.register(inventoryRoutes, { prefix: '/api' });
 
+  // WebSocket (real-time sync)
+  await registerWsRoutes(app);
+
   return app;
 }
 
@@ -84,6 +92,7 @@ async function start() {
   try {
     await app.listen({ port: PORT, host: '0.0.0.0' });
     console.log(`🚀 API running at http://localhost:${PORT}`);
+    console.log(`🔌 WebSocket at ws://localhost:${PORT}/ws`);
   } catch (err) {
     app.log.error(err);
     process.exit(1);

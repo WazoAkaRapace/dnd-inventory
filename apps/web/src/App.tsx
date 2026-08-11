@@ -1,11 +1,25 @@
 import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from './auth';
+import { useSync } from './sync';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import PartiesPage from './pages/PartiesPage';
 import PartyPage from './pages/PartyPage';
 import CharacterInventoryPage from './pages/CharacterInventoryPage';
 import GmDashboardPage from './pages/GmDashboardPage';
+
+function SyncIndicator() {
+  const { status } = useSync();
+  const colors = { connected: 'bg-green-400', connecting: 'bg-yellow-400', disconnected: 'bg-red-400' };
+  const labels = { connected: 'Synchronisé', connecting: 'Connexion…', disconnected: 'Hors ligne' };
+  return (
+    <span
+      className={`inline-block w-2.5 h-2.5 rounded-full ${colors[status]}`}
+      title={labels[status]}
+      aria-label={labels[status]}
+    />
+  );
+}
 
 function Nav() {
   const { user, logout } = useAuth();
@@ -28,6 +42,7 @@ function Nav() {
             </Link>
           )}
           <span className="text-sm text-parchment-200 hidden sm:inline">{user.displayName}</span>
+          <SyncIndicator />
           <button onClick={logout} className="btn-ghost text-parchment-50 hover:bg-ink-700 text-sm">
             Déconnexion
           </button>

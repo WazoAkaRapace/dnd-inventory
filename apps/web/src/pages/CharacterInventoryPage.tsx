@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../api';
+import { useSyncEvent, useSync } from '../sync';
 import type {
   CharacterInventory,
   InventoryEntry,
@@ -154,6 +155,30 @@ export default function CharacterInventoryPage() {
     load();
   }, [load]);
 
+  // ---------- Real-time sync: auto-refetch when another client changes this character's data ----------
+  const { markLocalMutation } = useSync();
+  const currentCharId = Number(charId);
+  const currentPartyId = Number(partyId);
+
+  useSyncEvent((event) => {
+    // Only react to events for this character or this party
+    if (event.partyId !== currentPartyId) return;
+    if (event.type === 'inventory:change') {
+      // If it involves this character (either as source or transfer target)
+      if (event.characterId === currentCharId || event.toCharacterId === currentCharId) {
+        refreshInventory();
+        // Notify on incoming transfer
+        if (event.action === 'transfer' && event.toCharacterId === currentCharId && event.itemName) {
+          pushToast(`Objet reçu : ${event.itemName}`);
+        }
+      }
+    } else if (event.type === 'character:change') {
+      if (event.characterId === currentCharId) {
+        refreshInventory();
+      }
+    }
+  }, [currentCharId, currentPartyId]);
+
   // ---------- Debounced catalog search ----------
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(catalogSearch), 300);
@@ -185,13 +210,22 @@ export default function CharacterInventoryPage() {
     [debouncedSearch, catalogCategory, catalogRarity],
   );
 
+  // Only fetch when there's a search query or active filters — don't show all 599 items
+  const hasQuery = !!(debouncedSearch.trim() || catalogCategory || catalogRarity);
+
   useEffect(() => {
-    fetchCatalog(0, false);
-  }, [fetchCatalog]);
+    if (hasQuery) {
+      fetchCatalog(0, false);
+    } else {
+      setCatalogItems([]);
+      setCatalogTotal(0);
+    }
+  }, [fetchCatalog, hasQuery]);
 
   // ---------- Mutations ----------
 
   const withBusy = async (entryId: number, fn: () => Promise<void>) => {
+    markLocalMutation(); // Mark as local mutation so sync echo is skipped
     setBusyEntryIds((prev) => new Set(prev).add(entryId));
     try {
       await fn();
@@ -289,6 +323,7 @@ export default function CharacterInventoryPage() {
   };
 
   const addFromCatalog = async (item: Item) => {
+    markLocalMutation();
     setAddingItemId(item.id);
     try {
       await api.post(`/api/characters/${charId}/inventory`, { itemId: item.id, quantity: 1 });
@@ -304,6 +339,7 @@ export default function CharacterInventoryPage() {
   // Coin purse: auto-save on blur when dirty
   const saveCoins = useCallback(async () => {
     if (!coinsDirty) return;
+    markLocalMutation();
     try {
       await api.patch(`/api/characters/${charId}`, coins);
       setCoinsDirty(false);
@@ -875,7 +911,11 @@ function CatalogSearch({
 
       {items.length === 0 && !loading ? (
         <div className="card p-4">
-          <EmptyState icon="🔍" title="Aucun objet trouvé" hint="Modifiez votre recherche ou vos filtres." />
+          {search.trim() || category || rarity ? (
+            <EmptyState icon="🔍" title="Aucun objet trouvé" hint="Modifiez votre recherche ou vos filtres." />
+          ) : (
+            <EmptyState icon="📝" title="Recherchez un objet" hint="Tapez le nom d'un objet pour l'ajouter à votre sac à dos." />
+          )}
         </div>
       ) : (
         <>

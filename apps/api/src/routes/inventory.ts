@@ -4,6 +4,7 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
+import { bus } from '../sync/bus.ts';
 import {
   requireUser,
   isPartyMember,
@@ -168,6 +169,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
         FROM inventory inv JOIN items i ON i.id = inv.item_id
         WHERE inv.id = ?
       `).get(result.lastInsertRowid);
+      bus.emitChange({ type: 'inventory:change', partyId: char.party_id, characterId: char.id, action: 'add', itemName: itemRow?.name_fr || itemRow?.name, actorUserId: userId });
       return reply.code(201).send({ entry: mapInventoryEntry(invRow) });
     },
   );
@@ -223,12 +225,14 @@ export async function inventoryRoutes(app: FastifyInstance) {
       // If quantity reached 0, delete the entry
       if (body.quantity === 0) {
         db.prepare('DELETE FROM inventory WHERE id = ?').run(inv.id);
+        bus.emitChange({ type: 'inventory:change', partyId: char.party_id, characterId: char.id, action: 'remove', actorUserId: userId });
         return reply.code(204).send();
       }
 
       const row = db.prepare(`
         SELECT inv.*, i.* FROM inventory inv JOIN items i ON i.id = inv.item_id WHERE inv.id = ?
       `).get(inv.id);
+      bus.emitChange({ type: 'inventory:change', partyId: char.party_id, characterId: char.id, action: 'adjust', actorUserId: userId });
       return reply.send({ entry: mapInventoryEntry(row) });
     },
   );
@@ -252,6 +256,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
       `).run(char.party_id, char.id, inv.item_id, itemRow?.name || 'item', -inv.quantity, userId);
 
       db.prepare('DELETE FROM inventory WHERE id = ?').run(inv.id);
+      bus.emitChange({ type: 'inventory:change', partyId: char.party_id, characterId: char.id, action: 'remove', itemName: itemRow?.name_fr || itemRow?.name, actorUserId: userId });
       return reply.code(204).send();
     },
   );
@@ -312,6 +317,9 @@ export async function inventoryRoutes(app: FastifyInstance) {
         `).run(toChar.party_id, toCharacterId, inv.item_id, itemName, qty, userId);
       });
       tx();
+
+      // Emit events for both source and destination characters
+      bus.emitChange({ type: 'inventory:change', partyId: fromChar.party_id, characterId: fromCharId, toCharacterId, action: 'transfer', itemName, actorUserId: userId });
 
       return reply.code(200).send({ transferred: qty });
     },

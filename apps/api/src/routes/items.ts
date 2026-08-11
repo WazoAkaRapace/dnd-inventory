@@ -3,6 +3,7 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
+import { bus } from '../sync/bus.ts';
 import { requireUser, mapItem } from './helpers.ts';
 import type { ItemCategory, Rarity, CreateCustomItem } from '@dnd-inventory/shared';
 
@@ -122,6 +123,7 @@ export async function itemRoutes(app: FastifyInstance) {
       );
 
       const row = getDb().prepare('SELECT * FROM items WHERE id = ?').get(info.lastInsertRowid);
+      bus.emitChange({ type: 'party:change', partyId, action: 'custom-item', actorUserId: userId });
       return reply.code(201).send({ item: mapItem(row) });
     },
   );

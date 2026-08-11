@@ -3,6 +3,7 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
+import { bus } from '../sync/bus.ts';
 import {
   requireUser,
   isPartyMember,
@@ -53,6 +54,7 @@ export async function characterRoutes(app: FastifyInstance) {
         FROM characters c JOIN users u ON u.id = c.owner_id
         WHERE c.id = ?
       `).get(info.lastInsertRowid);
+      bus.emitChange({ type: 'party:change', partyId, characterId: info.lastInsertRowid as number, action: 'stats', actorUserId: userId });
       return reply.code(201).send({ character: mapCharacterSummary(row) });
     },
   );
@@ -135,6 +137,10 @@ export async function characterRoutes(app: FastifyInstance) {
         FROM characters c JOIN users u ON u.id = c.owner_id
         WHERE c.id = ?
       `).get(char.id);
+      // Detect if this was a coin change vs stat change for the event action
+      const coinKeys = ['copper', 'silver', 'electrum', 'gold', 'platinum'];
+      const isCoinChange = Object.keys(body).some((k) => coinKeys.includes(k));
+      bus.emitChange({ type: 'character:change', partyId: char.party_id, characterId: char.id, action: isCoinChange ? 'coins' : 'stats', actorUserId: userId });
       return reply.send({ character: mapCharacter(row) });
     },
   );
@@ -151,6 +157,7 @@ export async function characterRoutes(app: FastifyInstance) {
       return reply.code(403).send({ error: 'only the owner or GM can delete' });
     }
     db.prepare('DELETE FROM characters WHERE id = ?').run(char.id);
+    bus.emitChange({ type: 'party:change', partyId: char.party_id, characterId: char.id, action: 'stats', actorUserId: userId });
     return reply.code(204).send();
   });
 }

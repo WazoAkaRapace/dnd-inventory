@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../api';
+import { useSyncEvent } from '../sync';
 import type { PartyDetail, CharacterSummary, CreateCustomItem } from '@dnd-inventory/shared';
 import { LoadingSpinner, EmptyState, Modal, ErrorMsg } from '../components/ui';
 
@@ -43,6 +44,14 @@ export default function GmDashboardPage() {
   }, [partyId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Real-time sync: refresh when any inventory/character/party change happens in this party
+  const currentPartyId = Number(partyId);
+  useSyncEvent((event) => {
+    if (event.partyId === currentPartyId) {
+      load(); // refresh characters + transactions
+    }
+  }, [currentPartyId]);
 
   if (loading) return <LoadingSpinner />;
   if (error) return <ErrorMsg message={error} />;
