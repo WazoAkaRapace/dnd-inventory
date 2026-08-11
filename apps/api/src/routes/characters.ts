@@ -30,17 +30,19 @@ export async function characterRoutes(app: FastifyInstance) {
       if (!body.name || !body.name.trim()) return reply.code(400).send({ error: 'name is required' });
       const strength = body.strength ?? 10;
       if (strength < 1) return reply.code(400).send({ error: 'strength must be ≥ 1' });
+      const capMult = body.capacityMultiplier ?? 1;
 
       const db = getDb();
       const info = db.prepare(`
         INSERT INTO characters
-          (party_id, owner_id, name, strength)
-        VALUES (?, ?, ?, ?)
+          (party_id, owner_id, name, strength, capacity_multiplier)
+        VALUES (?, ?, ?, ?, ?)
       `).run(
         partyId,
         userId,
         body.name.trim(),
         strength,
+        capMult,
       );
       const row = db.prepare(`
         SELECT c.*, u.display_name AS owner_name
@@ -104,12 +106,14 @@ export async function characterRoutes(app: FastifyInstance) {
 
       const body = req.body || {};
       const allowed: (keyof PatchCharacterPayload)[] = [
-        'name', 'strength',
+        'name', 'strength', 'capacityMultiplier',
         'notes', 'copper', 'silver', 'electrum', 'gold', 'platinum',
       ];
       const sets: string[] = [];
       const vals: any[] = [];
-      const fieldMap: Record<string, string> = {};
+      const fieldMap: Record<string, string> = {
+        capacityMultiplier: 'capacity_multiplier',
+      };
       for (const key of allowed) {
         if (body[key] !== undefined) {
           const col = fieldMap[key as string] || key;

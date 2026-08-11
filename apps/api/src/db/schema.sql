@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS characters (
   owner_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name        TEXT NOT NULL,
   strength    INTEGER NOT NULL DEFAULT 10 CHECK (strength >= 1),
+  capacity_multiplier REAL NOT NULL DEFAULT 1.0 CHECK (capacity_multiplier > 0),
   notes       TEXT,
   copper      INTEGER NOT NULL DEFAULT 0,
   silver      INTEGER NOT NULL DEFAULT 0,

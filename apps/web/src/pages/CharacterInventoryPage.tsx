@@ -71,6 +71,9 @@ export default function CharacterInventoryPage() {
 
   // Editable strength
   const [strengthDraft, setStrengthDraft] = useState('10');
+  // Editable capacity multiplier
+  const [multDraft, setMultDraft] = useState('1');
+  const [showMultHelp, setShowMultHelp] = useState(false);
 
   // Toast system
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -148,6 +151,7 @@ export default function CharacterInventoryPage() {
         platinum: res.data.character.platinum,
       });
       setStrengthDraft(String(res.data.character.strength));
+      setMultDraft(String(res.data.character.capacityMultiplier ?? 1));
     } catch (err: any) {
       setError(err.response?.data?.error || "Impossible de charger l'inventaire");
     } finally {
@@ -382,6 +386,26 @@ export default function CharacterInventoryPage() {
     }
   };
 
+  // Commit capacity multiplier change on blur
+  const commitMult = async () => {
+    const parsed = Number(multDraft);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setMultDraft(String(data?.character.capacityMultiplier ?? 1));
+      return;
+    }
+    const newMult = Math.round(parsed * 100) / 100;
+    if (newMult === data?.character.capacityMultiplier) return;
+    markLocalMutation();
+    try {
+      await api.patch(`/api/characters/${charId}`, { capacityMultiplier: newMult });
+      await refreshInventory();
+      pushToast(`Capacité de portage mise à jour : ×${newMult}`);
+    } catch (err: any) {
+      pushToast(err.response?.data?.error || 'Erreur', 'error');
+      setMultDraft(String(data?.character.capacityMultiplier ?? 1));
+    }
+  };
+
   const dismissError = () => setError('');
 
   // ---------- Render guards ----------
@@ -420,22 +444,55 @@ export default function CharacterInventoryPage() {
         <div className="card p-4 sm:p-5">
           <div className="flex items-center justify-between gap-3">
             <h1 className="font-display text-xl sm:text-2xl font-bold truncate">{character.name}</h1>
-            {/* Editable Strength */}
-            <label className="flex items-center gap-1.5 bg-parchment-100 px-2.5 py-1 rounded-lg shrink-0">
-              <span className="text-sm font-medium text-ink-500">FOR</span>
-              <input
-                type="number"
-                min={1}
-                max={30}
-                className="w-12 text-center text-sm font-semibold bg-white border border-parchment-300 rounded-md py-0.5 focus:outline-none focus:border-blood-500"
-                value={strengthDraft}
-                onChange={(e) => setStrengthDraft(e.target.value)}
-                onBlur={commitStrength}
-                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                aria-label="Force"
-              />
-            </label>
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Editable Strength */}
+              <label className="flex items-center gap-1.5 bg-parchment-100 px-2.5 py-1 rounded-lg">
+                <span className="text-sm font-medium text-ink-500">FOR</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={30}
+                  className="w-12 text-center text-sm font-semibold bg-white border border-parchment-300 rounded-md py-0.5 focus:outline-none focus:border-blood-500"
+                  value={strengthDraft}
+                  onChange={(e) => setStrengthDraft(e.target.value)}
+                  onBlur={commitStrength}
+                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                  aria-label="Force"
+                />
+              </label>
+              {/* Editable capacity multiplier */}
+              <label className="flex items-center gap-1.5 bg-parchment-100 px-2.5 py-1 rounded-lg">
+                <span className="text-sm font-medium text-ink-500">×Portage</span>
+                <input
+                  type="number"
+                  min={1}
+                  step={0.5}
+                  className="w-12 text-center text-sm font-semibold bg-white border border-parchment-300 rounded-md py-0.5 focus:outline-none focus:border-blood-500"
+                  value={multDraft}
+                  onChange={(e) => setMultDraft(e.target.value)}
+                  onBlur={commitMult}
+                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                  aria-label="Multiplicateur de capacité de portage"
+                />
+                <button
+                  onClick={() => setShowMultHelp(s => !s)}
+                  className="text-ink-400 hover:text-blood-600 text-xs"
+                  aria-label="Aide sur le multiplicateur de portage"
+                  title="Aide"
+                >?</button>
+              </label>
+            </div>
           </div>
+          {showMultHelp && (
+            <div className="mt-2 text-xs text-ink-600 bg-parchment-100 rounded-lg p-3 space-y-1.5">
+              <p className="font-semibold">Multiplicateur de capacité de portage</p>
+              <p><strong>×1 (défaut)</strong> : créature de taille M sans capacité spéciale.</p>
+              <p><strong>×2</strong> : Construction massive (Goliath, Firbolg, Demi-Orc, Bugbear, Orc, Loxodon) ou créature de taille G. Le personnage compte comme une catégorie de taille supérieure pour le calcul du poids transportable.</p>
+              <p><strong>×3</strong> : Créature de taille TG.</p>
+              <p><strong>×4</strong> : Créature de taille Gig.</p>
+              <p className="text-ink-400">Ce multiplicateur s'applique aux trois paliers (encombré, lourdement encombré, max). Modifiez-le si votre personnage a un trait qui augmente sa capacité de portage.</p>
+            </div>
+          )}
           <div className="mt-3">
             <EncumbranceBar encumbrance={encumbrance} />
           </div>

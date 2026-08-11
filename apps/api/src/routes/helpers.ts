@@ -88,6 +88,7 @@ export function mapCharacterSummary(row: any): CharacterSummary {
     ownerName: row.owner_name ?? row.display_name ?? '',
     name: row.name,
     strength: row.strength,
+    capacityMultiplier: row.capacity_multiplier ?? 1,
   };
 }
 

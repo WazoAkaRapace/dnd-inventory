@@ -106,11 +106,17 @@ export async function inventoryRoutes(app: FastifyInstance) {
         char.strength,
         char.encumbrance_mode,
         +coinWeightKg.toFixed(3),
+        char.capacity_multiplier ?? 1,
       );
 
       const character = {
         id: char.id,
         partyId: char.party_id,
+        ownerId: char.owner_id,
+        ownerName: char.owner_name,
+        name: char.name,
+        strength: char.strength,
+        capacityMultiplier: char.capacity_multiplier ?? 1,
         ownerId: char.owner_id,
         ownerName: char.owner_name,
         name: char.name,

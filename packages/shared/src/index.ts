@@ -142,6 +142,7 @@ export interface CharacterSummary {
   ownerName: string;
   name: string;
   strength: number;
+  capacityMultiplier: number; // ×1 normal, ×2 Powerful Build/Large, etc.
 }
 
 export interface Character extends CharacterSummary {
@@ -158,11 +159,13 @@ export interface Character extends CharacterSummary {
 export interface CreateCharacterPayload {
   name: string;
   strength: number;
+  capacityMultiplier?: number;
 }
 
 export interface PatchCharacterPayload {
   name?: string;
   strength?: number;
+  capacityMultiplier?: number;
   notes?: string | null;
   copper?: number;
   silver?: number;
@@ -249,10 +252,12 @@ export function computeEncumbrance(
   strength: number,
   mode: EncumbranceMode,
   coinWeightKg: number = 0,
+  capacityMultiplier: number = 1,
 ): EncumbranceState {
-  const encumberedKg = +(strength * ENCUMBRANCE_FACTORS.encumbered).toFixed(2);
-  const heavilyEncumberedKg = +(strength * ENCUMBRANCE_FACTORS.heavily).toFixed(2);
-  const maxCarryKg = +(strength * ENCUMBRANCE_FACTORS.max).toFixed(2);
+  const mult = capacityMultiplier > 0 ? capacityMultiplier : 1;
+  const encumberedKg = +(strength * ENCUMBRANCE_FACTORS.encumbered * mult).toFixed(2);
+  const heavilyEncumberedKg = +(strength * ENCUMBRANCE_FACTORS.heavily * mult).toFixed(2);
+  const maxCarryKg = +(strength * ENCUMBRANCE_FACTORS.max * mult).toFixed(2);
 
   let tier: EncumbranceState['tier'];
   if (mode === 'standard') {
