@@ -135,8 +135,8 @@ export default function PartiesPage() {
               <option value="slots">Emplacements — ignorant le poids</option>
             </select>
             <p className="text-xs text-ink-400 mt-1.5">
-              {mode === 'variant' && 'Le personnage est ralenti à FOR×2.3 kg, FOR×4.5 kg, et immobilisé à FOR×6.8 kg.'}
-              {mode === 'standard' && 'Le personnage est immobilisé au-delà de FOR×6.8 kg. Aucun palier intermédiaire.'}
+              {mode === 'variant' && 'Le personnage est ralenti à FOR×2.5 kg, FOR×5 kg, et immobilisé à FOR×7.5 kg.'}
+              {mode === 'standard' && 'Le personnage est immobilisé au-delà de FOR×7.5 kg. Aucun palier intermédiaire.'}
               {mode === 'slots' && 'Chaque objet compte comme un emplacement, indépendamment de son poids.'}
             </p>
           </div>
