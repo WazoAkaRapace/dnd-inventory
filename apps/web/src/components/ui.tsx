@@ -87,6 +87,11 @@ export function EncumbranceBar({ encumbrance }: { encumbrance: EncumbranceState 
           Objets : {itemWeightKg.toFixed(1)} kg · Monnaie : {coinWeightKg.toFixed(1)} kg
         </div>
       )}
+      {tier !== 'unencumbered' && (
+        <div className={`text-xs mt-1 px-2 py-1 rounded-lg ${tierBadge(tier)}`}>
+          {tierConsequence(tier)}
+        </div>
+      )}
     </div>
   );
 }
@@ -97,6 +102,28 @@ function tierColor(tier: EncumbranceState['tier']): string {
     case 'encumbered': return 'text-yellow-700';
     case 'heavilyEncumbered': return 'text-orange-700';
     case 'overburdened': return 'text-red-700 font-semibold';
+  }
+}
+
+function tierBadge(tier: EncumbranceState['tier']): string {
+  switch (tier) {
+    case 'encumbered': return 'bg-yellow-50 text-yellow-800 border border-yellow-200';
+    case 'heavilyEncumbered': return 'bg-orange-50 text-orange-800 border border-orange-200';
+    case 'overburdened': return 'bg-red-50 text-red-800 border border-red-200 font-semibold';
+    default: return '';
+  }
+}
+
+function tierConsequence(tier: EncumbranceState['tier']): string {
+  switch (tier) {
+    case 'encumbered':
+      return '⚠ Vitesse réduite de 3 m';
+    case 'heavilyEncumbered':
+      return '⚠ Vitesse réduite de 6 m · Désavantage aux jets de Force et Constitution';
+    case 'overburdened':
+      return '⛔ Immobilisé — impossible de se déplacer';
+    default:
+      return '';
   }
 }
 

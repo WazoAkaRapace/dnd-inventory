@@ -24,6 +24,10 @@ export default {
           500: '#6b5640',
           400: '#8a7558',
         },
+        gold: {
+          400: '#d4af37',
+          500: '#b8975a',
+        },
       },
       fontFamily: {
         display: ['Cinzel', 'Georgia', 'serif'],

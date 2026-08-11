@@ -69,6 +69,9 @@ export default function CharacterInventoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Editable strength
+  const [strengthDraft, setStrengthDraft] = useState('10');
+
   // Toast system
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastId = useRef(0);
@@ -144,6 +147,7 @@ export default function CharacterInventoryPage() {
         gold: res.data.character.gold,
         platinum: res.data.character.platinum,
       });
+      setStrengthDraft(String(res.data.character.strength));
     } catch (err: any) {
       setError(err.response?.data?.error || "Impossible de charger l'inventaire");
     } finally {
@@ -343,11 +347,32 @@ export default function CharacterInventoryPage() {
     try {
       await api.patch(`/api/characters/${charId}`, coins);
       setCoinsDirty(false);
+      await refreshInventory();
       pushToast('Bourse mise à jour');
     } catch (err: any) {
       pushToast(err.response?.data?.error || 'Erreur de sauvegarde', 'error');
     }
-  }, [charId, coins, coinsDirty, pushToast]);
+  }, [charId, coins, coinsDirty, pushToast, refreshInventory]);
+
+  // Commit strength change on blur
+  const commitStrength = async () => {
+    const parsed = Number(strengthDraft);
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      setStrengthDraft(String(data?.character.strength || 10));
+      return;
+    }
+    const newStr = Math.floor(parsed);
+    if (newStr === data?.character.strength) return; // no change
+    markLocalMutation();
+    try {
+      await api.patch(`/api/characters/${charId}`, { strength: newStr });
+      await refreshInventory();
+      pushToast(`Force mise à jour : ${newStr}`);
+    } catch (err: any) {
+      pushToast(err.response?.data?.error || 'Erreur', 'error');
+      setStrengthDraft(String(data?.character.strength || 10));
+    }
+  };
 
   const dismissError = () => setError('');
 
@@ -382,34 +407,26 @@ export default function CharacterInventoryPage() {
 
   return (
     <div className="space-y-4">
-      {/* Back link */}
-      <Link
-        to={`/party/${partyId}`}
-        className="inline-flex items-center text-sm text-ink-500 hover:text-blood-600"
-      >
-        ← Retour au groupe
-      </Link>
-
       {/* Sticky character header + encumbrance — offset below nav on mobile */}
       <div className="sticky top-14 z-20 -mx-4 px-4 pt-2 pb-3 bg-parchment-50/95 backdrop-blur sm:static sm:top-0 sm:mx-0 sm:px-0 sm:bg-transparent sm:backdrop-blur-none sm:z-auto">
         <div className="card p-4 sm:p-5">
-          <div className="flex items-start justify-between gap-3 flex-wrap">
-            <div className="min-w-0">
-              <h1 className="font-display text-xl sm:text-2xl font-bold truncate">{character.name}</h1>
-              <p className="text-sm text-ink-500">
-                {[character.race, character.className, `Niv. ${character.level}`].filter(Boolean).join(' · ') || '—'}
-              </p>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="inline-flex items-center gap-1.5 bg-parchment-100 px-2.5 py-1 rounded-lg">
-                <span aria-hidden="true">💪</span>
-                <span className="font-semibold">FOR {character.strength}</span>
-              </span>
-              <span className="inline-flex items-center gap-1.5 bg-parchment-100 px-2.5 py-1 rounded-lg">
-                <span aria-hidden="true">❤️</span>
-                <span className="font-semibold">{character.currentHp}/{character.maxHp} PV</span>
-              </span>
-            </div>
+          <div className="flex items-center justify-between gap-3">
+            <h1 className="font-display text-xl sm:text-2xl font-bold truncate">{character.name}</h1>
+            {/* Editable Strength */}
+            <label className="flex items-center gap-1.5 bg-parchment-100 px-2.5 py-1 rounded-lg shrink-0">
+              <span className="text-sm font-medium text-ink-500">FOR</span>
+              <input
+                type="number"
+                min={1}
+                max={30}
+                className="w-12 text-center text-sm font-semibold bg-white border border-parchment-300 rounded-md py-0.5 focus:outline-none focus:border-blood-500"
+                value={strengthDraft}
+                onChange={(e) => setStrengthDraft(e.target.value)}
+                onBlur={commitStrength}
+                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                aria-label="Force"
+              />
+            </label>
           </div>
           <div className="mt-3">
             <EncumbranceBar encumbrance={encumbrance} />
@@ -706,7 +723,7 @@ function InventoryRow({
   return (
     <li
       className={`card overflow-hidden ${flashed ? 'row-flash' : ''} ${
-        entry.equipped ? 'ring-1 ring-blood-500/30' : ''
+        entry.equipped ? 'ring-1 ring-gold-400/40' : ''
       } ${confirmingDelete ? 'ring-2 ring-red-500 pulse-warn' : ''}`}
     >
       <div className="p-3 sm:p-4">
@@ -725,21 +742,23 @@ function InventoryRow({
           </div>
         ) : (
           <>
-            <div className="flex items-start gap-3">
-              {/* Equipped accent stripe + checkbox (accessible label includes item name) */}
-              <label
-                className="flex flex-col items-center justify-center shrink-0 mt-0.5 cursor-pointer"
+            {/* Row 1: star toggle + item name (full width on mobile) */}
+            <div className="flex items-start gap-2 sm:gap-3">
+              {/* Equipped toggle — star icon */}
+              <button
+                onClick={onToggleEquipped}
+                disabled={busy}
+                className={`shrink-0 mt-0.5 text-lg leading-none transition-colors ${
+                  entry.equipped
+                    ? 'text-gold-400'
+                    : 'text-ink-400/40 hover:text-ink-400'
+                }`}
+                aria-label={`${entry.equipped ? 'Déséquiper' : 'Équiper'} ${itemName}`}
+                aria-pressed={entry.equipped}
                 title={entry.equipped ? 'Équipé' : 'Non équipé'}
               >
-                <input
-                  type="checkbox"
-                  className="w-5 h-5 accent-blood-600"
-                  checked={entry.equipped}
-                  onChange={onToggleEquipped}
-                  disabled={busy}
-                  aria-label={`${entry.equipped ? 'Déséquiper' : 'Équiper'} ${itemName}`}
-                />
-              </label>
+                {entry.equipped ? '★' : '☆'}
+              </button>
 
               {/* Main content — click to expand details */}
               <button
@@ -752,50 +771,79 @@ function InventoryRow({
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium truncate">{itemName}</span>
                   {item.rarity !== 'none' && <RarityBadge rarity={item.rarity} />}
-                </div>
-                <div className="flex items-center gap-3 mt-1 text-xs text-ink-500">
-                  <WeightBadge weightKg={item.weightKg} />
-                  {totalWeight !== null && quantity > 1 && (
-                    <span className="text-ink-400">× {quantity} = {totalWeight.toFixed(1)} kg</span>
-                  )}
                   {hasDetails && (
-                    <span className="text-ink-400">{expanded ? '▲' : '▼'}</span>
+                    <span className="text-ink-400 text-xs">{expanded ? '▲' : '▼'}</span>
                   )}
                 </div>
               </button>
 
-              {/* Quantity stepper */}
-              <div className="flex items-center gap-1 shrink-0">
+              {/* On desktop, stepper stays inline on the right */}
+              <div className="hidden sm:flex items-center gap-1 shrink-0">
                 <button
                   onClick={() => onStep(-1)}
                   disabled={busy}
-                  className="w-9 h-9 rounded-xl bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-lg leading-none flex items-center justify-center transition-colors"
+                  className="w-8 h-8 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-sm font-medium flex items-center justify-center transition-colors"
                   aria-label={`Diminuer ${itemName}`}
-                >
-                  −
-                </button>
+                >−</button>
                 <input
-                  type="number"
-                  min={1}
-                  className="w-12 text-center input !py-1 !px-1"
+                  type="number" min={1}
+                  className="w-10 h-8 text-center text-sm bg-white border border-parchment-300 rounded-md focus:outline-none focus:border-blood-500"
                   value={draftQty}
                   disabled={busy}
                   onChange={(e) => setDraftQty(e.target.value)}
                   onBlur={commitDraft}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                  }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                   aria-label={`Quantité de ${itemName}`}
                 />
                 <button
                   onClick={() => onStep(1)}
                   disabled={busy}
-                  className="w-9 h-9 rounded-xl bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-lg leading-none flex items-center justify-center transition-colors"
+                  className="w-8 h-8 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-sm font-medium flex items-center justify-center transition-colors"
                   aria-label={`Augmenter ${itemName}`}
-                >
-                  +
-                </button>
+                >+</button>
               </div>
+            </div>
+
+            {/* Row 2 (mobile only): weight info + stepper side by side */}
+            <div className="flex items-center justify-between gap-2 mt-1.5 sm:hidden pl-7">
+              <div className="flex items-center gap-3 text-xs text-ink-500 min-w-0">
+                <WeightBadge weightKg={item.weightKg} />
+                {totalWeight !== null && quantity > 1 && (
+                  <span className="text-ink-400">× {quantity} = {totalWeight.toFixed(1)} kg</span>
+                )}
+              </div>
+              <div className="flex items-center gap-0.5 shrink-0">
+                <button
+                  onClick={() => onStep(-1)}
+                  disabled={busy}
+                  className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-sm font-medium flex items-center justify-center transition-colors"
+                  aria-label={`Diminuer ${itemName}`}
+                >−</button>
+                <input
+                  type="number" min={1}
+                  className="w-8 h-7 text-center text-sm bg-white border border-parchment-300 rounded-md focus:outline-none focus:border-blood-500"
+                  value={draftQty}
+                  disabled={busy}
+                  onChange={(e) => setDraftQty(e.target.value)}
+                  onBlur={commitDraft}
+                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                  aria-label={`Quantité de ${itemName}`}
+                />
+                <button
+                  onClick={() => onStep(1)}
+                  disabled={busy}
+                  className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-sm font-medium flex items-center justify-center transition-colors"
+                  aria-label={`Augmenter ${itemName}`}
+                >+</button>
+              </div>
+            </div>
+
+            {/* Desktop: weight info stays under the name */}
+            <div className="hidden sm:flex items-center gap-3 mt-1 ml-7 text-xs text-ink-500">
+              <WeightBadge weightKg={item.weightKg} />
+              {totalWeight !== null && quantity > 1 && (
+                <span className="text-ink-400">× {quantity} = {totalWeight.toFixed(1)} kg</span>
+              )}
             </div>
 
             {/* Expanded: details + secondary actions (progressive disclosure) */}
@@ -1008,15 +1056,17 @@ function CoinPurse({
                   type="number"
                   min={0}
                   className="input"
-                  value={coins[key]}
-                  onChange={(e) => onChange(key, Number(e.target.value) || 0)}
-                  onBlur={onBlur}
+                  value={coins[key] === 0 ? '' : coins[key]}
+                  onChange={(e) => onChange(key, e.target.value === '' ? 0 : (Number(e.target.value) || 0))}
+                  onBlur={(e) => {
+                    if (e.target.value === '' || e.target.value === '0') onChange(key, 0);
+                    onBlur();
+                  }}
                   aria-label={`Quantité de ${COIN_LABELS_FR[unit]}`}
                 />
               </label>
             ))}
           </div>
-          <p className="text-xs text-ink-400 mt-3">Sauvegarde automatique.</p>
         </div>
       )}
     </div>

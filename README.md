@@ -81,11 +81,13 @@ See `docs/API.md` (generated from Fastify OpenAPI) once the server is running.
 
 DMG variant encumbrance, converted to kg (1 lb = 0.4536 kg):
 
-| Tier                | Threshold (kg)      | Effect                          |
-| ------------------- | ------------------- | ------------------------------- |
-| Encumbered          | STR × **2.27** kg   | Speed −10 ft                    |
-| Heavily encumbered  | STR × **4.54** kg   | Speed −20 ft, disadvantage      |
-| Max carry           | STR × **6.80** kg   | Cannot move / lift more         |
+| Tier                | Threshold (kg)      | Effect                                    |
+| ------------------- | ------------------- | ----------------------------------------- |
+| Encumbered          | STR × **2.27** kg   | Vitesse réduite de 3 m                    |
+| Heavily encumbered  | STR × **4.54** kg   | Vitesse réduite de 6 m · Désavantage FOR/CON |
+| Max carry           | STR × **6.80** kg   | Immobilisé — impossible de se déplacer    |
+
+Coin weight is included: 50 coins = 0.45 kg (1 lb). A hoard of 5000 gold pieces weighs 45 kg.
 
 ## Item data license
 
