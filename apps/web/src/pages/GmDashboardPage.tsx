@@ -121,12 +121,8 @@ function CharactersTab({ characters, partyId }: { characters: CharacterSummary[]
           className="card p-4 hover:shadow-md transition-shadow"
         >
           <h3 className="font-display text-lg font-semibold">{c.name}</h3>
-          <p className="text-sm text-ink-400">
-            {[c.race, c.className, `Niv. ${c.level}`].filter(Boolean).join(' · ')}
-          </p>
-          <div className="mt-2 flex gap-4 text-sm">
+          <div className="mt-1 flex gap-4 text-sm text-ink-500">
             <span>💪 FOR {c.strength}</span>
-            <span>❤️ {c.currentHp}/{c.maxHp} PV</span>
           </div>
           <p className="text-xs text-ink-400 mt-2">→ Voir l'inventaire</p>
         </Link>

@@ -17,11 +17,7 @@ export default function PartyPage() {
 
   // New character form
   const [charName, setCharName] = useState('');
-  const [charRace, setCharRace] = useState('');
-  const [charClass, setCharClass] = useState('');
   const [charStr, setCharStr] = useState(10);
-  const [charHp, setCharHp] = useState(1);
-  const [charLevel, setCharLevel] = useState(1);
 
   const load = useCallback(async () => {
     if (!partyId) return;
@@ -50,16 +46,12 @@ export default function PartyPage() {
     e.preventDefault();
     const payload: CreateCharacterPayload = {
       name: charName,
-      race: charRace || undefined,
-      className: charClass || undefined,
       strength: charStr,
-      maxHp: charHp,
-      level: charLevel,
     };
     try {
       await api.post(`/api/parties/${partyId}/characters`, payload);
       setShowAddChar(false);
-      setCharName(''); setCharRace(''); setCharClass(''); setCharStr(10); setCharHp(1); setCharLevel(1);
+      setCharName(''); setCharStr(10);
       await load();
     } catch (err: any) {
       setError(err.response?.data?.error || 'Erreur');
@@ -161,29 +153,9 @@ export default function PartyPage() {
             <label className="label">Nom *</label>
             <input className="input" value={charName} onChange={(e) => setCharName(e.target.value)} required />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Race</label>
-              <input className="input" value={charRace} onChange={(e) => setCharRace(e.target.value)} placeholder="Half-Orc" />
-            </div>
-            <div>
-              <label className="label">Classe</label>
-              <input className="input" value={charClass} onChange={(e) => setCharClass(e.target.value)} placeholder="Barbare" />
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="label">Niveau</label>
-              <input type="number" className="input" value={charLevel} min={1} onChange={(e) => setCharLevel(Number(e.target.value))} />
-            </div>
-            <div>
-              <label className="label">Force</label>
-              <input type="number" className="input" value={charStr} min={1} max={30} onChange={(e) => setCharStr(Number(e.target.value))} />
-            </div>
-            <div>
-              <label className="label">PV max</label>
-              <input type="number" className="input" value={charHp} min={1} onChange={(e) => setCharHp(Number(e.target.value))} />
-            </div>
+          <div>
+            <label className="label">Force</label>
+            <input type="number" className="input" value={charStr} min={1} max={30} onChange={(e) => setCharStr(Number(e.target.value))} />
           </div>
           {error && <div className="text-red-600 text-sm">{error}</div>}
           <button type="submit" className="btn-primary w-full">Créer</button>
@@ -200,12 +172,8 @@ function CharacterCard({ c, partyId }: { c: CharacterSummary; partyId: string })
       className="card p-4 hover:shadow-md transition-shadow block"
     >
       <h3 className="font-display text-lg font-semibold">{c.name}</h3>
-      <p className="text-sm text-ink-400">
-        {[c.race, c.className, `Niv. ${c.level}`].filter(Boolean).join(' · ')}
-      </p>
-      <div className="mt-2 flex gap-4 text-sm">
+      <div className="mt-1 flex gap-4 text-sm text-ink-500">
         <span>💪 FOR {c.strength}</span>
-        <span>❤️ {c.currentHp}/{c.maxHp} PV</span>
       </div>
       <p className="text-xs text-ink-400 mt-2">Joueur: {c.ownerName}</p>
     </Link>

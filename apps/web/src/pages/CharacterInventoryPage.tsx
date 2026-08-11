@@ -247,6 +247,14 @@ export default function CharacterInventoryPage() {
     try {
       const res = await api.get<CharacterInventory>(`/api/characters/${charId}/inventory`);
       setData(res.data);
+      // Sync coin state from server (covers both local and remote mutations)
+      setCoins({
+        copper: res.data.character.copper,
+        silver: res.data.character.silver,
+        electrum: res.data.character.electrum,
+        gold: res.data.character.gold,
+        platinum: res.data.character.platinum,
+      });
       if (flashId !== undefined) {
         setFlashEntryId(flashId);
         setTimeout(() => setFlashEntryId(null), 1200);
@@ -804,13 +812,16 @@ function InventoryRow({
               </div>
             </div>
 
-            {/* Row 2 (mobile only): weight info + stepper side by side */}
+            {/* Row 2 (mobile only): weight info + transfer + stepper side by side */}
             <div className="flex items-center justify-between gap-2 mt-1.5 sm:hidden pl-7">
-              <div className="flex items-center gap-3 text-xs text-ink-500 min-w-0">
+              <div className="flex items-center gap-2 text-xs text-ink-500 min-w-0">
                 <WeightBadge weightKg={item.weightKg} />
                 {totalWeight !== null && quantity > 1 && (
                   <span className="text-ink-400">× {quantity} = {totalWeight.toFixed(1)} kg</span>
                 )}
+                <button onClick={onTransfer} disabled={busy} className="text-ink-400 hover:text-blood-600 text-xs underline" aria-label={`Transférer ${itemName}`}>
+                  ↗
+                </button>
               </div>
               <div className="flex items-center gap-0.5 shrink-0">
                 <button
@@ -838,12 +849,15 @@ function InventoryRow({
               </div>
             </div>
 
-            {/* Desktop: weight info stays under the name */}
+            {/* Desktop: weight info + transfer stays under the name */}
             <div className="hidden sm:flex items-center gap-3 mt-1 ml-7 text-xs text-ink-500">
               <WeightBadge weightKg={item.weightKg} />
               {totalWeight !== null && quantity > 1 && (
                 <span className="text-ink-400">× {quantity} = {totalWeight.toFixed(1)} kg</span>
               )}
+              <button onClick={onTransfer} disabled={busy} className="text-ink-400 hover:text-blood-600 underline" aria-label={`Transférer ${itemName}`}>
+                ↗ Transférer
+              </button>
             </div>
 
             {/* Expanded: details + secondary actions (progressive disclosure) */}
@@ -866,11 +880,8 @@ function InventoryRow({
                 {entry.notes && (
                   <p className="text-xs text-ink-500 italic">Note : {entry.notes}</p>
                 )}
-                {/* Secondary actions live here, not on the main row */}
+                {/* Secondary action: remove (destructive, stays in expanded panel) */}
                 <div className="flex items-center gap-2 pt-1">
-                  <button onClick={onTransfer} disabled={busy} className="btn-ghost text-sm">
-                    ↗ Transférer
-                  </button>
                   <button
                     onClick={() => onStep(-1)}
                     disabled={busy}
@@ -1163,8 +1174,7 @@ function TransferModal({ open, entry, charId, partyId, onClose, onTransferred, o
               <option value="">— Choisir —</option>
               {others.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} {[c.race, c.className, `Niv. ${c.level}`].filter(Boolean).join(' · ')}
-                  ({c.ownerName})
+                  {c.name} ({c.ownerName})
                 </option>
               ))}
             </select>

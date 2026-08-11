@@ -87,12 +87,7 @@ export function mapCharacterSummary(row: any): CharacterSummary {
     ownerId: row.owner_id,
     ownerName: row.owner_name ?? row.display_name ?? '',
     name: row.name,
-    race: row.race,
-    className: row.class_name,
-    level: row.level,
     strength: row.strength,
-    maxHp: row.max_hp,
-    currentHp: row.current_hp,
   };
 }
 

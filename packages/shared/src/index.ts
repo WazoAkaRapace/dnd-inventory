@@ -141,12 +141,7 @@ export interface CharacterSummary {
   ownerId: number;
   ownerName: string;
   name: string;
-  race: string | null;
-  className: string | null;
-  level: number;
   strength: number;
-  maxHp: number;
-  currentHp: number;
 }
 
 export interface Character extends CharacterSummary {
@@ -162,22 +157,12 @@ export interface Character extends CharacterSummary {
 
 export interface CreateCharacterPayload {
   name: string;
-  race?: string;
-  className?: string;
-  level?: number;
   strength: number;
-  maxHp: number;
-  currentHp?: number;
 }
 
 export interface PatchCharacterPayload {
   name?: string;
-  race?: string | null;
-  className?: string | null;
-  level?: number;
   strength?: number;
-  maxHp?: number;
-  currentHp?: number;
   notes?: string | null;
   copper?: number;
   silver?: number;

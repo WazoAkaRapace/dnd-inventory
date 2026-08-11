@@ -30,24 +30,17 @@ export async function characterRoutes(app: FastifyInstance) {
       if (!body.name || !body.name.trim()) return reply.code(400).send({ error: 'name is required' });
       const strength = body.strength ?? 10;
       if (strength < 1) return reply.code(400).send({ error: 'strength must be ≥ 1' });
-      const maxHp = body.maxHp ?? 1;
-      const currentHp = body.currentHp ?? maxHp;
 
       const db = getDb();
       const info = db.prepare(`
         INSERT INTO characters
-          (party_id, owner_id, name, race, class_name, level, strength, max_hp, current_hp)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (party_id, owner_id, name, strength)
+        VALUES (?, ?, ?, ?)
       `).run(
         partyId,
         userId,
         body.name.trim(),
-        body.race || null,
-        body.className || null,
-        body.level || 1,
         strength,
-        maxHp,
-        currentHp,
       );
       const row = db.prepare(`
         SELECT c.*, u.display_name AS owner_name
@@ -111,16 +104,12 @@ export async function characterRoutes(app: FastifyInstance) {
 
       const body = req.body || {};
       const allowed: (keyof PatchCharacterPayload)[] = [
-        'name', 'race', 'className', 'level', 'strength', 'maxHp', 'currentHp',
+        'name', 'strength',
         'notes', 'copper', 'silver', 'electrum', 'gold', 'platinum',
       ];
       const sets: string[] = [];
       const vals: any[] = [];
-      const fieldMap: Record<string, string> = {
-        className: 'class_name',
-        maxHp: 'max_hp',
-        currentHp: 'current_hp',
-      };
+      const fieldMap: Record<string, string> = {};
       for (const key of allowed) {
         if (body[key] !== undefined) {
           const col = fieldMap[key as string] || key;
