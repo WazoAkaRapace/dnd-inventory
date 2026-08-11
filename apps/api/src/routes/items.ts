@@ -33,10 +33,21 @@ export async function itemRoutes(app: FastifyInstance) {
     where.push('(party_id IS NULL)');
 
     if (search) {
-      // Normalize: also match against srd_index (e.g. "chain-mail" → "Chain Mail")
+      // Accent-insensitive search using a custom SQLite function registered in server.ts.
+      // normalize() strips diacritics (é→e, è→e) and lowercases.
       const norm = search.replace(/-/g, ' ');
-      where.push("(name LIKE ? OR name_fr LIKE ? OR srd_index LIKE ? OR REPLACE(name, '-', ' ') LIKE ?)");
-      params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${norm}%`);
+      where.push(`(
+        name LIKE ? ESCAPE '\\' OR
+        name_fr LIKE ? ESCAPE '\\' OR
+        srd_index LIKE ? ESCAPE '\\' OR
+        normalize(name) LIKE normalize(?) OR
+        normalize(name_fr) LIKE normalize(?) OR
+        normalize(REPLACE(name, '-', ' ')) LIKE normalize(?)
+      )`);
+      params.push(
+        `%${search}%`, `%${search}%`, `%${search}%`,
+        `%${norm}%`, `%${norm}%`, `%${norm}%`,
+      );
     }
     if (category) {
       where.push('category = ?');

@@ -40,6 +40,7 @@ interface SeedItem {
   category: string;
   srdIndex: string;
   name: string;
+  nameFr: string;
   rarity: string;
   weightKg: number | null;
   costQty: number | null;
@@ -61,12 +62,14 @@ const INSERT = `
     damage_dice, damage_type, ac_base, str_min, stealth_disadvantage,
     properties_json, image_path
   ) VALUES (
-    'srd', NULL, ?, ?, ?, NULL, ?,
+    'srd', NULL, ?, ?, ?, ?, ?,
     ?, ?, ?, ?,
     ?, ?, ?, ?, ?,
     ?, ?
   )
-  ON CONFLICT(srd_index) DO NOTHING
+  ON CONFLICT(srd_index) DO UPDATE SET
+    name_fr = excluded.name_fr,
+    weight_kg = excluded.weight_kg
 `;
 
 const COUNT_SQL = `SELECT COUNT(*) as n FROM items WHERE source = 'srd'`;
@@ -86,6 +89,7 @@ export function seedItems(): void {
         it.category,
         it.srdIndex,
         it.name,
+        it.nameFr || it.name,
         it.rarity,
         it.weightKg,
         it.costQty,

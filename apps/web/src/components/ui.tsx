@@ -167,23 +167,36 @@ export function Modal({
 }) {
   const modalRef = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
-  // Move focus into modal and trap it
+  // Move focus into modal ONLY when it opens (not on every re-render)
   useEffect(() => {
     if (!open) return;
     previousFocus.current = document.activeElement as HTMLElement;
 
     const modal = modalRef.current;
     if (modal) {
+      // Prefer focusing the first input/select, not the ✕ button
       const focusable = modal.querySelector<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        'input, select, textarea, [tabindex]:not([tabindex="-1"])',
       );
       focusable?.focus();
     }
 
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+      previousFocus.current?.focus();
+    };
+  }, [open]);
+
+  // Keydown handler (Escape + Tab trap) — uses a ref so it doesn't re-bind
+  useEffect(() => {
+    if (!open) return;
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key === 'Tab' && modalRef.current) {
@@ -202,15 +215,9 @@ export function Modal({
         }
       }
     };
-
     document.addEventListener('keydown', handleKey);
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', handleKey);
-      document.body.style.overflow = '';
-      previousFocus.current?.focus();
-    };
-  }, [open, onClose]);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [open]);
 
   if (!open) return null;
   return (

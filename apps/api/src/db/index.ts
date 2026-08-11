@@ -37,6 +37,16 @@ export function getDb(): DB {
   dbInstance.pragma('journal_mode = WAL');
   dbInstance.pragma('foreign_keys = ON');
 
+  // Register a normalize() function for accent-insensitive search.
+  // Strips diacritics (é→e, è→e, ç→c) and lowercases.
+  dbInstance.function('normalize', (text: string | null): string => {
+    if (!text) return '';
+    return text
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+  });
+
   return dbInstance;
 }
 
