@@ -32,3 +32,10 @@ Thumbs.db
 
 # Docker
 docker-data/
+
+# Local AI/agent tooling (not for public repo)
+.codex/
+.cursor/
+.agents/
+.zcode/
+.impeccable/

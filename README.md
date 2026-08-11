@@ -36,14 +36,31 @@ npm run dev
 - Web app: http://localhost:5173
 - API: http://localhost:4000  (health check: `/api/health`)
 
-## Quick start (Docker)
+## Quick start (Docker — pre-built images)
+
+```bash
+# Set a secure JWT secret
+export JWT_SECRET="your-secret-here"
+
+# Pull and run the pre-built images from GitHub Container Registry
+docker compose -f docker-compose.prod.yml up -d
+```
+
+- Web app: http://localhost:8080
+- API: http://localhost:4010
+
+Images are published automatically on every push to `main`:
+- `ghcr.io/wazoakarapace/dnd-inventory-api:main`
+- `ghcr.io/wazoakarapace/dnd-inventory-web:main`
+
+## Quick start (Docker — build from source)
 
 ```bash
 docker compose up --build
 ```
 
 - Web app: http://localhost:8080
-- API: http://localhost:4000
+- API: http://localhost:4010
 
 ## Dev API (for ToA integration)
 
