@@ -64,7 +64,7 @@
       "two-handed"
     ],
     "imagePath": null,
-    "nameFr": "Gourdin de guerre"
+    "nameFr": "Massue"
   },
   {
     "source": "srd",
@@ -175,7 +175,7 @@
       "monk"
     ],
     "imagePath": null,
-    "nameFr": "Bâton de marche"
+    "nameFr": "Bâton"
   },
   {
     "source": "srd",
@@ -197,7 +197,7 @@
       "monk"
     ],
     "imagePath": null,
-    "nameFr": "Faux"
+    "nameFr": "Serpe"
   },
   {
     "source": "srd",
@@ -329,7 +329,7 @@
       "versatile"
     ],
     "imagePath": null,
-    "nameFr": "Hache de guerre"
+    "nameFr": "Hache d'armes"
   },
   {
     "source": "srd",
@@ -348,7 +348,7 @@
     "stealthDisadvantage": false,
     "properties": [],
     "imagePath": null,
-    "nameFr": "Fléau d'armes"
+    "nameFr": "Fléau"
   },
   {
     "source": "srd",
@@ -393,7 +393,7 @@
       "two-handed"
     ],
     "imagePath": null,
-    "nameFr": "Grand hache"
+    "nameFr": "Hache à deux mains"
   },
   {
     "source": "srd",
@@ -460,7 +460,7 @@
       "special"
     ],
     "imagePath": null,
-    "nameFr": "Lance de cavalerie"
+    "nameFr": "Lance d'arçon"
   },
   {
     "source": "srd",
@@ -503,7 +503,7 @@
       "two-handed"
     ],
     "imagePath": null,
-    "nameFr": "Marteau de guerre"
+    "nameFr": "Merlin"
   },
   {
     "source": "srd",
@@ -522,7 +522,7 @@
     "stealthDisadvantage": false,
     "properties": [],
     "imagePath": null,
-    "nameFr": "Étoile du matin"
+    "nameFr": "Morgenstern"
   },
   {
     "source": "srd",
@@ -652,7 +652,7 @@
     "stealthDisadvantage": false,
     "properties": [],
     "imagePath": null,
-    "nameFr": "Pique de guerre"
+    "nameFr": "Pic de guerre"
   },
   {
     "source": "srd",
@@ -828,7 +828,7 @@
     "stealthDisadvantage": true,
     "properties": [],
     "imagePath": null,
-    "nameFr": "Armure matelassée"
+    "nameFr": "Matelassée"
   },
   {
     "source": "srd",
@@ -847,7 +847,7 @@
     "stealthDisadvantage": false,
     "properties": [],
     "imagePath": null,
-    "nameFr": "Armure de cuir"
+    "nameFr": "Cuir"
   },
   {
     "source": "srd",
@@ -866,7 +866,7 @@
     "stealthDisadvantage": false,
     "properties": [],
     "imagePath": null,
-    "nameFr": "Armure de cuir cloutée"
+    "nameFr": "Cuir clouté"
   },
   {
     "source": "srd",
@@ -885,7 +885,7 @@
     "stealthDisadvantage": false,
     "properties": [],
     "imagePath": null,
-    "nameFr": "Armure de fourrure"
+    "nameFr": "Peau"
   },
   {
     "source": "srd",
@@ -923,7 +923,7 @@
     "stealthDisadvantage": true,
     "properties": [],
     "imagePath": null,
-    "nameFr": "Cotte de mailles en écailles"
+    "nameFr": "Écailles"
   },
   {
     "source": "srd",
@@ -942,7 +942,7 @@
     "stealthDisadvantage": false,
     "properties": [],
     "imagePath": null,
-    "nameFr": "Plastron"
+    "nameFr": "Cuirasse"
   },
   {
     "source": "srd",
@@ -961,7 +961,7 @@
     "stealthDisadvantage": true,
     "properties": [],
     "imagePath": null,
-    "nameFr": "Demi-armure"
+    "nameFr": "Demi-plate"
   },
   {
     "source": "srd",
@@ -980,7 +980,7 @@
     "stealthDisadvantage": true,
     "properties": [],
     "imagePath": null,
-    "nameFr": "Cotte d'anneaux"
+    "nameFr": "Broigne"
   },
   {
     "source": "srd",
@@ -1018,7 +1018,7 @@
     "stealthDisadvantage": true,
     "properties": [],
     "imagePath": null,
-    "nameFr": "Armure de bandes"
+    "nameFr": "Clibanion"
   },
   {
     "source": "srd",
@@ -1037,7 +1037,7 @@
     "stealthDisadvantage": true,
     "properties": [],
     "imagePath": null,
-    "nameFr": "Armure de plates"
+    "nameFr": "Harnois"
   },
   {
     "source": "srd",
@@ -4172,7 +4172,7 @@
     "stealthDisadvantage": false,
     "properties": [],
     "imagePath": null,
-    "nameFr": "Demi-armure pour cheval"
+    "nameFr": "Demi-harnois pour cheval"
   },
   {
     "source": "srd",
@@ -4248,7 +4248,7 @@
     "stealthDisadvantage": false,
     "properties": [],
     "imagePath": null,
-    "nameFr": "Armure de plates pour cheval"
+    "nameFr": "Harnois pour cheval"
   },
   {
     "source": "srd",
@@ -6376,7 +6376,7 @@
     "stealthDisadvantage": false,
     "properties": [],
     "imagePath": "/api/images/magic-items/dwarven-plate.png",
-    "nameFr": "Armure de plates naine"
+    "nameFr": "Harnois nain"
   },
   {
     "source": "srd",
@@ -8504,7 +8504,7 @@
     "stealthDisadvantage": false,
     "properties": [],
     "imagePath": null,
-    "nameFr": "Armure de plates d'éthéralité"
+    "nameFr": "Harnois d'éthéralité"
   },
   {
     "source": "srd",
