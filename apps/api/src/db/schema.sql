@@ -69,17 +69,34 @@ CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);
 CREATE INDEX IF NOT EXISTS idx_items_party ON items(party_id);
 CREATE INDEX IF NOT EXISTS idx_items_name ON items(name);
 
+CREATE TABLE IF NOT EXISTS storage_locations (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  character_id    INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+  name            TEXT NOT NULL,
+  type            TEXT NOT NULL DEFAULT 'carried' CHECK (type IN ('carried','mount','container')),
+  strength        INTEGER DEFAULT 10,        -- for mounts: their Strength score
+  multiplier      REAL NOT NULL DEFAULT 1.0, -- Beast of Burden = 2, pulling cart = 5
+  capacity_kg     REAL,                      -- fixed capacity for containers (Bag of Holding = 227)
+  own_weight_kg   REAL NOT NULL DEFAULT 0,   -- container's own weight on the carrier
+  item_id         INTEGER REFERENCES items(id) ON DELETE SET NULL, -- link to catalog item
+  sort_order      INTEGER NOT NULL DEFAULT 0,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_storage_locations_character ON storage_locations(character_id);
+
 CREATE TABLE IF NOT EXISTS inventory (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  character_id  INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
-  item_id       INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
-  quantity      INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 0),
-  equipped      INTEGER NOT NULL DEFAULT 0,
-  notes         TEXT,
-  added_at      TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE(character_id, item_id)
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  character_id         INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+  item_id              INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+  quantity             INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 0),
+  equipped             INTEGER NOT NULL DEFAULT 0,
+  notes                TEXT,
+  storage_location_id  INTEGER REFERENCES storage_locations(id) ON DELETE SET NULL,
+  added_at             TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(character_id, item_id, storage_location_id)
 );
 CREATE INDEX IF NOT EXISTS idx_inventory_character ON inventory(character_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_location ON inventory(storage_location_id);
 
 CREATE TABLE IF NOT EXISTS transactions (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -13,6 +13,7 @@ import { partyRoutes } from './routes/parties.ts';
 import { characterRoutes } from './routes/characters.ts';
 import { inventoryRoutes } from './routes/inventory.ts';
 import { itemRoutes } from './routes/items.ts';
+import { locationRoutes } from './routes/locations.ts';
 import { registerWsRoutes } from './sync/ws.ts';
 
 const PORT = parseInt(process.env.PORT || '4000', 10);
@@ -71,6 +72,7 @@ async function buildServer() {
   await app.register(partyRoutes, { prefix: '/api' });
   await app.register(characterRoutes, { prefix: '/api' });
   await app.register(inventoryRoutes, { prefix: '/api' });
+  await app.register(locationRoutes, { prefix: '/api' });
 
   // WebSocket (real-time sync)
   await registerWsRoutes(app);

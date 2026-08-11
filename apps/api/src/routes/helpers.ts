@@ -140,6 +140,7 @@ export function mapInventoryEntry(row: any): InventoryEntry {
     quantity: row.quantity,
     equipped: !!row.equipped,
     notes: row.notes,
+    storageLocationId: row.storage_location_id ?? null,
     addedAt: row.added_at,
   };
 }

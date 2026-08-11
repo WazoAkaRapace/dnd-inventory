@@ -130,3 +130,12 @@ input[type='number'] {
 .fab-enter {
   animation: fab-in 0.2s ease-out forwards;
 }
+
+/* Hide scrollbar on horizontally-scrollable tab rows (storage locations) */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

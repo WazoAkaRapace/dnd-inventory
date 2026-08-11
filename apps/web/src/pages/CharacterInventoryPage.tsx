@@ -11,6 +11,9 @@ import type {
   Character,
   CharacterSummary,
   PartyDetail,
+  StorageLocation,
+  StorageType,
+  LocationWeight,
 } from '@dnd-inventory/shared';
 import {
   CATEGORY_LABELS_FR,
@@ -58,6 +61,19 @@ const COIN_FIELDS: { key: keyof Pick<Character, 'copper' | 'silver' | 'electrum'
 ];
 
 const CATALOG_PAGE_SIZE = 30;
+
+// ---------- Storage location helpers ----------
+
+const LOCATION_TYPE_ICON: Record<StorageType, string> = {
+  carried: '🧍',
+  mount: '🐴',
+  container: '📦',
+};
+
+/** Find the carried location (there should always be exactly one). */
+function findCarriedLocation(locations: StorageLocation[]): StorageLocation | undefined {
+  return locations.find((l) => l.type === 'carried');
+}
 
 // ---------- Main component ----------
 
@@ -121,6 +137,12 @@ export default function CharacterInventoryPage() {
   // Transfer modal
   const [transferEntry, setTransferEntry] = useState<InventoryEntry | null>(null);
 
+  // Storage locations: active tab + new-transport modal
+  const [activeLocationId, setActiveLocationId] = useState<number | null>(null);
+  const [showNewLocationModal, setShowNewLocationModal] = useState(false);
+  // Confirm-delete location (per location id)
+  const [confirmDeleteLocationId, setConfirmDeleteLocationId] = useState<number | null>(null);
+
   // First-run tour
   const [showTour, setShowTour] = useState(false);
   useEffect(() => {
@@ -152,6 +174,13 @@ export default function CharacterInventoryPage() {
       });
       setStrengthDraft(String(res.data.character.strength));
       setMultDraft(String(res.data.character.capacityMultiplier ?? 1));
+      // Default the active tab to the carried location
+      setActiveLocationId((prev) => {
+        const stillExists = prev !== null && res.data.locations.some((l) => l.id === prev);
+        if (stillExists) return prev;
+        const carried = findCarriedLocation(res.data.locations);
+        return carried ? carried.id : (res.data.locations[0]?.id ?? null);
+      });
     } catch (err: any) {
       setError(err.response?.data?.error || "Impossible de charger l'inventaire");
     } finally {
@@ -259,6 +288,13 @@ export default function CharacterInventoryPage() {
         gold: res.data.character.gold,
         platinum: res.data.character.platinum,
       });
+      // Update active tab if the active location was deleted (fall back to carried)
+      setActiveLocationId((prev) => {
+        const stillExists = prev !== null && res.data.locations.some((l) => l.id === prev);
+        if (stillExists) return prev;
+        const carried = findCarriedLocation(res.data.locations);
+        return carried ? carried.id : (res.data.locations[0]?.id ?? null);
+      });
       if (flashId !== undefined) {
         setFlashEntryId(flashId);
         setTimeout(() => setFlashEntryId(null), 1200);
@@ -342,7 +378,12 @@ export default function CharacterInventoryPage() {
     markLocalMutation();
     setAddingItemId(item.id);
     try {
-      await api.post(`/api/characters/${charId}/inventory`, { itemId: item.id, quantity: 1 });
+      await api.post(`/api/characters/${charId}/inventory`, {
+        itemId: item.id,
+        quantity: 1,
+        // Send the carried location id as null (carried), non-carried as its id
+        storageLocationId: activeLocationId,
+      });
       await refreshInventory();
       pushToast(`+1 ${item.nameFr || item.name} ajouté au sac à dos`);
     } catch (err: any) {
@@ -350,6 +391,60 @@ export default function CharacterInventoryPage() {
     } finally {
       setAddingItemId(null);
     }
+  };
+
+  // ---------- Storage location mutations ----------
+
+  const createLocation = async (payload: {
+    name: string;
+    type: StorageType;
+    strength?: number;
+    multiplier?: number;
+    capacityKg?: number;
+    ownWeightKg?: number;
+  }) => {
+    markLocalMutation();
+    try {
+      const res = await api.post<{ location: StorageLocation }>(
+        `/api/characters/${charId}/locations`,
+        payload,
+      );
+      await refreshInventory();
+      // Auto-select the newly created tab
+      setActiveLocationId(res.data.location.id);
+      pushToast(`Transport ajouté : ${payload.name}`);
+      setShowNewLocationModal(false);
+    } catch (err: any) {
+      pushToast(err.response?.data?.error || "Impossible d'ajouter le transport", 'error');
+    }
+  };
+
+  const deleteLocation = async (location: StorageLocation) => {
+    markLocalMutation();
+    setConfirmDeleteLocationId(null);
+    try {
+      await api.delete(`/api/locations/${location.id}`);
+      // Fall back to carried tab before the refresh recomputes active id
+      const carried = findCarriedLocation(data?.locations ?? []);
+      if (carried) setActiveLocationId(carried.id);
+      await refreshInventory();
+      pushToast(`${location.name} supprimé — objets replacés sur le personnage`);
+    } catch (err: any) {
+      pushToast(err.response?.data?.error || 'Erreur de suppression', 'error');
+    }
+  };
+
+  const moveEntryToLocation = async (entry: InventoryEntry, locationId: number) => {
+    await withBusy(entry.id, async () => {
+      try {
+        await api.patch(`/api/inventory/${entry.id}`, { storageLocationId: locationId });
+        await refreshInventory(entry.id);
+        const target = data?.locations.find((l) => l.id === locationId);
+        pushToast(`${entry.item.nameFr || entry.item.name} déplacé vers ${target?.name ?? 'l\'emplacement'}`);
+      } catch (err: any) {
+        pushToast(err.response?.data?.error || 'Erreur lors du déplacement', 'error');
+      }
+    });
   };
 
   // Coin purse: auto-save on blur when dirty
@@ -413,7 +508,25 @@ export default function CharacterInventoryPage() {
   if (error && !data) return <ErrorMsg message={error} />;
   if (!data) return <ErrorMsg message="Personnage introuvable" />;
 
-  const { character, entries, encumbrance } = data;
+  const { character, encumbrance, locations, locationWeights } = data;
+
+  // Resolve the active location (fall back to carried, then first)
+  const activeLocation: StorageLocation | undefined =
+    locations.find((l) => l.id === activeLocationId) ??
+    findCarriedLocation(locations) ??
+    locations[0];
+  const activeLocationResolvedId = activeLocation?.id ?? null;
+  const isActiveCarried = activeLocation?.type === 'carried';
+
+  // Filter entries to the active location (each entry has a storageLocationId)
+  const entries = data.entries.filter(
+    (e) => e.storageLocationId === activeLocationResolvedId,
+  );
+
+  // Active location's weight info (for the per-location bar)
+  const activeLocationWeight: LocationWeight | undefined = locationWeights.find(
+    (lw) => lw.locationId === activeLocationResolvedId,
+  );
 
   // Group entries by category for collapsible sections
   const grouped = groupByCategory(entries);
@@ -499,6 +612,78 @@ export default function CharacterInventoryPage() {
         </div>
       </div>
 
+      {/* ---------- Storage location tabs ---------- */}
+      <div className="-mx-4 px-4 sm:mx-0 sm:px-0">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+          {locations.map((loc) => {
+            const isActive = loc.id === activeLocationResolvedId;
+            const lw = locationWeights.find((w) => w.locationId === loc.id);
+            const pct = lw ? Math.round(lw.pct) : 0;
+            const isConfirming = confirmDeleteLocationId === loc.id;
+            return (
+              <div key={loc.id} className="flex items-center shrink-0">
+                <button
+                  onClick={() => setActiveLocationId(loc.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                    isActive
+                      ? 'bg-blood-600 text-white'
+                      : 'bg-parchment-200 text-ink-700 hover:bg-parchment-300'
+                  }`}
+                  aria-pressed={isActive}
+                >
+                  <span aria-hidden="true">{LOCATION_TYPE_ICON[loc.type]}</span>
+                  <span>{loc.name}</span>
+                  <span
+                    className={`text-xs px-1.5 py-0.5 rounded-full ${
+                      isActive ? 'bg-white/25' : 'bg-parchment-100 text-ink-500'
+                    }`}
+                  >
+                    {pct}%
+                  </span>
+                </button>
+                {/* Delete button for non-carried locations */}
+                {loc.type !== 'carried' && isActive && (
+                  <button
+                    onClick={() => {
+                      if (isConfirming) {
+                        deleteLocation(loc);
+                      } else {
+                        setConfirmDeleteLocationId(loc.id);
+                        setTimeout(() => setConfirmDeleteLocationId(null), 4000);
+                      }
+                    }}
+                    onBlur={() => setConfirmDeleteLocationId(null)}
+                    className={`ml-1 w-7 h-7 rounded-full flex items-center justify-center text-sm transition-colors ${
+                      isConfirming
+                        ? 'bg-red-600 text-white hover:bg-red-700'
+                        : 'bg-parchment-200 text-ink-500 hover:bg-red-100 hover:text-red-600'
+                    }`}
+                    aria-label={isConfirming ? `Confirmer la suppression de ${loc.name}` : `Supprimer ${loc.name}`}
+                    title={isConfirming ? 'Confirmer ?' : 'Supprimer ce transport'}
+                  >
+                    {isConfirming ? '✓' : '🗑'}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          {/* Add new transport */}
+          <button
+            onClick={() => setShowNewLocationModal(true)}
+            className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium border border-dashed border-parchment-300 text-ink-500 hover:border-blood-400 hover:text-blood-600 transition-colors"
+            aria-label="Ajouter un transport"
+            title="Ajouter un transport"
+          >
+            <span aria-hidden="true">+</span> Transport
+          </button>
+        </div>
+
+        {/* Per-location weight bar (non-carried only — carried uses the header bar) */}
+        {!isActiveCarried && activeLocationWeight && activeLocationWeight.maxCapacityKg !== null && (
+          <LocationWeightBar weight={activeLocationWeight} />
+        )}
+      </div>
+
       {/* Error toast (non-blocking) */}
       {error && (
         <div className="flex items-start justify-between gap-3">
@@ -508,7 +693,7 @@ export default function CharacterInventoryPage() {
       )}
 
       {/* First-run tour hint */}
-      {showTour && entries.length === 0 && (
+      {showTour && data.entries.length === 0 && (
         <div className="card p-4 border-blood-200 bg-blood-50/50">
           <div className="flex items-start gap-3">
             <span className="text-2xl shrink-0" aria-hidden="true">🎲</span>
@@ -531,14 +716,15 @@ export default function CharacterInventoryPage() {
         {/* ---------- LEFT: inventory grouped by category ---------- */}
         <section className="space-y-3">
           <h2 className="font-display text-lg font-semibold">
-            Sac à dos <span className="text-ink-400 text-sm font-normal">({entries.length})</span>
+            {activeLocation ? activeLocation.name : 'Sac à dos'}{' '}
+            <span className="text-ink-400 text-sm font-normal">({entries.length})</span>
           </h2>
 
           {entries.length === 0 ? (
             <div className="card p-4">
               <EmptyState
-                icon="🎒"
-                title="Sac à dos vide"
+                icon={isActiveCarried ? '🎒' : LOCATION_TYPE_ICON[activeLocation?.type ?? 'carried']}
+                title={isActiveCarried ? 'Sac à dos vide' : 'Aucun objet ici'}
                 hint="Appuyez sur + Ajouter pour chercher un objet."
               />
             </div>
@@ -553,6 +739,8 @@ export default function CharacterInventoryPage() {
                   expandedId={expandedId}
                   flashEntryId={flashEntryId}
                   confirmDeleteId={confirmDeleteId}
+                  locations={locations}
+                  activeLocationId={activeLocationResolvedId}
                   onToggleExpand={(id) => setExpandedId(expandedId === id ? null : id)}
                   onStep={stepQuantity}
                   onSetQuantity={setQuantity}
@@ -560,6 +748,7 @@ export default function CharacterInventoryPage() {
                   onConfirmDelete={confirmDelete}
                   onCancelDelete={cancelDelete}
                   onTransfer={(entry) => setTransferEntry(entry)}
+                  onMoveLocation={moveEntryToLocation}
                 />
               ))}
             </div>
@@ -614,6 +803,13 @@ export default function CharacterInventoryPage() {
         onError={(msg) => pushToast(msg, 'error')}
       />
 
+      {/* ---------- New transport modal ---------- */}
+      <NewLocationModal
+        open={showNewLocationModal}
+        onClose={() => setShowNewLocationModal(false)}
+        onCreate={createLocation}
+      />
+
       {/* ---------- Toast stack ---------- */}
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
@@ -660,6 +856,8 @@ interface CategoryGroupProps {
   expandedId: number | null;
   flashEntryId: number | null;
   confirmDeleteId: number | null;
+  locations: StorageLocation[];
+  activeLocationId: number | null;
   onToggleExpand: (id: number) => void;
   onStep: (entry: InventoryEntry, delta: number) => void;
   onSetQuantity: (entry: InventoryEntry, n: number) => void;
@@ -667,6 +865,7 @@ interface CategoryGroupProps {
   onConfirmDelete: (entry: InventoryEntry) => void;
   onCancelDelete: (id: number) => void;
   onTransfer: (entry: InventoryEntry) => void;
+  onMoveLocation: (entry: InventoryEntry, locationId: number) => void;
 }
 
 function CategoryGroup({
@@ -676,6 +875,8 @@ function CategoryGroup({
   expandedId,
   flashEntryId,
   confirmDeleteId,
+  locations,
+  activeLocationId,
   onToggleExpand,
   onStep,
   onSetQuantity,
@@ -683,6 +884,7 @@ function CategoryGroup({
   onConfirmDelete,
   onCancelDelete,
   onTransfer,
+  onMoveLocation,
 }: CategoryGroupProps) {
   const [collapsed, setCollapsed] = useState(false);
   const totalWeight = entries.reduce((sum, e) => {
@@ -716,6 +918,8 @@ function CategoryGroup({
               expanded={expandedId === entry.id}
               flashed={flashEntryId === entry.id}
               confirmingDelete={confirmDeleteId === entry.id}
+              locations={locations}
+              activeLocationId={activeLocationId}
               onToggleExpand={() => onToggleExpand(entry.id)}
               onStep={(d) => onStep(entry, d)}
               onSetQuantity={(n) => onSetQuantity(entry, n)}
@@ -723,6 +927,7 @@ function CategoryGroup({
               onConfirmDelete={() => onConfirmDelete(entry)}
               onCancelDelete={() => onCancelDelete(entry.id)}
               onTransfer={() => onTransfer(entry)}
+              onMoveLocation={(locId) => onMoveLocation(entry, locId)}
             />
           ))}
         </ul>
@@ -739,6 +944,8 @@ interface InventoryRowProps {
   expanded: boolean;
   flashed: boolean;
   confirmingDelete: boolean;
+  locations: StorageLocation[];
+  activeLocationId: number | null;
   onToggleExpand: () => void;
   onStep: (delta: number) => void;
   onSetQuantity: (n: number) => void;
@@ -746,6 +953,7 @@ interface InventoryRowProps {
   onConfirmDelete: () => void;
   onCancelDelete: () => void;
   onTransfer: () => void;
+  onMoveLocation: (locationId: number) => void;
 }
 
 function InventoryRow({
@@ -754,6 +962,8 @@ function InventoryRow({
   expanded,
   flashed,
   confirmingDelete,
+  locations,
+  activeLocationId,
   onToggleExpand,
   onStep,
   onSetQuantity,
@@ -761,6 +971,7 @@ function InventoryRow({
   onConfirmDelete,
   onCancelDelete,
   onTransfer,
+  onMoveLocation,
 }: InventoryRowProps) {
   const { item, quantity } = entry;
   const totalWeight = item.weightKg !== null ? item.weightKg * quantity : null;
@@ -768,6 +979,12 @@ function InventoryRow({
     item.strMin !== null || item.stealthDisadvantage ||
     (item.properties && item.properties.length > 0) || !!entry.notes;
   const itemName = item.nameFr || item.name;
+
+  // Locations available to move this item to (everything except the active one)
+  const otherLocations = locations.filter((l) => l.id !== activeLocationId);
+  const canMove = otherLocations.length > 0;
+  // Row is expandable if it has details OR if there's a move action to reveal
+  const canExpand = hasDetails || canMove;
 
   const [draftQty, setDraftQty] = useState<string>(String(quantity));
   useEffect(() => {
@@ -828,7 +1045,7 @@ function InventoryRow({
               {/* Main content — click to expand details */}
               <button
                 type="button"
-                onClick={hasDetails ? onToggleExpand : undefined}
+                onClick={canExpand ? onToggleExpand : undefined}
                 className="min-w-0 flex-1 text-left"
                 aria-expanded={expanded}
                 aria-label={`${itemName}, ${quantity} exemplaire${quantity > 1 ? 's' : ''}`}
@@ -836,7 +1053,7 @@ function InventoryRow({
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium truncate">{itemName}</span>
                   {item.rarity !== 'none' && <RarityBadge rarity={item.rarity} />}
-                  {hasDetails && (
+                  {canExpand && (
                     <span className="text-ink-400 text-xs">{expanded ? '▲' : '▼'}</span>
                   )}
                 </div>
@@ -918,7 +1135,7 @@ function InventoryRow({
             </div>
 
             {/* Expanded: details + secondary actions (progressive disclosure) */}
-            {expanded && hasDetails && (
+            {expanded && canExpand && (
               <div className="mt-3 border-t border-parchment-200 pt-3 space-y-2">
                 {item.description && (
                   <p className="text-sm text-ink-700 whitespace-pre-line">{item.description}</p>
@@ -936,6 +1153,31 @@ function InventoryRow({
                 </div>
                 {entry.notes && (
                   <p className="text-xs text-ink-500 italic">Note : {entry.notes}</p>
+                )}
+                {/* Move to another storage location */}
+                {canMove && (
+                  <label className="flex items-center gap-2 pt-1 text-sm text-ink-600">
+                    <span className="shrink-0">Déplacer vers :</span>
+                    <select
+                      className="input py-1 text-sm flex-1 min-w-0"
+                      value=""
+                      disabled={busy}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val !== '') onMoveLocation(Number(val));
+                        // Reset so the same target can be re-selected later
+                        e.target.value = '';
+                      }}
+                      aria-label={`Déplacer ${itemName} vers un autre emplacement`}
+                    >
+                      <option value="" disabled>— Choisir —</option>
+                      {otherLocations.map((l) => (
+                        <option key={l.id} value={l.id}>
+                          {LOCATION_TYPE_ICON[l.type]} {l.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 )}
                 {/* Secondary action: remove (destructive, stays in expanded panel) */}
                 <div className="flex items-center gap-2 pt-1">
@@ -1252,6 +1494,213 @@ function TransferModal({ open, entry, charId, partyId, onClose, onTransferred, o
           </button>
         </form>
       )}
+    </Modal>
+  );
+}
+
+// ---------- Per-location weight bar (compact) ----------
+
+function LocationWeightBar({ weight }: { weight: LocationWeight }) {
+  const { itemsWeightKg, ownWeightKg, maxCapacityKg, pct } = weight;
+  if (maxCapacityKg === null) return null;
+  const totalWeight = itemsWeightKg + (ownWeightKg || 0);
+  const fillClass =
+    pct >= 100 ? 'bg-red-500' : pct >= 75 ? 'bg-orange-500' : pct >= 50 ? 'bg-yellow-500' : 'bg-green-500';
+
+  return (
+    <div className="mt-2 space-y-1" role="progressbar" aria-valuenow={Math.round(totalWeight * 100) / 100} aria-valuemin={0} aria-valuemax={maxCapacityKg}>
+      <div className="flex items-baseline justify-between text-xs text-ink-500">
+        <span>
+          {totalWeight.toFixed(1)} / {maxCapacityKg.toFixed(1)} kg
+        </span>
+        <span className="font-medium">{Math.round(pct)}%</span>
+      </div>
+      <div className="relative h-2 bg-parchment-200 rounded-full overflow-hidden">
+        <div
+          className={`h-full ${fillClass} transition-all duration-300 rounded-full`}
+          style={{ width: `${Math.min(100, pct)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ---------- New transport (storage location) modal ----------
+
+interface NewLocationModalProps {
+  open: boolean;
+  onClose: () => void;
+  onCreate: (payload: {
+    name: string;
+    type: StorageType;
+    strength?: number;
+    multiplier?: number;
+    capacityKg?: number;
+    ownWeightKg?: number;
+  }) => Promise<void>;
+}
+
+function NewLocationModal({ open, onClose, onCreate }: NewLocationModalProps) {
+  const [type, setType] = useState<StorageType>('mount');
+  const [name, setName] = useState('');
+  const [strength, setStrength] = useState('10');
+  const [multiplier, setMultiplier] = useState('1');
+  const [capacityKg, setCapacityKg] = useState('');
+  const [ownWeightKg, setOwnWeightKg] = useState('0');
+  const [submitting, setSubmitting] = useState(false);
+
+  // Reset fields whenever the modal is (re)opened
+  useEffect(() => {
+    if (open) {
+      setType('mount');
+      setName('');
+      setStrength('10');
+      setMultiplier('1');
+      setCapacityKg('');
+      setOwnWeightKg('0');
+      setSubmitting(false);
+    }
+  }, [open]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setSubmitting(true);
+    try {
+      if (type === 'mount') {
+        await onCreate({
+          name: trimmed,
+          type: 'mount',
+          strength: Math.max(1, Math.floor(Number(strength) || 10)),
+          multiplier: Math.max(1, Number(multiplier) || 1),
+        });
+      } else {
+        await onCreate({
+          name: trimmed,
+          type: 'container',
+          capacityKg: Math.max(0, Number(capacityKg) || 0),
+          ownWeightKg: Math.max(0, Number(ownWeightKg) || 0),
+        });
+      }
+      // onCreate closes the modal on success
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Nouveau transport">
+      <form onSubmit={submit} className="space-y-4">
+        {/* Type selector — two pills */}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setType('mount')}
+            className={`px-3 py-2 rounded-xl text-sm font-medium border transition-colors ${
+              type === 'mount'
+                ? 'bg-blood-600 text-white border-blood-600'
+                : 'bg-parchment-100 text-ink-700 border-parchment-300 hover:bg-parchment-200'
+            }`}
+            aria-pressed={type === 'mount'}
+          >
+            🐴 Monture
+          </button>
+          <button
+            type="button"
+            onClick={() => setType('container')}
+            className={`px-3 py-2 rounded-xl text-sm font-medium border transition-colors ${
+              type === 'container'
+                ? 'bg-blood-600 text-white border-blood-600'
+                : 'bg-parchment-100 text-ink-700 border-parchment-300 hover:bg-parchment-200'
+            }`}
+            aria-pressed={type === 'container'}
+          >
+            📦 Conteneur
+          </button>
+        </div>
+
+        <label className="block">
+          <span className="label">Nom</span>
+          <input
+            type="text"
+            className="input"
+            placeholder={type === 'mount' ? 'Ex. Mulet, Cheval…' : 'Ex. Sac de voyage, Coffre…'}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            autoFocus
+            aria-label="Nom du transport"
+          />
+        </label>
+
+        {type === 'mount' ? (
+          <>
+            <label className="block">
+              <span className="label">Force</span>
+              <input
+                type="number"
+                min={1}
+                max={30}
+                className="input"
+                value={strength}
+                onChange={(e) => setStrength(e.target.value)}
+                aria-label="Force de la monture"
+              />
+            </label>
+            <label className="block">
+              <span className="label">Multiplicateur</span>
+              <input
+                type="number"
+                min={1}
+                step={0.5}
+                className="input"
+                value={multiplier}
+                onChange={(e) => setMultiplier(e.target.value)}
+                aria-label="Multiplicateur de capacité"
+              />
+              <span className="text-xs text-ink-400 mt-1 block">
+                Bête de somme = 2 (capacité doublée).
+              </span>
+            </label>
+          </>
+        ) : (
+          <>
+            <label className="block">
+              <span className="label">Capacité (kg)</span>
+              <input
+                type="number"
+                min={0}
+                step={0.1}
+                className="input"
+                value={capacityKg}
+                onChange={(e) => setCapacityKg(e.target.value)}
+                placeholder="Ex. 30"
+                aria-label="Capacité du conteneur en kg"
+              />
+            </label>
+            <label className="block">
+              <span className="label">Poids à vide (kg)</span>
+              <input
+                type="number"
+                min={0}
+                step={0.1}
+                className="input"
+                value={ownWeightKg}
+                onChange={(e) => setOwnWeightKg(e.target.value)}
+                aria-label="Poids à vide du conteneur en kg"
+              />
+              <span className="text-xs text-ink-400 mt-1 block">
+                Ce poids s'ajoute à ce que porte le personnage.
+              </span>
+            </label>
+          </>
+        )}
+
+        <button type="submit" disabled={!name.trim() || submitting} className="btn-primary w-full">
+          {submitting ? 'Création…' : 'Créer'}
+        </button>
+      </form>
     </Modal>
   );
 }

@@ -174,7 +174,32 @@ export interface PatchCharacterPayload {
   platinum?: number;
 }
 
-// ---------- Inventory ----------
+// ---------- Inventory & Storage ----------
+
+export type StorageType = 'carried' | 'mount' | 'container';
+
+export interface StorageLocation {
+  id: number;
+  characterId: number;
+  name: string;
+  type: StorageType;
+  strength: number | null;     // for mounts
+  multiplier: number;          // Beast of Burden = 2
+  capacityKg: number | null;   // fixed for containers
+  ownWeightKg: number;         // container's weight on carrier
+  itemId: number | null;       // link to catalog item
+  sortOrder: number;
+}
+
+export interface LocationWeight {
+  locationId: number;
+  locationName: string;
+  locationType: StorageType;
+  itemsWeightKg: number;       // weight of items in this location
+  ownWeightKg: number;         // container's own weight
+  maxCapacityKg: number | null; // null = uses STR formula (carried)
+  pct: number;                 // fill percentage
+}
 
 export interface InventoryEntry {
   id: number;
@@ -184,6 +209,7 @@ export interface InventoryEntry {
   quantity: number;
   equipped: boolean;
   notes: string | null;
+  storageLocationId: number | null;
   addedAt: string;
 }
 
@@ -206,6 +232,8 @@ export interface CharacterInventory {
   character: Character;
   entries: InventoryEntry[];
   encumbrance: EncumbranceState;
+  locations: StorageLocation[];
+  locationWeights: LocationWeight[];
 }
 
 export interface AddInventoryPayload {
@@ -213,12 +241,24 @@ export interface AddInventoryPayload {
   quantity?: number;
   equipped?: boolean;
   notes?: string;
+  storageLocationId?: number | null;
 }
 
 export interface PatchInventoryPayload {
   quantity?: number;
   equipped?: boolean;
   notes?: string | null;
+  storageLocationId?: number | null;
+}
+
+export interface CreateStorageLocationPayload {
+  name: string;
+  type: StorageType;
+  strength?: number;
+  multiplier?: number;
+  capacityKg?: number | null;
+  ownWeightKg?: number;
+  itemId?: number | null;
 }
 
 export interface TransferPayload {
