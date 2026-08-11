@@ -200,8 +200,10 @@ export interface InventoryEntry {
 }
 
 export interface EncumbranceState {
-  /** Total carried weight in kg (equipped + unequipped). */
+  /** Total carried weight in kg (items + coins). */
   totalWeightKg: number;
+  /** Weight of coins alone, in kg. */
+  coinWeightKg: number;
   /** STR-derived thresholds (kg). */
   encumberedKg: number;
   heavilyEncumberedKg: number;
@@ -259,6 +261,7 @@ export function computeEncumbrance(
   totalWeightKg: number,
   strength: number,
   mode: EncumbranceMode,
+  coinWeightKg: number = 0,
 ): EncumbranceState {
   const encumberedKg = +(strength * ENCUMBRANCE_FACTORS.encumbered).toFixed(2);
   const heavilyEncumberedKg = +(strength * ENCUMBRANCE_FACTORS.heavily).toFixed(2);
@@ -279,7 +282,7 @@ export function computeEncumbrance(
 
   const pct = maxCarryKg > 0 ? Math.min(100, (totalWeightKg / maxCarryKg) * 100) : 0;
 
-  return { totalWeightKg, encumberedKg, heavilyEncumberedKg, maxCarryKg, tier, pct };
+  return { totalWeightKg, coinWeightKg, encumberedKg, heavilyEncumberedKg, maxCarryKg, tier, pct };
 }
 
 // ---------- Coin conversion ----------

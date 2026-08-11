@@ -44,10 +44,11 @@ export function CostBadge({ qty, unit }: { qty: number | null; unit: CostUnit | 
 }
 
 export function EncumbranceBar({ encumbrance }: { encumbrance: EncumbranceState }) {
-  const { totalWeightKg, encumberedKg, heavilyEncumberedKg, maxCarryKg, tier, pct } = encumbrance;
+  const { totalWeightKg, coinWeightKg, encumberedKg, heavilyEncumberedKg, maxCarryKg, tier, pct } = encumbrance;
   const barColor = `bar-${tier}`;
   const encPos = Math.min(100, (encumberedKg / maxCarryKg) * 100);
   const heavyPos = Math.min(100, (heavilyEncumberedKg / maxCarryKg) * 100);
+  const itemWeightKg = totalWeightKg - coinWeightKg;
 
   return (
     <div
@@ -81,6 +82,11 @@ export function EncumbranceBar({ encumbrance }: { encumbrance: EncumbranceState 
         <span>Lourd: {heavilyEncumberedKg} kg</span>
         <span>Max: {maxCarryKg} kg</span>
       </div>
+      {coinWeightKg > 0.001 && (
+        <div className="text-xs text-ink-400">
+          Objets : {itemWeightKg.toFixed(1)} kg · Monnaie : {coinWeightKg.toFixed(1)} kg
+        </div>
+      )}
     </div>
   );
 }

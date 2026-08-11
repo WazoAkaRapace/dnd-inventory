@@ -87,15 +87,24 @@ export async function inventoryRoutes(app: FastifyInstance) {
         addedAt: r.added_at,
       })) as any[];
 
-      const totalWeightKg = cleanEntries.reduce((sum: number, e: any) => {
+      // Item weight
+      const itemWeightKg = cleanEntries.reduce((sum: number, e: any) => {
         const w = e.item.weightKg;
         return sum + (typeof w === 'number' ? w * e.quantity : 0);
       }, 0);
+
+      // Coin weight: 50 coins = 1 lb = 0.4536 kg, so 1 coin = 0.009072 kg
+      const COIN_WEIGHT_KG = 0.4536 / 50;
+      const coinCount = char.copper + char.silver + char.electrum + char.gold + char.platinum;
+      const coinWeightKg = coinCount * COIN_WEIGHT_KG;
+
+      const totalWeightKg = itemWeightKg + coinWeightKg;
 
       const encumbrance = computeEncumbrance(
         +totalWeightKg.toFixed(3),
         char.strength,
         char.encumbrance_mode,
+        +coinWeightKg.toFixed(3),
       );
 
       const character = {
