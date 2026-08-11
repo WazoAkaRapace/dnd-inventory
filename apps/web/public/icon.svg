@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background: dark parchment/ink -->
+  <rect width="512" height="512" rx="96" fill="#2a1f14"/>
+  <!-- Inner subtle gradient -->
+  <rect x="24" y="24" width="464" height="464" rx="80" fill="#3a2a18" opacity="0.6"/>
+
+  <!-- Crossed swords (D&D icon) -->
+  <g transform="translate(256,256)">
+    <!-- Sword 1 (diagonal \) -->
+    <g transform="rotate(-45)">
+      <!-- Blade -->
+      <rect x="-8" y="-120" width="16" height="160" rx="3" fill="#e8d5b0"/>
+      <!-- Blade tip -->
+      <polygon points="-8,-120 8,-120 0,-145" fill="#e8d5b0"/>
+      <!-- Guard -->
+      <rect x="-30" y="38" width="60" height="10" rx="3" fill="#b8975a"/>
+      <!-- Grip -->
+      <rect x="-7" y="48" width="14" height="38" rx="2" fill="#7a1f1f"/>
+      <!-- Pommel -->
+      <circle cx="0" cy="92" r="10" fill="#b8975a"/>
+    </g>
+    <!-- Sword 2 (diagonal /) -->
+    <g transform="rotate(45)">
+      <rect x="-8" y="-120" width="16" height="160" rx="3" fill="#e8d5b0"/>
+      <polygon points="-8,-120 8,-120 0,-145" fill="#e8d5b0"/>
+      <rect x="-30" y="38" width="60" height="10" rx="3" fill="#b8975a"/>
+      <rect x="-7" y="48" width="14" height="38" rx="2" fill="#7a1f1f"/>
+      <circle cx="0" cy="92" r="10" fill="#b8975a"/>
+    </g>
+  </g>
+</svg>
