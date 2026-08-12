@@ -36,6 +36,16 @@ import {
   type Toast,
 } from '../components/ui';
 
+// ---------- Icons ----------
+
+function SettingsIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+      <path fillRule="evenodd" clipRule="evenodd" d="M11.49 3.17a.75.75 0 0 0-1.48 0l-.13 1.02a6.5 6.5 0 0 0-1.4.57l-.82-.62a.75.75 0 0 0-.98.06l-.7.7a.75.75 0 0 0-.06.98l.62.82a6.5 6.5 0 0 0-.57 1.4l-1.02.13a.75.75 0 0 0 0 1.48l1.02.13c.14.49.33.96.57 1.4l-.62.82a.75.75 0 0 0 .06.98l.7.7c.28.28.72.31 1.04.06l.76-.57c.44.24.91.43 1.4.57l.13 1.02a.75.75 0 0 0 1.48 0l.13-1.02c.49-.14.96-.33 1.4-.57l.76.57c.32.25.76.22 1.04-.06l.7-.7a.75.75 0 0 0 .06-.98l-.62-.82c.24-.44.43-.91.57-1.4l1.02-.13a.75.75 0 0 0 0-1.48l-1.02-.13a6.5 6.5 0 0 0-.57-1.4l.62-.82a.75.75 0 0 0-.06-.98l-.7-.7a.75.75 0 0 0-.98-.06l-.82.62a6.5 6.5 0 0 0-1.4-.57l-.13-1.02ZM10 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" />
+    </svg>
+  );
+}
+
 // ---------- Filter option sets ----------
 
 const CATEGORY_OPTIONS: { value: '' | ItemCategory; label: string }[] = [
@@ -91,6 +101,7 @@ export default function CharacterInventoryPage() {
   // Editable capacity multiplier
   const [multDraft, setMultDraft] = useState('1');
   const [showMultHelp, setShowMultHelp] = useState(false);
+  const [showCarryModal, setShowCarryModal] = useState(false);
 
   // Toast system
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -557,31 +568,53 @@ export default function CharacterInventoryPage() {
       <div className="sticky top-14 z-20 -mx-4 px-4 pt-2 pb-3 bg-parchment-50/95 backdrop-blur sm:static sm:top-0 sm:mx-0 sm:px-0 sm:bg-transparent sm:backdrop-blur-none sm:z-auto">
         <div className="card p-4 sm:p-5">
           <div className="flex items-center justify-between gap-3">
-            <h1 className="font-display text-xl sm:text-2xl font-bold truncate">{character.name}</h1>
-            <div className="flex items-center gap-2 shrink-0">
-              {/* Editable Strength */}
-              <label className="flex items-center gap-1.5 bg-parchment-100 px-2.5 py-1 rounded-lg">
-                <span className="text-sm font-medium text-ink-500">FOR</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={30}
-                  className="w-12 text-center text-sm font-semibold bg-white border border-parchment-300 rounded-md py-0.5 focus:outline-none focus:border-blood-500"
-                  value={strengthDraft}
-                  onChange={(e) => setStrengthDraft(e.target.value)}
-                  onBlur={commitStrength}
-                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                  aria-label="Force"
-                />
-              </label>
-              {/* Editable capacity multiplier */}
-              <label className="flex items-center gap-1.5 bg-parchment-100 px-2.5 py-1 rounded-lg">
-                <span className="text-sm font-medium text-ink-500">×Portage</span>
+            <h1 className="font-display text-xl sm:text-2xl font-bold truncate flex items-center gap-2">
+              {character.name}
+              <button
+                onClick={() => setShowCarryModal(true)}
+                className="text-ink-400 hover:text-blood-600 transition-colors"
+                aria-label="Force et portage"
+                title="Force et portage"
+              >
+                <SettingsIcon className="w-5 h-5" />
+              </button>
+            </h1>
+          </div>
+          <div className="mt-3">
+            <EncumbranceBar encumbrance={encumbrance} />
+          </div>
+        </div>
+      </div>
+
+      {/* ---------- Force & portage modal ---------- */}
+      <Modal open={showCarryModal} onClose={() => setShowCarryModal(false)} title="Force & portage">
+        <div className="space-y-4">
+          {/* Editable Strength */}
+          <label className="flex items-center justify-between gap-3">
+            <span className="text-sm font-medium text-ink-700">Force (FOR)</span>
+            <input
+              type="number"
+              min={1}
+              max={30}
+              className="w-20 text-center text-sm font-semibold bg-white border border-parchment-300 rounded-md py-1.5 focus:outline-none focus:border-blood-500"
+              value={strengthDraft}
+              onChange={(e) => setStrengthDraft(e.target.value)}
+              onBlur={commitStrength}
+              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+              aria-label="Force"
+            />
+          </label>
+
+          {/* Editable capacity multiplier */}
+          <div>
+            <label className="flex items-center justify-between gap-3">
+              <span className="text-sm font-medium text-ink-700">Multiplicateur de portage</span>
+              <span className="flex items-center gap-2">
                 <input
                   type="number"
                   min={1}
                   step={0.5}
-                  className="w-12 text-center text-sm font-semibold bg-white border border-parchment-300 rounded-md py-0.5 focus:outline-none focus:border-blood-500"
+                  className="w-20 text-center text-sm font-semibold bg-white border border-parchment-300 rounded-md py-1.5 focus:outline-none focus:border-blood-500"
                   value={multDraft}
                   onChange={(e) => setMultDraft(e.target.value)}
                   onBlur={commitMult}
@@ -590,28 +623,29 @@ export default function CharacterInventoryPage() {
                 />
                 <button
                   onClick={() => setShowMultHelp(s => !s)}
-                  className="text-ink-400 hover:text-blood-600 text-xs"
+                  className="text-ink-400 hover:text-blood-600 text-sm w-6 h-6 flex items-center justify-center rounded-full hover:bg-parchment-100"
                   aria-label="Aide sur le multiplicateur de portage"
                   title="Aide"
                 >?</button>
-              </label>
-            </div>
+              </span>
+            </label>
+            {showMultHelp && (
+              <div className="mt-2 text-xs text-ink-600 bg-parchment-100 rounded-lg p-3 space-y-1.5">
+                <p><strong>×1 (défaut)</strong> : créature de taille M sans capacité spéciale.</p>
+                <p><strong>×2</strong> : Construction massive (Goliath, Firbolg, Demi-Orc, Bugbear, Orc, Loxodon) ou créature de taille G. Le personnage compte comme une catégorie de taille supérieure pour le calcul du poids transportable.</p>
+                <p><strong>×3</strong> : Créature de taille TG.</p>
+                <p><strong>×4</strong> : Créature de taille Gig.</p>
+                <p className="text-ink-400">Ce multiplicateur s'applique aux trois paliers (encombré, lourdement encombré, max). Modifiez-le si votre personnage a un trait qui augmente sa capacité de portage.</p>
+              </div>
+            )}
           </div>
-          {showMultHelp && (
-            <div className="mt-2 text-xs text-ink-600 bg-parchment-100 rounded-lg p-3 space-y-1.5">
-              <p className="font-semibold">Multiplicateur de capacité de portage</p>
-              <p><strong>×1 (défaut)</strong> : créature de taille M sans capacité spéciale.</p>
-              <p><strong>×2</strong> : Construction massive (Goliath, Firbolg, Demi-Orc, Bugbear, Orc, Loxodon) ou créature de taille G. Le personnage compte comme une catégorie de taille supérieure pour le calcul du poids transportable.</p>
-              <p><strong>×3</strong> : Créature de taille TG.</p>
-              <p><strong>×4</strong> : Créature de taille Gig.</p>
-              <p className="text-ink-400">Ce multiplicateur s'applique aux trois paliers (encombré, lourdement encombré, max). Modifiez-le si votre personnage a un trait qui augmente sa capacité de portage.</p>
-            </div>
-          )}
-          <div className="mt-3">
+
+          {/* Encumbrance recap inside the modal */}
+          <div className="pt-2 border-t border-parchment-200">
             <EncumbranceBar encumbrance={encumbrance} />
           </div>
         </div>
-      </div>
+      </Modal>
 
       {/* ---------- Survival panel: exhaustion, conditions, deprivation ---------- */}
       <SurvivalPanel
@@ -898,9 +932,11 @@ function CategoryGroup({
   onMoveLocation,
 }: CategoryGroupProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const EMPTY_WATERSKIN_KG = 0.268;
   const totalWeight = entries.reduce((sum, e) => {
-    const w = e.item.weightKg;
-    return sum + (typeof w === 'number' ? w * e.quantity : 0);
+    const isEmptyWater = !!(e.notes?.includes('empty') && e.item.survivalTags?.includes('water'));
+    const base = isEmptyWater ? EMPTY_WATERSKIN_KG : e.item.weightKg;
+    return sum + (typeof base === 'number' ? base * e.quantity : 0);
   }, 0);
 
   return (
@@ -911,7 +947,7 @@ function CategoryGroup({
         aria-expanded={!collapsed}
       >
         <span className="flex items-center gap-2">
-          <span className="text-xs text-ink-400 w-4">{collapsed ? '▶' : '▼'}</span>
+          <span className={`text-xs text-ink-400 w-4 chevron ${collapsed ? 'is-closed' : 'is-open'}`}>▼</span>
           <span className="font-display text-sm font-semibold text-ink-700">
             {CATEGORY_LABELS_FR[category]}
           </span>
@@ -919,30 +955,32 @@ function CategoryGroup({
         </span>
         <span className="text-xs text-ink-400">{totalWeight.toFixed(1)} kg</span>
       </button>
-      {!collapsed && (
-        <ul className="space-y-2">
-          {entries.map((entry) => (
-            <InventoryRow
-              key={entry.id}
-              entry={entry}
-              busy={busyEntryIds.has(entry.id)}
-              expanded={expandedId === entry.id}
-              flashed={flashEntryId === entry.id}
-              confirmingDelete={confirmDeleteId === entry.id}
-              locations={locations}
-              activeLocationId={activeLocationId}
-              onToggleExpand={() => onToggleExpand(entry.id)}
-              onStep={(d) => onStep(entry, d)}
-              onSetQuantity={(n) => onSetQuantity(entry, n)}
-              onToggleEquipped={() => onToggleEquipped(entry)}
-              onConfirmDelete={() => onConfirmDelete(entry)}
-              onCancelDelete={() => onCancelDelete(entry.id)}
-              onTransfer={() => onTransfer(entry)}
-              onMoveLocation={(locId) => onMoveLocation(entry, locId)}
-            />
-          ))}
-        </ul>
-      )}
+      <div className={`expand-grid ${collapsed ? 'is-collapsed' : ''}`}>
+        <div className="expand-inner">
+          <ul className="space-y-2">
+            {entries.map((entry) => (
+              <InventoryRow
+                key={entry.id}
+                entry={entry}
+                busy={busyEntryIds.has(entry.id)}
+                expanded={expandedId === entry.id}
+                flashed={flashEntryId === entry.id}
+                confirmingDelete={confirmDeleteId === entry.id}
+                locations={locations}
+                activeLocationId={activeLocationId}
+                onToggleExpand={() => onToggleExpand(entry.id)}
+                onStep={(d) => onStep(entry, d)}
+                onSetQuantity={(n) => onSetQuantity(entry, n)}
+                onToggleEquipped={() => onToggleEquipped(entry)}
+                onConfirmDelete={() => onConfirmDelete(entry)}
+                onCancelDelete={() => onCancelDelete(entry.id)}
+                onTransfer={() => onTransfer(entry)}
+                onMoveLocation={(locId) => onMoveLocation(entry, locId)}
+              />
+            ))}
+          </ul>
+        </div>
+      </div>
     </div>
   );
 }
@@ -985,7 +1023,13 @@ function InventoryRow({
   onMoveLocation,
 }: InventoryRowProps) {
   const { item, quantity } = entry;
-  const totalWeight = item.weightKg !== null ? item.weightKg * quantity : null;
+  // Empty waterskins weigh only the leather (~0.268 kg), not the full 2.268 kg.
+  // The backend applies this override to the encumbrance total; mirror it here so
+  // the per-row display stays consistent with the aggregate.
+  const EMPTY_WATERSKIN_KG = 0.268;
+  const isEmptyWater = !!(entry.notes?.includes('empty') && item.survivalTags?.includes('water'));
+  const effectiveWeightKg = isEmptyWater ? EMPTY_WATERSKIN_KG : item.weightKg;
+  const totalWeight = effectiveWeightKg !== null ? effectiveWeightKg * quantity : null;
   const hasDetails = !!item.description || item.damageDice || item.acBase !== null ||
     item.strMin !== null || item.stealthDisadvantage ||
     (item.properties && item.properties.length > 0) || !!entry.notes;
@@ -1065,7 +1109,7 @@ function InventoryRow({
                   <span className="font-medium truncate">{itemName}</span>
                   {item.rarity !== 'none' && <RarityBadge rarity={item.rarity} />}
                   {canExpand && (
-                    <span className="text-ink-400 text-xs">{expanded ? '▲' : '▼'}</span>
+                    <span className={`text-ink-400 text-xs chevron ${expanded ? 'is-open' : 'is-closed'}`}>▼</span>
                   )}
                 </div>
               </button>
@@ -1100,7 +1144,7 @@ function InventoryRow({
             {/* Row 2 (mobile only): weight info + transfer + stepper side by side */}
             <div className="flex items-center justify-between gap-2 mt-1.5 sm:hidden pl-7">
               <div className="flex items-center gap-2 text-xs text-ink-500 min-w-0">
-                <WeightBadge weightKg={item.weightKg} />
+                <WeightBadge weightKg={effectiveWeightKg} />
                 {totalWeight !== null && quantity > 1 && (
                   <span className="text-ink-400">× {quantity} = {totalWeight.toFixed(1)} kg</span>
                 )}
@@ -1136,7 +1180,7 @@ function InventoryRow({
 
             {/* Desktop: weight info + transfer stays under the name */}
             <div className="hidden sm:flex items-center gap-3 mt-1 ml-7 text-xs text-ink-500">
-              <WeightBadge weightKg={item.weightKg} />
+              <WeightBadge weightKg={effectiveWeightKg} />
               {totalWeight !== null && quantity > 1 && (
                 <span className="text-ink-400">× {quantity} = {totalWeight.toFixed(1)} kg</span>
               )}
@@ -1146,60 +1190,64 @@ function InventoryRow({
             </div>
 
             {/* Expanded: details + secondary actions (progressive disclosure) */}
-            {expanded && canExpand && (
-              <div className="mt-3 border-t border-parchment-200 pt-3 space-y-2">
-                {item.description && (
-                  <p className="text-sm text-ink-700 whitespace-pre-line">{item.description}</p>
-                )}
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-500">
-                  {item.damageDice && (
-                    <span>⚔ Dégâts : {item.damageDice}{item.damageType ? ` (${item.damageType})` : ''}</span>
-                  )}
-                  {item.acBase !== null && <span>🛡 CA : {item.acBase}</span>}
-                  {item.strMin !== null && <span>💪 FOR min. : {item.strMin}</span>}
-                  {item.stealthDisadvantage && <span>🤫 Désavantage Discrétion</span>}
-                  {item.properties && item.properties.length > 0 && (
-                    <span>Propriétés : {item.properties.join(', ')}</span>
-                  )}
-                </div>
-                {entry.notes && (
-                  <p className="text-xs text-ink-500 italic">Note : {entry.notes}</p>
-                )}
-                {/* Move to another storage location */}
-                {canMove && (
-                  <label className="flex items-center gap-2 pt-1 text-sm text-ink-600">
-                    <span className="shrink-0">Déplacer vers :</span>
-                    <select
-                      className="input py-1 text-sm flex-1 min-w-0"
-                      value=""
-                      disabled={busy}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val !== '') onMoveLocation(Number(val));
-                        // Reset so the same target can be re-selected later
-                        e.target.value = '';
-                      }}
-                      aria-label={`Déplacer ${itemName} vers un autre emplacement`}
-                    >
-                      <option value="" disabled>— Choisir —</option>
-                      {otherLocations.map((l) => (
-                        <option key={l.id} value={l.id}>
-                          {LOCATION_TYPE_ICON[l.type]} {l.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                {/* Secondary action: remove (destructive, stays in expanded panel) */}
-                <div className="flex items-center gap-2 pt-1">
-                  <button
-                    onClick={() => onStep(-1)}
-                    disabled={busy}
-                    className="btn-ghost text-sm text-red-600 hover:bg-red-50"
-                    aria-label={`Retirer ${itemName}`}
-                  >
-                    Retirer du sac
-                  </button>
+            {canExpand && (
+              <div className={`expand-grid mt-3 ${expanded ? '' : 'is-collapsed'}`}>
+                <div className="expand-inner">
+                  <div className="border-t border-parchment-200 pt-3 space-y-2">
+                    {item.description && (
+                      <p className="text-sm text-ink-700 whitespace-pre-line">{item.description}</p>
+                    )}
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-500">
+                      {item.damageDice && (
+                        <span>⚔ Dégâts : {item.damageDice}{item.damageType ? ` (${item.damageType})` : ''}</span>
+                      )}
+                      {item.acBase !== null && <span>🛡 CA : {item.acBase}</span>}
+                      {item.strMin !== null && <span>💪 FOR min. : {item.strMin}</span>}
+                      {item.stealthDisadvantage && <span>🤫 Désavantage Discrétion</span>}
+                      {item.properties && item.properties.length > 0 && (
+                        <span>Propriétés : {item.properties.join(', ')}</span>
+                      )}
+                    </div>
+                    {entry.notes && (
+                      <p className="text-xs text-ink-500 italic">Note : {entry.notes}</p>
+                    )}
+                    {/* Move to another storage location */}
+                    {canMove && (
+                      <label className="flex items-center gap-2 pt-1 text-sm text-ink-600">
+                        <span className="shrink-0">Déplacer vers :</span>
+                        <select
+                          className="input py-1 text-sm flex-1 min-w-0"
+                          value=""
+                          disabled={busy}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val !== '') onMoveLocation(Number(val));
+                            // Reset so the same target can be re-selected later
+                            e.target.value = '';
+                          }}
+                          aria-label={`Déplacer ${itemName} vers un autre emplacement`}
+                        >
+                          <option value="" disabled>— Choisir —</option>
+                          {otherLocations.map((l) => (
+                            <option key={l.id} value={l.id}>
+                              {LOCATION_TYPE_ICON[l.type]} {l.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                    {/* Secondary action: remove (destructive, stays in expanded panel) */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        onClick={() => onStep(-1)}
+                        disabled={busy}
+                        className="btn-ghost text-sm text-red-600 hover:bg-red-50"
+                        aria-label={`Retirer ${itemName}`}
+                      >
+                        Retirer du sac
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -1357,39 +1405,41 @@ function CoinPurse({
             ({totalGp} PO{remCp > 0 ? ` ${remCp} PC` : ''})
           </span>
         </h2>
-        <span className="text-ink-400 text-sm">{expanded ? '▲' : '▼'}</span>
+        <span className={`text-ink-400 text-sm chevron ${expanded ? 'is-open' : 'is-closed'}`}>▼</span>
       </button>
 
-      {expanded && (
-        <div className="mt-4">
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            {COIN_FIELDS.map(({ key, unit, color }) => (
-              <label key={key} className="block">
-                <span className="label flex items-center gap-1.5">
-                  <span
-                    className="inline-block w-3 h-3 rounded-full border border-parchment-300 shrink-0"
-                    style={{ backgroundColor: color }}
-                    aria-hidden="true"
+      <div className={`expand-grid ${expanded ? '' : 'is-collapsed'}`}>
+        <div className="expand-inner">
+          <div className="mt-4">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              {COIN_FIELDS.map(({ key, unit, color }) => (
+                <label key={key} className="block">
+                  <span className="label flex items-center gap-1.5">
+                    <span
+                      className="inline-block w-3 h-3 rounded-full border border-parchment-300 shrink-0"
+                      style={{ backgroundColor: color }}
+                      aria-hidden="true"
+                    />
+                    {COIN_LABELS_FR[unit]}
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    className="input"
+                    value={coins[key] === 0 ? '' : coins[key]}
+                    onChange={(e) => onChange(key, e.target.value === '' ? 0 : (Number(e.target.value) || 0))}
+                    onBlur={(e) => {
+                      if (e.target.value === '' || e.target.value === '0') onChange(key, 0);
+                      onBlur();
+                    }}
+                    aria-label={`Quantité de ${COIN_LABELS_FR[unit]}`}
                   />
-                  {COIN_LABELS_FR[unit]}
-                </span>
-                <input
-                  type="number"
-                  min={0}
-                  className="input"
-                  value={coins[key] === 0 ? '' : coins[key]}
-                  onChange={(e) => onChange(key, e.target.value === '' ? 0 : (Number(e.target.value) || 0))}
-                  onBlur={(e) => {
-                    if (e.target.value === '' || e.target.value === '0') onChange(key, 0);
-                    onBlur();
-                  }}
-                  aria-label={`Quantité de ${COIN_LABELS_FR[unit]}`}
-                />
-              </label>
-            ))}
+                </label>
+              ))}
+            </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -1750,6 +1800,14 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
   const [conditions, setConditions] = useState<string[]>(character.conditions);
   const [foodDays, setFoodDays] = useState(character.foodDays);
   const [waterDays, setWaterDays] = useState(character.waterDays);
+  const [survivalCollapsed, setSurvivalCollapsed] = useState(() => {
+    try { const v = localStorage.getItem('survivalCollapsed'); return v === null ? true : v === '1'; } catch { return true; }
+  });
+  const toggleSurvival = () => {
+    const next = !survivalCollapsed;
+    setSurvivalCollapsed(next);
+    try { localStorage.setItem('survivalCollapsed', next ? '1' : '0'); } catch { /* ignore */ }
+  };
 
   // Count available food/water from tagged inventory items
   // Water: skip items marked 'empty' in notes
@@ -1839,10 +1897,24 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
 
   return (
     <section className="card p-4 sm:p-5 space-y-4">
-      <h2 className="font-display text-lg font-semibold flex items-center gap-2">
-        <span aria-hidden="true">🩸</span> Survie
-      </h2>
+      <button
+        type="button"
+        onClick={toggleSurvival}
+        className="w-full flex items-center justify-between -my-1 group"
+        aria-expanded={!survivalCollapsed}
+        aria-controls="survival-panel-content"
+      >
+        <h2 className="font-display text-lg font-semibold flex items-center gap-2">
+          <span aria-hidden="true">🩸</span> Survie
+        </h2>
+        <span className={`text-xs text-ink-400 group-hover:text-ink-600 transition-colors chevron ${survivalCollapsed ? 'is-closed' : 'is-open'}`}>
+          ▼
+        </span>
+      </button>
 
+      <div className={`expand-grid ${survivalCollapsed ? 'is-collapsed' : ''}`}>
+        <div className="expand-inner">
+          <div id="survival-panel-content" className="space-y-4 pt-1">
       {/* Exhaustion tracker */}
       {/* HP tracker */}
       <HpTracker character={character} charId={charId} markLocalMutation={markLocalMutation} onSaved={onSaved} onError={onError} />
@@ -1967,6 +2039,9 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
               ↻ Remplir (×{emptyWaterCount} vides)
             </button>
           )}
+        </div>
+      </div>
+          </div>
         </div>
       </div>
     </section>

@@ -423,13 +423,15 @@ function NpcCard({
           >
             <span aria-hidden="true">🤫</span>
             Secret
-            <span className="text-ink-400">{showSecret ? '▲' : '▼'}</span>
+            <span className={`text-ink-400 chevron ${showSecret ? 'is-open' : 'is-closed'}`}>▼</span>
           </button>
-          {showSecret && (
-            <p className="mt-1 text-sm text-purple-900 bg-purple-50 rounded-lg p-2 whitespace-pre-line">
-              {npc.secret}
-            </p>
-          )}
+          <div className={`expand-grid ${showSecret ? '' : 'is-collapsed'}`}>
+            <div className="expand-inner">
+              <p className="mt-1 text-sm text-purple-900 bg-purple-50 rounded-lg p-2 whitespace-pre-line">
+                {npc.secret}
+              </p>
+            </div>
+          </div>
         </div>
       )}
 

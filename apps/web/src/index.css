@@ -131,6 +131,43 @@ input[type='number'] {
   animation: fab-in 0.2s ease-out forwards;
 }
 
+/* Smooth expand/collapse using grid-template-rows trick (animates auto height).
+   Wrap collapsible content in .expand-grid > .expand-inner.
+   Toggle .is-collapsed on the .expand-grid element to animate. */
+.expand-grid {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.expand-grid.is-collapsed {
+  grid-template-rows: 0fr;
+}
+.expand-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+/* Fade/slide the inner content for a softer reveal */
+.expand-grid.is-collapsed .expand-inner > * {
+  opacity: 0;
+}
+.expand-grid:not(.is-collapsed) .expand-inner > * {
+  animation: fade-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes fade-slide-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+/* Chevron rotation utility for toggle indicators */
+.chevron {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.chevron.is-open {
+  transform: rotate(0deg);
+}
+.chevron.is-closed {
+  transform: rotate(-90deg);
+}
+
 /* Hide scrollbar on horizontally-scrollable tab rows (storage locations) */
 .no-scrollbar {
   -ms-overflow-style: none;
