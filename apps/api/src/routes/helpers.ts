@@ -75,6 +75,7 @@ export function mapItem(row: any): Item {
     strMin: row.str_min,
     stealthDisadvantage: !!row.stealth_disadvantage,
     properties: row.properties_json ? JSON.parse(row.properties_json) : [],
+    survivalTags: row.survival_tags ? (typeof row.survival_tags === 'string' ? JSON.parse(row.survival_tags) : row.survival_tags) : [],
     imagePath: row.image_path,
   };
 }
@@ -133,6 +134,7 @@ export function mapInventoryEntry(row: any): InventoryEntry {
     str_min: row.i_str_min,
     stealth_disadvantage: row.i_stealth_disadvantage,
     properties_json: row.i_properties_json,
+    survival_tags: row.i_survival_tags,
     image_path: row.i_image_path,
   } : row;
 

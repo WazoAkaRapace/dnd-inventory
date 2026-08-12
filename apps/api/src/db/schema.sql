@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS items (
   str_min              INTEGER,
   stealth_disadvantage INTEGER NOT NULL DEFAULT 0,
   properties_json      TEXT NOT NULL DEFAULT '[]',  -- JSON array of strings
+  survival_tags        TEXT NOT NULL DEFAULT '[]',  -- JSON: ["food"] / ["water"] / ["food","water"]
   image_path           TEXT,
   UNIQUE(srd_index)
 );

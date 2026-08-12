@@ -51,7 +51,8 @@ export async function inventoryRoutes(app: FastifyInstance) {
           i.weight_kg AS i_weight_kg, i.cost_qty AS i_cost_qty, i.cost_unit AS i_cost_unit,
           i.description AS i_description, i.damage_dice AS i_damage_dice, i.damage_type AS i_damage_type,
           i.ac_base AS i_ac_base, i.str_min AS i_str_min, i.stealth_disadvantage AS i_stealth_disadvantage,
-          i.properties_json AS i_properties_json, i.image_path AS i_image_path
+          i.properties_json AS i_properties_json,
+          i.survival_tags AS i_survival_tags, i.image_path AS i_image_path
         FROM inventory inv
         JOIN items i ON i.id = inv.item_id
         WHERE inv.character_id = ?
@@ -101,6 +102,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
           strMin: r.i_str_min,
           stealthDisadvantage: !!r.i_stealth_disadvantage,
           properties: r.i_properties_json ? JSON.parse(r.i_properties_json) : [],
+          survivalTags: r.i_survival_tags ? (typeof r.i_survival_tags === 'string' ? JSON.parse(r.i_survival_tags) : r.i_survival_tags) : [],
           imagePath: r.i_image_path,
         },
         quantity: r.quantity,
@@ -255,7 +257,8 @@ export async function inventoryRoutes(app: FastifyInstance) {
           i.weight_kg AS i_weight_kg, i.cost_qty AS i_cost_qty, i.cost_unit AS i_cost_unit,
           i.description AS i_description, i.damage_dice AS i_damage_dice, i.damage_type AS i_damage_type,
           i.ac_base AS i_ac_base, i.str_min AS i_str_min, i.stealth_disadvantage AS i_stealth_disadvantage,
-          i.properties_json AS i_properties_json, i.image_path AS i_image_path
+          i.properties_json AS i_properties_json,
+          i.survival_tags AS i_survival_tags, i.image_path AS i_image_path
         FROM inventory inv JOIN items i ON i.id = inv.item_id
         WHERE inv.character_id = ? AND inv.item_id = ?
       `).get(char.id, body.itemId);
@@ -333,7 +336,8 @@ export async function inventoryRoutes(app: FastifyInstance) {
           i.weight_kg AS i_weight_kg, i.cost_qty AS i_cost_qty, i.cost_unit AS i_cost_unit,
           i.description AS i_description, i.damage_dice AS i_damage_dice, i.damage_type AS i_damage_type,
           i.ac_base AS i_ac_base, i.str_min AS i_str_min, i.stealth_disadvantage AS i_stealth_disadvantage,
-          i.properties_json AS i_properties_json, i.image_path AS i_image_path
+          i.properties_json AS i_properties_json,
+          i.survival_tags AS i_survival_tags, i.image_path AS i_image_path
         FROM inventory inv JOIN items i ON i.id = inv.item_id WHERE inv.id = ?
       `).get(inv.id);
       bus.emitChange({ type: 'inventory:change', partyId: char.party_id, characterId: char.id, action: 'adjust', actorUserId: userId });
@@ -426,6 +430,63 @@ export async function inventoryRoutes(app: FastifyInstance) {
       bus.emitChange({ type: 'inventory:change', partyId: fromChar.party_id, characterId: fromCharId, toCharacterId, action: 'transfer', itemName, actorUserId: userId });
 
       return reply.code(200).send({ transferred: qty });
+    },
+  );
+
+  // ---------- Consume food/water from inventory (resets deprivation) ----------
+  app.post(
+    '/characters/:id/consume',
+    async (req: FastifyRequest<{ Params: { id: string }; Body: { type: 'food' | 'water' } }>, reply: FastifyReply) => {
+      const userId = requireUser(req, reply);
+      if (userId === null) return;
+      const db = getDb();
+      const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(Number(req.params.id)) as any;
+      if (!char) return reply.code(404).send({ error: 'character not found' });
+      if (!isPartyMember(char.party_id, userId)) return reply.code(403).send({ error: 'not a member' });
+
+      const type = req.body?.type;
+      if (type !== 'food' && type !== 'water') return reply.code(400).send({ error: 'type must be food or water' });
+
+      // Find a tagged inventory item on the carried location
+      const { ensureCarriedLocation } = await import('./locations.ts');
+      const carriedId = ensureCarriedLocation(db, char.id);
+
+      const entry = db.prepare(`
+        SELECT inv.id AS inv_id, inv.quantity, inv.item_id, i.name_fr, i.name
+        FROM inventory inv
+        JOIN items i ON i.id = inv.item_id
+        WHERE inv.character_id = ? AND i.survival_tags LIKE ?
+        ORDER BY inv.quantity DESC
+        LIMIT 1
+      `).get(char.id, `%"${type}"%`) as any;
+
+      if (!entry || entry.quantity < 1) {
+        return reply.code(400).send({ error: type === 'food' ? 'Aucune ration disponible' : 'Aucune gourde disponible' });
+      }
+
+      // Consume 1 unit and reset deprivation
+      const tx = db.transaction(() => {
+        if (entry.quantity <= 1) {
+          db.prepare('DELETE FROM inventory WHERE id = ?').run(entry.inv_id);
+        } else {
+          db.prepare('UPDATE inventory SET quantity = quantity - 1 WHERE id = ?').run(entry.inv_id);
+        }
+        // Reset deprivation counter
+        const field = type === 'food' ? 'food_days' : 'water_days';
+        db.prepare(`UPDATE characters SET ${field} = 0 WHERE id = ?`).run(char.id);
+
+        // Log transaction
+        const itemName = entry.name_fr || entry.name;
+        db.prepare(`
+          INSERT INTO transactions (party_id, character_id, item_id, item_name, delta_qty, reason, actor_user_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(char.party_id, char.id, entry.item_id, itemName, -1, 'consume-' + type, userId);
+      });
+      tx();
+
+      bus.emitChange({ type: 'inventory:change', partyId: char.party_id, characterId: char.id, action: 'adjust', actorUserId: userId });
+
+      return reply.send({ consumed: true, type });
     },
   );
 

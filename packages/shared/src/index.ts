@@ -47,8 +47,11 @@ export interface Item {
   strMin: number | null;
   stealthDisadvantage: boolean;
   properties: string[]; // weapon properties: light, finesse, two-handed...
+  survivalTags: string[]; // ["food"] / ["water"] / ["food","water"] / []
   imagePath: string | null;
 }
+
+export type SurvivalTag = 'food' | 'water';
 
 /** Item search/create payloads. */
 export interface ItemSearchQuery {

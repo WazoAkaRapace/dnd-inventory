@@ -333,6 +333,20 @@ function SurvivalTab({
     }
   };
 
+  const patchSurvival = async (char: CharacterSummary, field: 'foodDays' | 'waterDays', value: number) => {
+    const clamped = Math.max(0, value);
+    if (clamped === char[field]) return;
+    markLocalMutation();
+    setBusyId(char.id);
+    try {
+      await api.patch(`/api/characters/${char.id}`, { [field]: clamped });
+      await onReload();
+    } catch {
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   if (characters.length === 0) {
     return <EmptyState icon="🧙" title="Aucun personnage" hint="Les joueurs doivent créer leurs personnages." />;
   }
@@ -418,14 +432,40 @@ function SurvivalTab({
             )}
           </div>
 
-          {/* Deprivation */}
-          <div className="flex items-center gap-3 text-xs">
-            <span title="Jours sans nourriture" className={deprivationTone(c.foodDays)}>
-              🍖 {c.foodDays} j
-            </span>
-            <span title="Jours sans eau" className={deprivationTone(c.waterDays)}>
-              💧 {c.waterDays} j
-            </span>
+          {/* Deprivation with +/- steppers */}
+          <div className="flex flex-col gap-1.5 text-xs">
+            <div className="flex items-center gap-1">
+              <span className={deprivationTone(c.foodDays)}>🍖</span>
+              <button
+                onClick={() => patchSurvival(c, 'foodDays', c.foodDays - 1)}
+                disabled={busyId === c.id || c.foodDays <= 0}
+                className="w-6 h-6 rounded bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-xs flex items-center justify-center"
+                aria-label={`Diminuer jours sans nourriture de ${c.name}`}
+              >−</button>
+              <span className={`min-w-[2rem] text-center ${deprivationTone(c.foodDays)}`}>{c.foodDays} j</span>
+              <button
+                onClick={() => patchSurvival(c, 'foodDays', c.foodDays + 1)}
+                disabled={busyId === c.id}
+                className="w-6 h-6 rounded bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-xs flex items-center justify-center"
+                aria-label={`Augmenter jours sans nourriture de ${c.name}`}
+              >+</button>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className={deprivationTone(c.waterDays)}>💧</span>
+              <button
+                onClick={() => patchSurvival(c, 'waterDays', c.waterDays - 1)}
+                disabled={busyId === c.id || c.waterDays <= 0}
+                className="w-6 h-6 rounded bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-xs flex items-center justify-center"
+                aria-label={`Diminuer jours sans eau de ${c.name}`}
+              >−</button>
+              <span className={`min-w-[2rem] text-center ${deprivationTone(c.waterDays)}`}>{c.waterDays} j</span>
+              <button
+                onClick={() => patchSurvival(c, 'waterDays', c.waterDays + 1)}
+                disabled={busyId === c.id}
+                className="w-6 h-6 rounded bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-xs flex items-center justify-center"
+                aria-label={`Augmenter jours sans eau de ${c.name}`}
+              >+</button>
+            </div>
           </div>
         </div>
       ))}

@@ -97,6 +97,9 @@ export default function PartyPage() {
             <button onClick={() => setShowAddChar(true)} className="btn-primary text-sm">
               + Personnage
             </button>
+            <Link to={`/party/${partyId}/npcs`} className="btn-secondary text-sm">
+              🎭 PNJ
+            </Link>
           </div>
         </div>
       </div>

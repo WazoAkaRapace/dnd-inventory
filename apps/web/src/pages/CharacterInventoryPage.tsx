@@ -617,6 +617,7 @@ export default function CharacterInventoryPage() {
       <SurvivalPanel
         character={character}
         charId={Number(charId)}
+        entries={entries}
         markLocalMutation={markLocalMutation}
         onSaved={refreshInventory}
         onError={(msg) => pushToast(msg, 'error')}
@@ -1738,16 +1739,35 @@ function exhaustionColor(level: number): string {
 interface SurvivalPanelProps {
   character: Character;
   charId: number;
+  entries: InventoryEntry[];
   markLocalMutation: () => void;
   onSaved: () => Promise<void>;
   onError: (msg: string) => void;
 }
 
-function SurvivalPanel({ character, charId, markLocalMutation, onSaved, onError }: SurvivalPanelProps) {
+function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved, onError }: SurvivalPanelProps) {
   const [exhaustion, setExhaustion] = useState(character.exhaustion);
   const [conditions, setConditions] = useState<string[]>(character.conditions);
   const [foodDays, setFoodDays] = useState(character.foodDays);
   const [waterDays, setWaterDays] = useState(character.waterDays);
+
+  // Count available food/water from tagged inventory items
+  const foodCount = entries.reduce((sum, e) => {
+    return sum + (e.item.survivalTags?.includes('food') ? e.quantity : 0);
+  }, 0);
+  const waterCount = entries.reduce((sum, e) => {
+    return sum + (e.item.survivalTags?.includes('water') ? e.quantity : 0);
+  }, 0);
+
+  const consume = async (type: 'food' | 'water') => {
+    markLocalMutation();
+    try {
+      await api.post(`/api/characters/${charId}/consume`, { type });
+      await onSaved();
+    } catch (err: any) {
+      onError(err.response?.data?.error || 'Erreur');
+    }
+  };
 
   // Re-sync drafts when the character changes (e.g. remote sync, refresh)
   useEffect(() => {
@@ -1884,20 +1904,40 @@ function SurvivalPanel({ character, charId, markLocalMutation, onSaved, onError 
         </div>
       </div>
 
-      {/* Deprivation */}
+      {/* Deprivation + consume from inventory */}
       <div className="grid grid-cols-2 gap-3">
-        <DeprivationBox
-          label="Sans nourriture"
-          days={foodDays}
-          icon="🍖"
-          onStep={(d) => stepDays('foodDays', d)}
-        />
-        <DeprivationBox
-          label="Sans eau"
-          days={waterDays}
-          icon="💧"
-          onStep={(d) => stepDays('waterDays', d)}
-        />
+        <div className="flex flex-col gap-1">
+          <DeprivationBox
+            label="Sans nourriture"
+            days={foodDays}
+            icon="🍖"
+            onStep={(d) => stepDays('foodDays', d)}
+          />
+          {foodCount > 0 && (
+            <button
+              onClick={() => consume('food')}
+              className="text-xs px-2 py-1 rounded-lg bg-green-100 text-green-800 hover:bg-green-200 transition-colors"
+            >
+              🍖 Manger (×{foodCount} rations)
+            </button>
+          )}
+        </div>
+        <div className="flex flex-col gap-1">
+          <DeprivationBox
+            label="Sans eau"
+            days={waterDays}
+            icon="💧"
+            onStep={(d) => stepDays('waterDays', d)}
+          />
+          {waterCount > 0 && (
+            <button
+              onClick={() => consume('water')}
+              className="text-xs px-2 py-1 rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
+            >
+              💧 Boire (×{waterCount} gourdes)
+            </button>
+          )}
+        </div>
       </div>
     </section>
   );

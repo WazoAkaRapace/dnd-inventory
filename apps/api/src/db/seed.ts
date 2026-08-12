@@ -60,18 +60,25 @@ const INSERT = `
     source, party_id, category, srd_index, name, name_fr, rarity,
     weight_kg, cost_qty, cost_unit, description,
     damage_dice, damage_type, ac_base, str_min, stealth_disadvantage,
-    properties_json, image_path
+    properties_json, survival_tags, image_path
   ) VALUES (
     'srd', NULL, ?, ?, ?, ?, ?,
     ?, ?, ?, ?,
     ?, ?, ?, ?, ?,
-    ?, ?
+    ?, ?, ?
   )
   ON CONFLICT(srd_index) DO UPDATE SET
     name_fr = excluded.name_fr,
     weight_kg = excluded.weight_kg,
-    description = excluded.description
+    description = excluded.description,
+    survival_tags = excluded.survival_tags
 `;
+
+// SRD items that count as food or water for survival tracking
+const SURVIVAL_TAGS: Record<string, string[]> = {
+  'rations-1-day': ['food'],
+  'waterskin': ['water'],
+};
 
 const COUNT_SQL = `SELECT COUNT(*) as n FROM items WHERE source = 'srd'`;
 
@@ -102,6 +109,7 @@ export function seedItems(): void {
         it.strMin,
         it.stealthDisadvantage ? 1 : 0,
         JSON.stringify(it.properties),
+        JSON.stringify(SURVIVAL_TAGS[it.srdIndex] || []),
         it.imagePath,
       );
     }
