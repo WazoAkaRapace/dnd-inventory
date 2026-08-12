@@ -94,6 +94,9 @@ export function mapCharacterSummary(row: any): CharacterSummary {
     conditions: row.conditions ? (typeof row.conditions === 'string' ? JSON.parse(row.conditions) : row.conditions) : [],
     foodDays: row.food_days ?? 0,
     waterDays: row.water_days ?? 0,
+    maxHp: row.max_hp ?? 1,
+    currentHp: row.current_hp ?? 1,
+    tempHp: row.temp_hp ?? 0,
   };
 }
 

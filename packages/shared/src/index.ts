@@ -231,6 +231,9 @@ export interface CharacterSummary {
   conditions: string[];      // ["Poisoned", "Frightened", ...]
   foodDays: number;          // days without food
   waterDays: number;         // days without water
+  maxHp: number;
+  currentHp: number;
+  tempHp: number;
 }
 
 export interface Character extends CharacterSummary {
@@ -258,6 +261,9 @@ export interface PatchCharacterPayload {
   conditions?: string[];
   foodDays?: number;
   waterDays?: number;
+  maxHp?: number;
+  currentHp?: number;
+  tempHp?: number;
   notes?: string | null;
   copper?: number;
   silver?: number;

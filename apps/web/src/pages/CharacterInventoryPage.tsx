@@ -1844,6 +1844,10 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
       </h2>
 
       {/* Exhaustion tracker */}
+      {/* HP tracker */}
+      <HpTracker character={character} charId={charId} markLocalMutation={markLocalMutation} onSaved={onSaved} onError={onError} />
+
+      {/* Exhaustion */}
       <div>
         <div className="flex items-baseline justify-between mb-1.5">
           <span className="text-sm font-medium text-ink-700">Épuisement</span>
@@ -1966,6 +1970,92 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
         </div>
       </div>
     </section>
+  );
+}
+
+function HpTracker({ character, charId, markLocalMutation, onSaved, onError }: {
+  character: Character;
+  charId: number;
+  markLocalMutation: () => void;
+  onSaved: () => Promise<void>;
+  onError: (msg: string) => void;
+}) {
+  const [maxHp, setMaxHp] = useState(character.maxHp);
+  const [currentHp, setCurrentHp] = useState(character.currentHp);
+  const [tempHp, setTempHp] = useState(character.tempHp);
+
+  useEffect(() => { setMaxHp(character.maxHp); }, [character.maxHp]);
+  useEffect(() => { setCurrentHp(character.currentHp); }, [character.currentHp]);
+  useEffect(() => { setTempHp(character.tempHp); }, [character.tempHp]);
+
+  const patch = async (field: string, value: number, setter: (n: number) => void) => {
+    markLocalMutation();
+    try {
+      await api.patch(`/api/characters/${charId}`, { [field]: value });
+      await onSaved();
+    } catch (err: any) {
+      onError(err.response?.data?.error || 'Erreur');
+    }
+  };
+
+  const hpColor = currentHp <= 0 ? 'text-red-600' : currentHp <= maxHp * 0.3 ? 'text-red-500' : currentHp <= maxHp * 0.5 ? 'text-orange-500' : 'text-green-600';
+  const hpPct = maxHp > 0 ? Math.min(100, (currentHp / maxHp) * 100) : 0;
+
+  return (
+    <div className="flex items-center gap-3 flex-wrap">
+      <span className="text-sm font-medium text-ink-700">❤️ PV</span>
+
+      {/* Current HP */}
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => { const n = Math.max(0, currentHp - 1); setCurrentHp(n); patch('currentHp', n, setCurrentHp); }}
+          className="w-7 h-7 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 text-sm font-medium flex items-center justify-center"
+          aria-label="Blesser"
+        >−</button>
+        <input
+          type="number"
+          className={`w-14 text-center text-sm font-bold bg-white border border-parchment-300 rounded-md py-1 focus:outline-none focus:border-blood-500 ${hpColor}`}
+          value={currentHp}
+          onChange={(e) => setCurrentHp(Number(e.target.value) || 0)}
+          onBlur={() => { if (Number(currentHp) !== character.currentHp) patch('currentHp', currentHp, setCurrentHp); }}
+          aria-label="Points de vie actuels"
+        />
+        <button
+          onClick={() => { const n = Math.min(maxHp, currentHp + 1); setCurrentHp(n); patch('currentHp', n, setCurrentHp); }}
+          className="w-7 h-7 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 text-sm font-medium flex items-center justify-center"
+          aria-label="Soigner"
+        >+</button>
+      </div>
+      <span className="text-ink-400 text-sm">/</span>
+
+      {/* Max HP */}
+      <label className="flex items-center gap-1">
+        <span className="text-xs text-ink-400">max</span>
+        <input
+          type="number"
+          className="w-14 text-center text-sm font-semibold bg-white border border-parchment-300 rounded-md py-1 focus:outline-none focus:border-blood-500"
+          value={maxHp}
+          onChange={(e) => setMaxHp(Number(e.target.value) || 1)}
+          onBlur={() => { if (Number(maxHp) !== character.maxHp) { const n = Math.max(1, maxHp); setMaxHp(n); patch('maxHp', n, setMaxHp); } }}
+          aria-label="Points de vie maximum"
+        />
+      </label>
+
+      {/* Temp HP */}
+      {tempHp > 0 && (
+        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
+          +{tempHp} PV temp
+        </span>
+      )}
+
+      {/* HP bar */}
+      <div className="flex-1 min-w-[80px] h-2 bg-parchment-200 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all ${currentHp <= 0 ? 'bg-red-700' : currentHp <= maxHp * 0.3 ? 'bg-red-500' : currentHp <= maxHp * 0.5 ? 'bg-orange-400' : 'bg-green-500'}`}
+          style={{ width: `${hpPct}%` }}
+        />
+      </div>
+    </div>
   );
 }
 

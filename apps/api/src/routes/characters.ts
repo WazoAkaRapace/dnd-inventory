@@ -108,6 +108,7 @@ export async function characterRoutes(app: FastifyInstance) {
       const allowed: (keyof PatchCharacterPayload)[] = [
         'name', 'strength', 'capacityMultiplier',
         'exhaustion', 'conditions', 'foodDays', 'waterDays',
+        'maxHp', 'currentHp', 'tempHp',
         'notes', 'copper', 'silver', 'electrum', 'gold', 'platinum',
       ];
       const sets: string[] = [];
@@ -116,6 +117,9 @@ export async function characterRoutes(app: FastifyInstance) {
         capacityMultiplier: 'capacity_multiplier',
         foodDays: 'food_days',
         waterDays: 'water_days',
+        maxHp: 'max_hp',
+        currentHp: 'current_hp',
+        tempHp: 'temp_hp',
       };
       for (const key of allowed) {
         if (body[key] !== undefined) {
