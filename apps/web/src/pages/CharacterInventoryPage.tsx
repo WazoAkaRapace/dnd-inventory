@@ -2041,10 +2041,33 @@ function HpTracker({ character, charId, markLocalMutation, onSaved, onError }: {
         />
       </label>
 
-      {/* Temp HP */}
+      {/* Temp HP — editable with add/remove */}
+      <label className="flex items-center gap-1">
+        <span className="text-xs text-ink-400">PV temp</span>
+        <button
+          onClick={() => { const n = Math.max(0, tempHp - 1); setTempHp(n); patch('tempHp', n, setTempHp); }}
+          disabled={tempHp <= 0}
+          className="w-6 h-6 rounded bg-blue-100 hover:bg-blue-200 disabled:opacity-30 text-blue-700 text-xs flex items-center justify-center"
+          aria-label="Retirer 1 PV temp"
+        >−</button>
+        <input
+          type="number"
+          className={`w-12 text-center text-sm font-medium bg-white border border-parchment-300 rounded-md py-1 focus:outline-none focus:border-blood-500 ${tempHp > 0 ? 'text-blue-700' : 'text-ink-400'}`}
+          value={tempHp}
+          min={0}
+          onChange={(e) => setTempHp(Math.max(0, Number(e.target.value) || 0))}
+          onBlur={() => { if (Number(tempHp) !== character.tempHp) patch('tempHp', Math.max(0, tempHp), setTempHp); }}
+          aria-label="Points de vie temporaires"
+        />
+        <button
+          onClick={() => { const n = tempHp + 1; setTempHp(n); patch('tempHp', n, setTempHp); }}
+          className="w-6 h-6 rounded bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs flex items-center justify-center"
+          aria-label="Ajouter 1 PV temp"
+        >+</button>
+      </label>
       {tempHp > 0 && (
         <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
-          +{tempHp} PV temp
+          +{tempHp}
         </span>
       )}
 

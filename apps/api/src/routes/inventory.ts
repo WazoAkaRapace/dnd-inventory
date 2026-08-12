@@ -117,10 +117,16 @@ export async function inventoryRoutes(app: FastifyInstance) {
       const coinCount = char.copper + char.silver + char.electrum + char.gold + char.platinum;
       const coinWeightKg = coinCount * COIN_WEIGHT_KG;
 
+      const EMPTY_WATERSKIN_KG = 0.268; // leather skin only, without water
+
       const locationWeights = locations.map((loc: any) => {
         const locEntries = cleanEntries.filter((e: any) => (e.storageLocationId ?? carriedLocId) === loc.id);
         const itemsWeight = locEntries.reduce((sum: number, e: any) => {
-          const w = e.item.weightKg;
+          let w = e.item.weightKg;
+          // Empty waterskins weigh less (just the leather, no water)
+          if (e.notes && e.notes.includes('empty') && e.item.survivalTags?.includes('water')) {
+            w = EMPTY_WATERSKIN_KG;
+          }
           return sum + (typeof w === 'number' ? w * e.quantity : 0);
         }, 0);
 
@@ -493,6 +499,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
       } else {
         // Water: decrement full waterskins, increment empty ones
         // The entry found is a "full" waterskin (not marked empty in notes)
+        const fullLocId = db.prepare('SELECT storage_location_id FROM inventory WHERE id = ?').get(entry.inv_id)?.storage_location_id;
         const tx = db.transaction(() => {
           // Decrement the full entry
           if (entry.quantity <= 1) {
@@ -502,17 +509,16 @@ export async function inventoryRoutes(app: FastifyInstance) {
           }
 
           // Check if an "empty" entry already exists for this item+character
+          // Empty entries are stored with storage_location_id = NULL to avoid UNIQUE collision
           const emptyEntry = db.prepare(`
             SELECT id, quantity FROM inventory
-            WHERE character_id = ? AND item_id = ? AND notes LIKE '%empty%'
+            WHERE character_id = ? AND item_id = ? AND notes LIKE '%empty%' AND storage_location_id IS NULL
             LIMIT 1
           `).get(char.id, entry.item_id) as any;
 
           if (emptyEntry) {
-            // Increment existing empty entry
             db.prepare('UPDATE inventory SET quantity = quantity + 1 WHERE id = ?').run(emptyEntry.id);
           } else {
-            // Create new empty entry with NULL location (separate from the full stack)
             db.prepare(`
               INSERT INTO inventory (character_id, item_id, quantity, equipped, notes, storage_location_id)
               VALUES (?, ?, 1, 0, 'empty', NULL)
@@ -548,7 +554,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
 
       // Find all empty waterskins
       const empties = db.prepare(`
-        SELECT inv.id AS inv_id, inv.quantity, inv.notes, inv.item_id, i.name_fr
+        SELECT inv.id AS inv_id, inv.quantity, inv.notes, inv.item_id, inv.storage_location_id, i.name_fr
         FROM inventory inv
         JOIN items i ON i.id = inv.item_id
         WHERE inv.character_id = ? AND i.survival_tags LIKE '%water%'
@@ -559,14 +565,32 @@ export async function inventoryRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'Aucune gourde vide à remplir' });
       }
 
+      const { ensureCarriedLocation } = await import('./locations.ts');
+      const carriedId = ensureCarriedLocation(db, char.id);
+
       const tx = db.transaction(() => {
+        let totalRefilled = 0;
         for (const e of empties) {
-          db.prepare('UPDATE inventory SET notes = NULL WHERE id = ?').run(e.inv_id);
+          const emptyQty = e.quantity;
+          // Find the corresponding full entry (any location, no 'empty' note)
+          const fullEntry = db.prepare(`
+            SELECT id, quantity FROM inventory
+            WHERE character_id = ? AND item_id = ?
+            AND (notes IS NULL OR notes = '' OR notes NOT LIKE '%empty%')
+            LIMIT 1
+          `).get(char.id, e.item_id) as any;
+
+          if (fullEntry) {
+            // Merge into existing full stack
+            db.prepare('UPDATE inventory SET quantity = quantity + ? WHERE id = ?').run(emptyQty, fullEntry.id);
+            // Delete the empty entry
+            db.prepare('DELETE FROM inventory WHERE id = ?').run(e.inv_id);
+          } else {
+            // No full entry exists — just clear the empty note and assign to carried
+            db.prepare('UPDATE inventory SET notes = NULL, storage_location_id = ? WHERE id = ?').run(carriedId, e.inv_id);
+          }
+          totalRefilled += emptyQty;
         }
-        db.prepare(`
-          INSERT INTO transactions (party_id, character_id, item_id, item_name, delta_qty, reason, actor_user_id)
-          VALUES (?, ?, NULL, 'Gourdes remplies', ?, 'refill', ?)
-        `).run(char.party_id, char.id, empties.length, userId);
       });
       tx();
 
