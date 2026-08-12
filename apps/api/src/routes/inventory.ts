@@ -124,7 +124,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
         const itemsWeight = locEntries.reduce((sum: number, e: any) => {
           let w = e.item.weightKg;
           // Empty waterskins weigh less (just the leather, no water)
-          if (e.notes && e.notes.includes('empty') && e.item.survivalTags?.includes('water')) {
+          if (e.notes && e.notes.includes('empty') && e.item.survivalTags && Array.isArray(e.item.survivalTags) && e.item.survivalTags.includes('water')) {
             w = EMPTY_WATERSKIN_KG;
           }
           return sum + (typeof w === 'number' ? w * e.quantity : 0);
