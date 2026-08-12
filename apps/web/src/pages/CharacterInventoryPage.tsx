@@ -1752,17 +1752,35 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
   const [waterDays, setWaterDays] = useState(character.waterDays);
 
   // Count available food/water from tagged inventory items
+  // Water: skip items marked 'empty' in notes
   const foodCount = entries.reduce((sum, e) => {
     return sum + (e.item.survivalTags?.includes('food') ? e.quantity : 0);
   }, 0);
-  const waterCount = entries.reduce((sum, e) => {
-    return sum + (e.item.survivalTags?.includes('water') ? e.quantity : 0);
+  const fullWaterCount = entries.reduce((sum, e) => {
+    if (!e.item.survivalTags?.includes('water')) return sum;
+    if (e.notes && e.notes.includes('empty')) return sum;
+    return sum + e.quantity;
+  }, 0);
+  const emptyWaterCount = entries.reduce((sum, e) => {
+    if (!e.item.survivalTags?.includes('water')) return sum;
+    if (e.notes && e.notes.includes('empty')) return sum + e.quantity;
+    return sum;
   }, 0);
 
   const consume = async (type: 'food' | 'water') => {
     markLocalMutation();
     try {
       await api.post(`/api/characters/${charId}/consume`, { type });
+      await onSaved();
+    } catch (err: any) {
+      onError(err.response?.data?.error || 'Erreur');
+    }
+  };
+
+  const refillWater = async () => {
+    markLocalMutation();
+    try {
+      await api.post(`/api/characters/${charId}/refill`);
       await onSaved();
     } catch (err: any) {
       onError(err.response?.data?.error || 'Erreur');
@@ -1929,12 +1947,20 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
             icon="💧"
             onStep={(d) => stepDays('waterDays', d)}
           />
-          {waterCount > 0 && (
+          {fullWaterCount > 0 && (
             <button
               onClick={() => consume('water')}
               className="text-xs px-2 py-1 rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
             >
-              💧 Boire (×{waterCount} gourdes)
+              💧 Boire (×{fullWaterCount} pleines)
+            </button>
+          )}
+          {emptyWaterCount > 0 && (
+            <button
+              onClick={refillWater}
+              className="text-xs px-2 py-1 rounded-lg bg-cyan-100 text-cyan-800 hover:bg-cyan-200 transition-colors"
+            >
+              ↻ Remplir (×{emptyWaterCount} vides)
             </button>
           )}
         </div>
