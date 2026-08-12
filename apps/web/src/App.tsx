@@ -7,6 +7,7 @@ import PartiesPage from './pages/PartiesPage';
 import PartyPage from './pages/PartyPage';
 import CharacterInventoryPage from './pages/CharacterInventoryPage';
 import GmDashboardPage from './pages/GmDashboardPage';
+import NpcPage from './pages/NpcPage';
 
 function SyncIndicator() {
   const { status } = useSync();
@@ -77,6 +78,7 @@ export default function App() {
           <Route path="/party/:partyId" element={<ProtectedRoute><PartyPage /></ProtectedRoute>} />
           <Route path="/party/:partyId/character/:charId" element={<ProtectedRoute><CharacterInventoryPage /></ProtectedRoute>} />
           <Route path="/party/:partyId/gm" element={<ProtectedRoute><GmDashboardPage /></ProtectedRoute>} />
+          <Route path="/party/:partyId/npcs" element={<ProtectedRoute><NpcPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/parties" replace />} />
         </Routes>
       </main>

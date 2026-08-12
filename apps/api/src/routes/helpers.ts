@@ -89,6 +89,10 @@ export function mapCharacterSummary(row: any): CharacterSummary {
     name: row.name,
     strength: row.strength,
     capacityMultiplier: row.capacity_multiplier ?? 1,
+    exhaustion: row.exhaustion ?? 0,
+    conditions: row.conditions ? (typeof row.conditions === 'string' ? JSON.parse(row.conditions) : row.conditions) : [],
+    foodDays: row.food_days ?? 0,
+    waterDays: row.water_days ?? 0,
   };
 }
 

@@ -19,6 +19,7 @@ import {
   CATEGORY_LABELS_FR,
   RARITY_LABELS_FR,
   COIN_LABELS_FR,
+  DND_CONDITIONS_FR,
 } from '@dnd-inventory/shared';
 import {
   LoadingSpinner,
@@ -611,6 +612,15 @@ export default function CharacterInventoryPage() {
           </div>
         </div>
       </div>
+
+      {/* ---------- Survival panel: exhaustion, conditions, deprivation ---------- */}
+      <SurvivalPanel
+        character={character}
+        charId={Number(charId)}
+        markLocalMutation={markLocalMutation}
+        onSaved={refreshInventory}
+        onError={(msg) => pushToast(msg, 'error')}
+      />
 
       {/* ---------- Storage location tabs ---------- */}
       <div className="-mx-4 px-4 sm:mx-0 sm:px-0">
@@ -1704,3 +1714,250 @@ function NewLocationModal({ open, onClose, onCreate }: NewLocationModalProps) {
     </Modal>
   );
 }
+
+// ---------- Survival panel (exhaustion, conditions, deprivation) ----------
+
+/** D&D 5e exhaustion effects, in French. Index 0 = no effect. */
+const EXHAUSTION_EFFECTS_FR: string[] = [
+  'Aucun effet',
+  'Désavantage aux jets de caractéristique',
+  'Vitesse réduite de moitié',
+  'Désavantage aux attaques et sauvegardes',
+  'PV max réduits de moitié',
+  'Vitesse réduite à 0',
+  'Mort',
+];
+
+function exhaustionColor(level: number): string {
+  if (level <= 1) return 'text-green-600';
+  if (level <= 3) return 'text-yellow-600';
+  if (level <= 5) return 'text-orange-600';
+  return 'text-red-600';
+}
+
+interface SurvivalPanelProps {
+  character: Character;
+  charId: number;
+  markLocalMutation: () => void;
+  onSaved: () => Promise<void>;
+  onError: (msg: string) => void;
+}
+
+function SurvivalPanel({ character, charId, markLocalMutation, onSaved, onError }: SurvivalPanelProps) {
+  const [exhaustion, setExhaustion] = useState(character.exhaustion);
+  const [conditions, setConditions] = useState<string[]>(character.conditions);
+  const [foodDays, setFoodDays] = useState(character.foodDays);
+  const [waterDays, setWaterDays] = useState(character.waterDays);
+
+  // Re-sync drafts when the character changes (e.g. remote sync, refresh)
+  useEffect(() => {
+    setExhaustion(character.exhaustion);
+  }, [character.exhaustion]);
+  useEffect(() => {
+    setConditions(character.conditions);
+  }, [character.conditions]);
+  useEffect(() => {
+    setFoodDays(character.foodDays);
+  }, [character.foodDays]);
+  useEffect(() => {
+    setWaterDays(character.waterDays);
+  }, [character.waterDays]);
+
+  const patchCharacter = async (payload: Record<string, unknown>, errorMsg: string) => {
+    markLocalMutation();
+    try {
+      await api.patch(`/api/characters/${charId}`, payload);
+      await onSaved();
+    } catch (err: any) {
+      onError(err.response?.data?.error || errorMsg);
+    }
+  };
+
+  const setExhaustionLevel = async (level: number) => {
+    if (level === exhaustion) return;
+    setExhaustion(level);
+    await patchCharacter({ exhaustion: level }, 'Erreur de mise à jour');
+  };
+
+  const removeCondition = async (cond: string) => {
+    const next = conditions.filter((c) => c !== cond);
+    setConditions(next);
+    await patchCharacter({ conditions: next }, 'Erreur de mise à jour');
+  };
+
+  const addCondition = async (cond: string) => {
+    if (!cond || conditions.includes(cond)) return;
+    const next = [...conditions, cond];
+    setConditions(next);
+    await patchCharacter({ conditions: next }, 'Erreur de mise à jour');
+  };
+
+  const stepDays = async (kind: 'foodDays' | 'waterDays', delta: number) => {
+    const next = Math.max(0, (kind === 'foodDays' ? foodDays : waterDays) + delta);
+    if (kind === 'foodDays') setFoodDays(next);
+    else setWaterDays(next);
+    await patchCharacter({ [kind]: next }, 'Erreur de mise à jour');
+  };
+
+  return (
+    <section className="card p-4 sm:p-5 space-y-4">
+      <h2 className="font-display text-lg font-semibold flex items-center gap-2">
+        <span aria-hidden="true">🩸</span> Survie
+      </h2>
+
+      {/* Exhaustion tracker */}
+      <div>
+        <div className="flex items-baseline justify-between mb-1.5">
+          <span className="text-sm font-medium text-ink-700">Épuisement</span>
+          <span className={`text-xs font-semibold ${exhaustionColor(exhaustion)}`}>
+            Niveau {exhaustion}/6
+          </span>
+        </div>
+        <div className="flex items-center gap-1" role="group" aria-label="Niveau d'épuisement">
+          {Array.from({ length: 7 }, (_, i) => {
+            const active = i <= exhaustion && i > 0;
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setExhaustionLevel(i)}
+                className={`text-2xl leading-none transition-colors ${exhaustionColor(exhaustion)} ${
+                  active ? 'opacity-100' : 'opacity-30 hover:opacity-60'
+                }`}
+                aria-pressed={i === exhaustion}
+                aria-label={`Niveau d'épuisement ${i}`}
+                title={`Niveau ${i}${i > 0 ? ` — ${EXHAUSTION_EFFECTS_FR[i]}` : ' — Aucun effet'}`}
+              >
+                {active ? '◆' : '◇'}
+              </button>
+            );
+          })}
+        </div>
+        {exhaustion > 0 && (
+          <p className="text-xs text-ink-500 mt-1">
+            {EXHAUSTION_EFFECTS_FR[exhaustion]}
+          </p>
+        )}
+      </div>
+
+      {/* Conditions */}
+      <div>
+        <span className="text-sm font-medium text-ink-700 block mb-1.5">États</span>
+        <div className="flex flex-wrap items-center gap-2">
+          {conditions.length === 0 && (
+            <span className="text-xs text-ink-400 italic">Aucun état actif</span>
+          )}
+          {conditions.map((cond) => (
+            <span
+              key={cond}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blood-50 text-blood-800 text-xs font-medium border border-blood-200"
+            >
+              {cond}
+              <button
+                type="button"
+                onClick={() => removeCondition(cond)}
+                className="text-blood-500 hover:text-blood-700 font-semibold"
+                aria-label={`Retirer l'état ${cond}`}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          <label className="inline-flex items-center">
+            <span className="sr-only">Ajouter un état</span>
+            <select
+              className="input py-1 text-xs w-auto"
+              value=""
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v) addCondition(v);
+                e.target.value = '';
+              }}
+              aria-label="Ajouter un état"
+            >
+              <option value="">+ Ajouter un état…</option>
+              {DND_CONDITIONS_FR.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
+
+      {/* Deprivation */}
+      <div className="grid grid-cols-2 gap-3">
+        <DeprivationBox
+          label="Sans nourriture"
+          days={foodDays}
+          icon="🍖"
+          onStep={(d) => stepDays('foodDays', d)}
+        />
+        <DeprivationBox
+          label="Sans eau"
+          days={waterDays}
+          icon="💧"
+          onStep={(d) => stepDays('waterDays', d)}
+        />
+      </div>
+    </section>
+  );
+}
+
+function DeprivationBox({
+  label,
+  days,
+  icon,
+  onStep,
+}: {
+  label: string;
+  days: number;
+  icon: string;
+  onStep: (delta: number) => void;
+}) {
+  // Amber at 3+, red at 5+
+  const tone =
+    days >= 5
+      ? 'bg-red-50 border-red-200 text-red-800'
+      : days >= 3
+        ? 'bg-amber-50 border-amber-200 text-amber-800'
+        : 'bg-parchment-100 border-parchment-200 text-ink-700';
+  return (
+    <div className={`rounded-xl border p-3 ${tone}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium flex items-center gap-1">
+          <span aria-hidden="true">{icon}</span>
+          {label}
+        </span>
+        <span className="text-sm font-semibold">
+          {days} j
+        </span>
+      </div>
+      <div className="flex items-center gap-1 mt-2">
+        <button
+          type="button"
+          onClick={() => onStep(-1)}
+          className="w-7 h-7 rounded-lg bg-white/70 hover:bg-white text-sm font-medium flex items-center justify-center"
+          aria-label={`Diminuer les jours ${label.toLowerCase()}`}
+        >
+          −
+        </button>
+        <button
+          type="button"
+          onClick={() => onStep(1)}
+          className="w-7 h-7 rounded-lg bg-white/70 hover:bg-white text-sm font-medium flex items-center justify-center"
+          aria-label={`Augmenter les jours ${label.toLowerCase()}`}
+        >
+          +
+        </button>
+      </div>
+      {days >= 3 && (
+        <p className="text-xs mt-1.5 italic">
+          {days >= 5
+            ? '⚠ Risque grave d\u2019épuisement'
+            : '⚠ Privation prolongée'}
+        </p>
+      )}
+    </div>
+  );
+}
+

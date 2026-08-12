@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../api';
-import { useSyncEvent } from '../sync';
+import { useSyncEvent, useSync } from '../sync';
 import type { PartyDetail, CharacterSummary, CreateCustomItem } from '@dnd-inventory/shared';
 import { LoadingSpinner, EmptyState, Modal, ErrorMsg } from '../components/ui';
 
@@ -23,7 +23,7 @@ export default function GmDashboardPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<'characters' | 'transactions' | 'custom'>('characters');
+  const [tab, setTab] = useState<'characters' | 'transactions' | 'custom' | 'survival'>('characters');
   const [showAddItem, setShowAddItem] = useState(false);
 
   const load = useCallback(async () => {
@@ -78,6 +78,9 @@ export default function GmDashboardPage() {
         <TabButton active={tab === 'custom'} onClick={() => setTab('custom')}>
           Objets custom
         </TabButton>
+        <TabButton active={tab === 'survival'} onClick={() => setTab('survival')}>
+          Survie
+        </TabButton>
       </div>
 
       {tab === 'characters' && (
@@ -90,6 +93,10 @@ export default function GmDashboardPage() {
 
       {tab === 'custom' && (
         <CustomItemsTab partyId={partyId!} onAdd={() => setShowAddItem(true)} showAdd={showAddItem} />
+      )}
+
+      {tab === 'survival' && (
+        <SurvivalTab characters={party.characters} onReload={load} />
       )}
     </div>
   );
@@ -276,3 +283,153 @@ function CustomItemsTab({ partyId, onAdd, showAdd }: { partyId: string; onAdd: (
     </div>
   );
 }
+
+// ---------- Survival tab ----------
+
+const GM_EXHAUSTION_EFFECTS_FR: string[] = [
+  'Aucun effet',
+  'Désavantage aux jets de caractéristique',
+  'Vitesse réduite de moitié',
+  'Désavantage aux attaques et sauvegardes',
+  'PV max réduits de moitié',
+  'Vitesse réduite à 0',
+  'Mort',
+];
+
+function gmExhaustionColor(level: number): string {
+  if (level <= 1) return 'text-green-600';
+  if (level <= 3) return 'text-yellow-600';
+  if (level <= 5) return 'text-orange-600';
+  return 'text-red-600';
+}
+
+function deprivationTone(days: number): string {
+  if (days >= 5) return 'text-red-700 font-semibold';
+  if (days >= 3) return 'text-amber-700 font-semibold';
+  return 'text-ink-600';
+}
+
+function SurvivalTab({
+  characters,
+  onReload,
+}: {
+  characters: CharacterSummary[];
+  onReload: () => void | Promise<void>;
+}) {
+  const { markLocalMutation } = useSync();
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  const patchExhaustion = async (char: CharacterSummary, level: number) => {
+    if (level === char.exhaustion) return;
+    markLocalMutation();
+    setBusyId(char.id);
+    try {
+      await api.patch(`/api/characters/${char.id}`, { exhaustion: level });
+      await onReload();
+    } catch {
+      // surfaced via parent reload / silent
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  if (characters.length === 0) {
+    return <EmptyState icon="🧙" title="Aucun personnage" hint="Les joueurs doivent créer leurs personnages." />;
+  }
+
+  return (
+    <div className="card divide-y divide-parchment-100">
+      {/* Header row (hidden on mobile — table is card-stacked) */}
+      <div className="hidden sm:grid grid-cols-[2fr_3fr_2fr_2fr] gap-3 p-3 text-xs font-medium text-ink-400 uppercase tracking-wide">
+        <span>Personnage</span>
+        <span>Épuisement</span>
+        <span>États</span>
+        <span>Privation</span>
+      </div>
+
+      {characters.map((c) => (
+        <div
+          key={c.id}
+          className="p-3 grid gap-2 sm:grid-cols-[2fr_3fr_2fr_2fr] sm:gap-3 sm:items-center"
+        >
+          {/* Name */}
+          <div className="min-w-0">
+            <Link
+              to={`/party/${c.partyId}/character/${c.id}`}
+              className="font-display font-semibold hover:underline truncate block"
+            >
+              {c.name}
+            </Link>
+            <p className="text-xs text-ink-400">{c.ownerName}</p>
+          </div>
+
+          {/* Exhaustion diamonds + quick +/- */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-0.5" role="group" aria-label={`Épuisement de ${c.name}`}>
+              {Array.from({ length: 7 }, (_, i) => {
+                const active = i <= c.exhaustion && i > 0;
+                return (
+                  <span
+                    key={i}
+                    className={`text-lg leading-none ${gmExhaustionColor(c.exhaustion)} ${active ? 'opacity-100' : 'opacity-25'}`}
+                    title={`Niveau ${i}${i > 0 ? ` — ${GM_EXHAUSTION_EFFECTS_FR[i]}` : ''}`}
+                    aria-hidden="true"
+                  >
+                    {active ? '◆' : '◇'}
+                  </span>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => patchExhaustion(c, Math.max(0, c.exhaustion - 1))}
+                disabled={busyId === c.id || c.exhaustion <= 0}
+                className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-sm font-medium flex items-center justify-center"
+                aria-label={`Diminuer l'épuisement de ${c.name}`}
+              >
+                −
+              </button>
+              <button
+                type="button"
+                onClick={() => patchExhaustion(c, Math.min(6, c.exhaustion + 1))}
+                disabled={busyId === c.id || c.exhaustion >= 6}
+                className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-sm font-medium flex items-center justify-center"
+                aria-label={`Augmenter l'épuisement de ${c.name}`}
+              >
+                +
+              </button>
+            </div>
+          </div>
+
+          {/* Conditions */}
+          <div className="flex flex-wrap gap-1">
+            {c.conditions.length === 0 ? (
+              <span className="text-xs text-ink-400 italic">—</span>
+            ) : (
+              c.conditions.map((cond) => (
+                <span
+                  key={cond}
+                  className="inline-block px-1.5 py-0.5 rounded-full bg-blood-50 text-blood-800 text-xs font-medium border border-blood-200"
+                >
+                  {cond}
+                </span>
+              ))
+            )}
+          </div>
+
+          {/* Deprivation */}
+          <div className="flex items-center gap-3 text-xs">
+            <span title="Jours sans nourriture" className={deprivationTone(c.foodDays)}>
+              🍖 {c.foodDays} j
+            </span>
+            <span title="Jours sans eau" className={deprivationTone(c.waterDays)}>
+              💧 {c.waterDays} j
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+

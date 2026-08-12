@@ -107,18 +107,26 @@ export async function characterRoutes(app: FastifyInstance) {
       const body = req.body || {};
       const allowed: (keyof PatchCharacterPayload)[] = [
         'name', 'strength', 'capacityMultiplier',
+        'exhaustion', 'conditions', 'foodDays', 'waterDays',
         'notes', 'copper', 'silver', 'electrum', 'gold', 'platinum',
       ];
       const sets: string[] = [];
       const vals: any[] = [];
       const fieldMap: Record<string, string> = {
         capacityMultiplier: 'capacity_multiplier',
+        foodDays: 'food_days',
+        waterDays: 'water_days',
       };
       for (const key of allowed) {
         if (body[key] !== undefined) {
           const col = fieldMap[key as string] || key;
           sets.push(`${col} = ?`);
-          vals.push(body[key]);
+          // conditions is a JSON array — serialize for SQLite
+          if (key === 'conditions') {
+            vals.push(JSON.stringify(body[key]));
+          } else {
+            vals.push(body[key]);
+          }
         }
       }
       if (sets.length === 0) return reply.code(400).send({ error: 'no fields to update' });

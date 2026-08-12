@@ -133,6 +133,87 @@ export interface JoinPartyPayload {
   inviteCode: string;
 }
 
+// ---------- NPCs ----------
+
+export type NpcDisposition = 'friendly' | 'neutral' | 'hostile' | 'unknown';
+export type NpcStatus = 'alive' | 'dead' | 'missing' | 'turned';
+
+export interface Npc {
+  id: number;
+  partyId: number;
+  createdBy: number;
+  createdByName: string;
+  name: string;
+  role: string | null;
+  location: string | null;
+  faction: string | null;
+  disposition: NpcDisposition;
+  status: NpcStatus;
+  description: string | null;
+  secret: string | null;       // null if not visible to requesting user
+  isShared: boolean;
+  sortOrder: number;
+}
+
+export interface CreateNpcPayload {
+  name: string;
+  role?: string;
+  location?: string;
+  faction?: string;
+  disposition?: NpcDisposition;
+  status?: NpcStatus;
+  description?: string;
+  secret?: string;
+  isShared?: boolean;
+}
+
+export interface PatchNpcPayload {
+  name?: string;
+  role?: string | null;
+  location?: string | null;
+  faction?: string | null;
+  disposition?: NpcDisposition;
+  status?: NpcStatus;
+  description?: string | null;
+  secret?: string | null;
+  isShared?: boolean;
+}
+
+export const NPC_DISPOSITION_LABELS_FR: Record<NpcDisposition, string> = {
+  friendly: 'Amical',
+  neutral: 'Neutre',
+  hostile: 'Hostile',
+  unknown: 'Inconnu',
+};
+
+export const NPC_STATUS_LABELS_FR: Record<NpcStatus, string> = {
+  alive: 'En vie',
+  dead: 'Mort',
+  missing: 'Disparu',
+  turned: 'Retourné',
+};
+
+// ---------- D&D 5e Conditions (French) ----------
+
+export const DND_CONDITIONS_FR = [
+  'Aveuglé',
+  'Assourdi',
+  'Charmé',
+  'Effrayé',
+  'Empoisonné',
+  'En feu',
+  'Entravé',
+  'Étourdi',
+  'Inconscient',
+  'Invisible',
+  'Agrippé',
+  'À terre',
+  'Paralysé',
+  'Pétrifié',
+  'Possédé',
+  'Neutralisé',
+] as const;
+
 // ---------- Characters ----------
 
 export interface CharacterSummary {
@@ -142,7 +223,11 @@ export interface CharacterSummary {
   ownerName: string;
   name: string;
   strength: number;
-  capacityMultiplier: number; // ×1 normal, ×2 Powerful Build/Large, etc.
+  capacityMultiplier: number;
+  exhaustion: number;        // 0-6
+  conditions: string[];      // ["Poisoned", "Frightened", ...]
+  foodDays: number;          // days without food
+  waterDays: number;         // days without water
 }
 
 export interface Character extends CharacterSummary {
@@ -166,6 +251,10 @@ export interface PatchCharacterPayload {
   name?: string;
   strength?: number;
   capacityMultiplier?: number;
+  exhaustion?: number;
+  conditions?: string[];
+  foodDays?: number;
+  waterDays?: number;
   notes?: string | null;
   copper?: number;
   silver?: number;

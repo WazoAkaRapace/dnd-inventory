@@ -34,6 +34,10 @@ CREATE TABLE IF NOT EXISTS characters (
   name        TEXT NOT NULL,
   strength    INTEGER NOT NULL DEFAULT 10 CHECK (strength >= 1),
   capacity_multiplier REAL NOT NULL DEFAULT 1.0 CHECK (capacity_multiplier > 0),
+  exhaustion  INTEGER NOT NULL DEFAULT 0 CHECK (exhaustion >= 0 AND exhaustion <= 6),
+  conditions  TEXT NOT NULL DEFAULT '[]',
+  food_days   INTEGER NOT NULL DEFAULT 0,
+  water_days  INTEGER NOT NULL DEFAULT 0,
   notes       TEXT,
   copper      INTEGER NOT NULL DEFAULT 0,
   silver      INTEGER NOT NULL DEFAULT 0,
@@ -110,3 +114,22 @@ CREATE TABLE IF NOT EXISTS transactions (
   at            TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_transactions_party ON transactions(party_id);
+
+CREATE TABLE IF NOT EXISTS npcs (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  party_id      INTEGER NOT NULL REFERENCES parties(id) ON DELETE CASCADE,
+  created_by    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  role          TEXT,
+  location      TEXT,
+  faction       TEXT,
+  disposition   TEXT NOT NULL DEFAULT 'neutral',
+  status        TEXT NOT NULL DEFAULT 'alive',
+  description   TEXT,
+  secret        TEXT,
+  is_shared     INTEGER NOT NULL DEFAULT 1,
+  sort_order    INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_npcs_party ON npcs(party_id);
+CREATE INDEX IF NOT EXISTS idx_npcs_shared ON npcs(party_id, is_shared);
