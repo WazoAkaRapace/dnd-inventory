@@ -50,11 +50,69 @@ export function getDb(): DB {
   return dbInstance;
 }
 
-/** Run the schema.sql migration (idempotent). */
+/**
+ * Columns that were added to existing tables AFTER their initial creation.
+ * `CREATE TABLE IF NOT EXISTS` is a no-op on existing tables, so schema.sql
+ * alone cannot add these to an older database. We introspect with PRAGMA
+ * table_info() and ALTER TABLE ... ADD COLUMN for any that are missing.
+ *
+ * Note: SQLite ADD COLUMN cannot use non-constant DEFAULTs or add CHECK
+ * constraints — only the type + constant default is included here. The
+ * defaults guarantee valid initial values; app-level validation enforces
+ * ranges (e.g. exhaustion 0–6) thereafter.
+ */
+const COLUMN_MIGRATIONS: Record<string, Array<{ name: string; ddl: string }>> = {
+  characters: [
+    { name: 'capacity_multiplier', ddl: 'REAL NOT NULL DEFAULT 1.0' },
+    { name: 'exhaustion', ddl: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'conditions', ddl: "TEXT NOT NULL DEFAULT '[]'" },
+    { name: 'food_days', ddl: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'water_days', ddl: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'max_hp', ddl: 'INTEGER NOT NULL DEFAULT 1' },
+    { name: 'current_hp', ddl: 'INTEGER NOT NULL DEFAULT 1' },
+    { name: 'temp_hp', ddl: 'INTEGER NOT NULL DEFAULT 0' },
+  ],
+  items: [
+    { name: 'survival_tags', ddl: "TEXT NOT NULL DEFAULT '[]'" },
+  ],
+  storage_locations: [
+    { name: 'strength', ddl: 'INTEGER DEFAULT 10' },
+    { name: 'multiplier', ddl: 'REAL NOT NULL DEFAULT 1.0' },
+    { name: 'capacity_kg', ddl: 'REAL' },
+    { name: 'own_weight_kg', ddl: 'REAL NOT NULL DEFAULT 0' },
+    { name: 'item_id', ddl: 'INTEGER REFERENCES items(id) ON DELETE SET NULL' },
+    { name: 'sort_order', ddl: 'INTEGER NOT NULL DEFAULT 0' },
+  ],
+};
+
+/**
+ * Backfill missing columns on existing tables.
+ * Idempotent: queries PRAGMA table_info() and only ALTERs what's absent.
+ */
+function migrateColumns(db: DB): void {
+  let added = 0;
+  for (const [table, columns] of Object.entries(COLUMN_MIGRATIONS)) {
+    // table_info returns rows: { cid, name, type, notnull, dflt_value, pk }
+    const rows = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    const existing = new Set(rows.map((r) => r.name));
+    for (const col of columns) {
+      if (existing.has(col.name)) continue;
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${col.name} ${col.ddl}`);
+      console.log(`[db] added column: ${table}.${col.name}`);
+      added++;
+    }
+  }
+  if (added > 0) {
+    console.log(`[db] column migration: ${added} column(s) backfilled`);
+  }
+}
+
+/** Run the schema.sql migration (idempotent) + backfill missing columns. */
 export function migrate(): void {
   const db = getDb();
   const schemaPath = resolve(__dirname, 'schema.sql');
   const sql = readFileSync(schemaPath, 'utf8');
   db.exec(sql);
   console.log(`[db] schema applied to ${getDbPath()}`);
+  migrateColumns(db);
 }
