@@ -26,9 +26,9 @@ export default function GmDashboardPage() {
   const [tab, setTab] = useState<'characters' | 'transactions' | 'custom' | 'survival'>('characters');
   const [showAddItem, setShowAddItem] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!partyId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const [partyRes, txRes] = await Promise.all([
         api.get(`/api/parties/${partyId}`),
@@ -49,7 +49,7 @@ export default function GmDashboardPage() {
   const currentPartyId = Number(partyId);
   useSyncEvent((event) => {
     if (event.partyId === currentPartyId) {
-      load(); // refresh characters + transactions
+      load(true); // silent — no spinner flash on sync updates
     }
   }, [currentPartyId]);
 

@@ -6,6 +6,9 @@
  *
  * The event bus (bus.ts) emits after mutations; this module fans out
  * to connected clients whose user is a member of the affected party.
+ *
+ * Echo suppression: the actor who triggered the change is NOT sent the
+ * event (they already have the optimistic update from their own mutation).
  */
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { WebSocket } from '@fastify/websocket';
@@ -15,12 +18,13 @@ import { getDb } from '../db/index.ts';
 interface ClientInfo {
   userId: number;
   ws: WebSocket;
+  partyIds: Set<number>; // cached at connection time
 }
 
 // All connected clients
 const clients = new Set<ClientInfo>();
 
-/** Get all party IDs a user belongs to. */
+/** Get all party IDs a user belongs to (queried once at connection time). */
 function getUserPartyIds(userId: number): Set<number> {
   const db = getDb();
   const rows = db.prepare('SELECT party_id FROM party_members WHERE user_id = ?').all(userId) as any[];
@@ -48,7 +52,11 @@ export async function registerWsRoutes(app: FastifyInstance) {
       return;
     }
 
-    const clientInfo: ClientInfo = { userId, ws: socket };
+    const clientInfo: ClientInfo = {
+      userId,
+      ws: socket,
+      partyIds: getUserPartyIds(userId), // cache once, no per-event DB queries
+    };
     clients.add(clientInfo);
 
     socket.on('close', () => {
@@ -67,9 +75,11 @@ export async function registerWsRoutes(app: FastifyInstance) {
         clients.delete(client);
         continue;
       }
+      // Echo suppression: don't send the event back to the user who triggered it.
+      // They already have the optimistic result from their own API call.
+      if (event.actorUserId && client.userId === event.actorUserId) continue;
       // Only push to clients who are members of the affected party
-      const partyIds = getUserPartyIds(client.userId);
-      if (partyIds.has(event.partyId)) {
+      if (client.partyIds.has(event.partyId)) {
         try {
           client.ws.send(message);
         } catch {

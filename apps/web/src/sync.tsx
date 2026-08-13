@@ -47,7 +47,18 @@ export function SyncProvider({ user, children }: { user: User | null; children: 
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectDelay = useRef(1000);
   const handlersRef = useRef<Set<(event: SyncEvent) => void>>(new Set());
-  const lastLocalMutationAt = useRef(0);
+
+  // Debounce: coalesce rapid sync events into a single handler dispatch.
+  // If multiple events arrive within 300ms (e.g. rapid edits by another user),
+  // only the last one is dispatched — preventing refetch storms.
+  const pendingEvent = useRef<SyncEvent | null>(null);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const dispatchToHandlers = useCallback((event: SyncEvent) => {
+    for (const handler of handlersRef.current) {
+      try { handler(event); } catch {}
+    }
+  }, []);
 
   const connect = useCallback((token: string) => {
     // Clean up existing connection
@@ -70,12 +81,18 @@ export function SyncProvider({ user, children }: { user: User | null; children: 
     ws.onmessage = (e) => {
       try {
         const event = JSON.parse(e.data) as SyncEvent;
-        // Skip if this was a local mutation (same-tab dedup)
-        if (Date.now() - lastLocalMutationAt.current < 800) return;
-        // Fan out to all registered handlers
-        for (const handler of handlersRef.current) {
-          try { handler(event); } catch {}
-        }
+        // Debounce: store the latest event and schedule a dispatch.
+        // If another event arrives before the timer fires, the earlier one
+        // is replaced — only one refetch happens per 300ms window.
+        pendingEvent.current = event;
+        if (debounceTimer.current) return; // already scheduled, will pick up latest
+        debounceTimer.current = setTimeout(() => {
+          debounceTimer.current = null;
+          if (pendingEvent.current) {
+            dispatchToHandlers(pendingEvent.current);
+            pendingEvent.current = null;
+          }
+        }, 300);
       } catch {}
     };
 
@@ -95,7 +112,7 @@ export function SyncProvider({ user, children }: { user: User | null; children: 
     ws.onerror = () => {
       // onclose will handle reconnect
     };
-  }, []);
+  }, [dispatchToHandlers]);
 
   // Connect on login, disconnect on logout
   useEffect(() => {
@@ -113,6 +130,7 @@ export function SyncProvider({ user, children }: { user: User | null; children: 
 
     return () => {
       if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current);
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
       if (wsRef.current) {
         wsRef.current.onclose = null;
         wsRef.current.close();
@@ -126,9 +144,9 @@ export function SyncProvider({ user, children }: { user: User | null; children: 
     return () => { handlersRef.current.delete(handler); };
   }, []);
 
-  const markLocalMutation = useCallback(() => {
-    lastLocalMutationAt.current = Date.now();
-  }, []);
+  // markLocalMutation is kept for backward compatibility but is now a no-op.
+  // Echo suppression is handled server-side (ws.ts skips the actor).
+  const markLocalMutation = useCallback(() => {}, []);
 
   return (
     <SyncContext.Provider value={{ status, subscribe, markLocalMutation }}>
