@@ -157,6 +157,52 @@ function parseCr(raw: string): number {
   return parseFloat(raw) || 0;
 }
 
+/**
+ * Split fused actions. The OCR sometimes merges two actions into one entry.
+ * A new action starts when a line is just a name ending with '.' (optionally
+ * with a parenthetical like "(rechargement après...)").
+ * Example: "Cimeterre. Attaque...\nCrachat enflammé (rechargement...).\nLe triton..."
+ * → splits into [{name: "Cimeterre", ...}, {name: "Crachat enflammé", ...}]
+ */
+function splitFusedActions(entries: { name: string; text: string }[]): { name: string; text: string }[] {
+  const result: { name: string; text: string }[] = [];
+  for (const entry of entries) {
+    const lines = entry.text.split('\n');
+    let currentName = entry.name;
+    let currentText: string[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      // Check if this line is a new action name: starts with capital, ends with '.'
+      // and is short enough to be a name (not a full sentence).
+      // Must also NOT look like a continuation of a sentence (no lowercase start, no colon).
+      const isNameLine = /^([A-ZÀ-Ÿ][a-zà-ÿ''\s-]+(?:\s*\([^)]+\))?\.)$/.test(line)
+        && line.length < 80
+        && i > 0; // not the first line (that's the continuation of the current entry's name)
+
+      if (isNameLine) {
+        // Flush current action
+        if (currentText.length > 0) {
+          result.push({ name: currentName, text: currentText.join('\n').trim() });
+        }
+        // Start new action
+        currentName = line;
+        currentText = [];
+      } else {
+        currentText.push(lines[i]);
+      }
+    }
+    // Flush last
+    if (currentText.length > 0) {
+      result.push({ name: currentName, text: currentText.join('\n').trim() });
+    } else if (result.length === 0 || result[result.length - 1].name !== currentName) {
+      // Entry had no text after name — keep as-is
+      result.push({ name: currentName, text: entry.text });
+    }
+  }
+  return result;
+}
+
 /** Parse a trait/action text to extract attack bonus and damage dice */
 function parseActionInfo(action: { name: string; text: string }): SeedMonsterAction {
   const result: SeedMonsterAction = {
@@ -236,9 +282,9 @@ function convertToA(slug: string, raw: ToAStatBlock): SeedMonster {
     damageResistances: parseList(raw.damage_resistances),
     damageImmunities: parseList(raw.damage_immunities),
     conditionImmunities: parseList(raw.condition_immunities),
-    traits: (raw.traits || []).map(parseActionInfo),
-    actions: (raw.actions || []).map(parseActionInfo),
-    legendaryActions: (raw.legendary_actions || []).map(parseActionInfo),
+    traits: splitFusedActions(raw.traits || []).map(parseActionInfo),
+    actions: splitFusedActions(raw.actions || []).map(parseActionInfo),
+    legendaryActions: splitFusedActions(raw.legendary_actions || []).map(parseActionInfo),
     source: 'Tombe de l\'Annihilation',
     sourcePage: raw.page ?? null,
   };
@@ -251,7 +297,6 @@ function main() {
   const seedPath = resolve(ROOT, 'data', 'monsters-seed.json');
   const existing = JSON.parse(readFileSync(seedPath, 'utf8')) as SeedMonster[];
   console.log(`→ Existing monsters: ${existing.length}`);
-  const existingSlugs = new Set(existing.map((m) => m.slug));
 
   // Read all ToA stat blocks
   const files = readdirSync(TOA_STATBLOCKS)
@@ -260,38 +305,39 @@ function main() {
 
   console.log(`→ ToA stat block files: ${files.length}`);
 
-  const added: SeedMonster[] = [];
-  let skipped = 0;
-
+  // Convert all ToA stat blocks (re-import to pick up fixes)
+  const toaMonsters: SeedMonster[] = [];
   for (const file of files) {
     const slug = file.replace('.json', '');
-    if (existingSlugs.has(slug)) {
-      skipped++;
-      continue;
-    }
     try {
       const raw = JSON.parse(readFileSync(resolve(TOA_STATBLOCKS, file), 'utf8')) as ToAStatBlock;
       const seed = convertToA(slug, raw);
-      added.push(seed);
+      toaMonsters.push(seed);
     } catch (err: any) {
       console.warn(`  ⚠ failed to parse ${file}: ${err.message}`);
     }
   }
+  console.log(`  Converted: ${toaMonsters.length} ToA monsters`);
 
-  console.log(`  Added: ${added.length}, Skipped (already exist): ${skipped}`);
+  // Remove old ToA monsters from existing, then add fresh ones
+  const toaSlugs = new Set(toaMonsters.map((m) => m.slug));
+  const nonToA = existing.filter((m) => !toaSlugs.has(m.slug));
+  const replaced = existing.length - nonToA.length;
+  console.log(`  Replaced: ${replaced} existing ToA monsters`);
 
   // Merge and write
-  const merged = [...existing, ...added].sort((a, b) => a.nameFr.localeCompare(b.nameFr, 'fr'));
+  const merged = [...nonToA, ...toaMonsters].sort((a, b) => a.nameFr.localeCompare(b.nameFr, 'fr'));
   mkdirSync(resolve(ROOT, 'data'), { recursive: true });
   writeFileSync(seedPath, JSON.stringify(merged, null, 2), 'utf8');
   console.log(`✓ Wrote ${merged.length} monsters to ${seedPath}`);
 
   // Show samples
-  console.log('\nSample ToA monsters added:');
-  for (const slug of ['triton-du-feu-guerrier', 'acererak', 'atropal', 'chwinga', 'grung']) {
-    const m = added.find((a) => a.slug === slug);
+  console.log('\nSample ToA monsters:');
+  for (const slug of ['triton-du-feu-guerrier', 'acererak', 'atropal', 'chwinga', 'kamadan']) {
+    const m = toaMonsters.find((a) => a.slug === slug);
     if (m) {
-      console.log(`  ✓ ${m.nameFr} — CA ${m.armorClass} PV ${m.hitPoints} CR ${m.challengeRating} actions: ${m.actions.length}`);
+      console.log(`  ✓ ${m.nameFr} — CA ${m.armorClass} PV ${m.hitPoints} CR ${m.challengeRating}`);
+      console.log(`    Actions: ${m.actions.map(a => a.name).join(', ')}`);
     }
   }
 }
