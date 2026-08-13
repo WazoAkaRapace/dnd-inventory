@@ -1086,7 +1086,7 @@ function CategoryGroup({
   onTransfer,
   onMoveLocation,
 }: CategoryGroupProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const EMPTY_WATERSKIN_KG = 0.268;
   const totalWeight = entries.reduce((sum, e) => {
     const isEmptyWater = !!(e.notes?.includes('empty') && e.item.survivalTags?.includes('water'));
