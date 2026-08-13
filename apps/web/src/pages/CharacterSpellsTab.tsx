@@ -10,8 +10,15 @@ import {
   type CharacterSpell,
   type SpellSchool,
   type SpellcastingType,
+  type ClassInfo,
   SPELL_SCHOOL_LABELS_FR,
   DND_CLASSES,
+  ABILITY_LABELS_FR,
+  ABILITY_SHORT_FR,
+  abilityModifier,
+  proficiencyBonus,
+  spellSaveDC,
+  formatModifier,
   maxSpellSlots,
   findClass,
 } from '@dnd-inventory/shared';
@@ -62,6 +69,12 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
   const isCaster = castingType !== 'none';
 
   const level = character.level ?? 1;
+  const profBonus = proficiencyBonus(level);
+  const castingAbility = classInfo?.spellcastingAbility;
+  const castingMod = isCaster && castingAbility
+    ? abilityModifier((character[castingAbility as keyof Character] as number) ?? 10)
+    : 0;
+
   const slots = isCaster ? maxSpellSlots(level, castingType) : [0,0,0,0,0,0,0,0,0];
   const slotsUsed = character.spellSlotsUsed ?? [0,0,0,0,0,0,0,0,0];
 
@@ -223,6 +236,10 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
     selectedClass: catalogClass,
     addingSpellId,
     knownSpellIds: new Set(charSpells.map((cs) => cs.spell.id)),
+    castingMod,
+    profBonus,
+    isCaster,
+    charLevel: level,
     onSearch: setCatalogSearch,
     onLevel: setCatalogLevel,
     onSchool: setCatalogSchool,
@@ -352,6 +369,13 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                               {spell.higherLevelFr && (
                                 <p className="text-ink-400 italic"><strong>Aux niveaux supérieurs :</strong> {spell.higherLevelFr}</p>
                               )}
+                              <SpellStatBadges
+                                spell={spell}
+                                castingMod={castingMod}
+                                profBonus={profBonus}
+                                isCaster={isCaster}
+                                charLevel={charLevel}
+                              />
                               <div className="flex flex-wrap gap-x-3 gap-y-0.5 pt-1 text-ink-400">
                                 <span>⏱ {spell.castingTime}</span>
                                 <span>📡 {spell.rangeText}</span>
@@ -388,6 +412,118 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
   );
 }
 
+// ---------- Damage type translations (English → French) ----------
+const DAMAGE_TYPE_FR: Record<string, string> = {
+  fire: 'feu', cold: 'froid', lightning: 'foudre', thunder: 'tonnerre',
+  acid: 'acide', poison: 'poison', necrotic: 'nécrotique', radiant: 'radiant',
+  force: 'force', psychic: 'psychique', bludgeoning: 'contondant',
+  piercing: 'perforant', slashing: 'tranchant',
+};
+
+// DC success type labels
+const DC_SUCCESS_FR: Record<string, string> = {
+  none: 'Aucun effet en cas de réussite',
+  half: 'Moitié des dégâts en cas de réussite',
+  other: 'Effet réduit en cas de réussite',
+};
+
+/** Parse JSON safely, returning null on failure. */
+function safeParse<T>(json: string | null): T | null {
+  if (!json) return null;
+  try { return JSON.parse(json) as T; } catch { return null; }
+}
+
+/** Compute damage dice string for a spell based on character level / spell level. */
+function computeDamageDice(spell: Spell, charLevel: number): string | null {
+  const dmg = safeParse<{
+    damage_type?: { index?: string; name?: string };
+    damage_at_slot_level?: Record<string, string>;
+    damage_at_character_level?: Record<string, string>;
+  }>(spell.damageJson);
+  if (!dmg) return null;
+
+  let dice: string | null = null;
+  const damageType = dmg.damage_type?.index ?? '';
+
+  if (dmg.damage_at_character_level) {
+    // Cantrip — scale with character level. Pick highest key ≤ charLevel.
+    const levels = Object.keys(dmg.damage_at_character_level).map(Number).sort((a, b) => a - b);
+    const applicable = levels.filter((l) => l <= charLevel);
+    const key = applicable.length > 0 ? applicable[applicable.length - 1] : levels[0];
+    dice = dmg.damage_at_character_level[String(key)] ?? null;
+  } else if (dmg.damage_at_slot_level) {
+    // Slotted spell — show dice at the spell's base level (first key).
+    const firstKey = Object.keys(dmg.damage_at_slot_level).sort((a, b) => Number(a) - Number(b))[0];
+    dice = firstKey ? dmg.damage_at_slot_level[firstKey] : null;
+  }
+
+  if (!dice) return null;
+  const typeFr = DAMAGE_TYPE_FR[damageType] ?? damageType ?? '';
+  return `${dice}${typeFr ? ' ' + typeFr : ''}`;
+}
+
+/** Render spell stat badges: save DC, attack bonus, damage — computed from character stats. */
+function SpellStatBadges({
+  spell,
+  castingMod,
+  profBonus,
+  isCaster,
+  charLevel,
+}: {
+  spell: Spell;
+  castingMod: number;
+  profBonus: number;
+  isCaster: boolean;
+  charLevel: number;
+}) {
+  if (!isCaster) return null;
+
+  const dc = safeParse<{
+    dc_type?: { index?: string; name?: string };
+    dc_success?: string;
+  }>(spell.dcJson);
+
+  const damageDice = computeDamageDice(spell, charLevel);
+  const attackBonus = castingMod + profBonus;
+  const dcValue = spellSaveDC(castingMod, profBonus);
+
+  // No relevant data to show
+  if (!dc && !spell.attackType && !damageDice) return null;
+
+  return (
+    <div className="flex flex-wrap gap-1.5 pt-1.5">
+      {dc && (
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-50 text-blue-800 text-[11px] font-medium border border-blue-200">
+          🛡 DD {dcValue}
+          {dc.dc_type?.index && (
+            <span className="text-blue-500">
+              · {ABILITY_SHORT_FR[dc.dc_type.index as keyof typeof ABILITY_SHORT_FR] ?? dc.dc_type.index.toUpperCase()}
+            </span>
+          )}
+          {dc.dc_success && dc.dc_success !== 'none' && (
+            <span className="text-blue-400">
+              · {DC_SUCCESS_FR[dc.dc_success] ?? ''}
+            </span>
+          )}
+        </span>
+      )}
+      {spell.attackType && (
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-red-50 text-red-800 text-[11px] font-medium border border-red-200">
+          🎯 {formatModifier(attackBonus)}
+          <span className="text-red-500">
+            · {spell.attackType === 'ranged' ? 'Distance' : 'Corps à corps'}
+          </span>
+        </span>
+      )}
+      {damageDice && (
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50 text-orange-800 text-[11px] font-medium border border-orange-200">
+          ⚔ {damageDice}
+        </span>
+      )}
+    </div>
+  );
+}
+
 // ---------- Spell catalog browser ----------
 
 function SpellCatalog({
@@ -401,6 +537,10 @@ function SpellCatalog({
   selectedClass,
   addingSpellId,
   knownSpellIds,
+  castingMod,
+  profBonus,
+  isCaster,
+  charLevel,
   onSearch,
   onLevel,
   onSchool,
@@ -418,6 +558,10 @@ function SpellCatalog({
   selectedClass: string;
   addingSpellId: number | null;
   knownSpellIds: Set<number>;
+  castingMod: number;
+  profBonus: number;
+  isCaster: boolean;
+  charLevel: number;
   onSearch: (v: string) => void;
   onLevel: (v: string) => void;
   onSchool: (v: string) => void;
@@ -525,6 +669,13 @@ function SpellCatalog({
                   {isExpanded && (
                     <div className="px-3 pb-3 pt-1 border-t border-parchment-200 text-xs text-ink-600 space-y-1.5">
                       <p>{spell.descriptionFr ?? spell.description}</p>
+                      <SpellStatBadges
+                        spell={spell}
+                        castingMod={castingMod}
+                        profBonus={profBonus}
+                        isCaster={isCaster}
+                        charLevel={charLevel}
+                      />
                       <div className="flex flex-wrap gap-x-3 gap-y-0.5 pt-1 text-ink-400">
                         <span>⏱ {spell.castingTime}</span>
                         <span>📡 {spell.rangeText}</span>
