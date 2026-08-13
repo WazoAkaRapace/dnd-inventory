@@ -1,98 +1,169 @@
-# D&D Inventory
+# ⚔️ Inventaire D&D
 
-A mobile-first inventory management app for D&D 5e parties. Track items, weight (in **kg / SI**), encumbrance, and coins across the whole party. GMs can monitor and modify every player's inventory in real time.
+Une application web mobile-first de gestion de fiche de personnage et d'inventaire pour D&D 5e, entièrement en **français** avec le **système métrique**.
 
-Sibling project to the *Tomb of Annihilation* DM dashboard — exposes a dev API so the ToA site can integrate against it.
+Gérez l'équipement, l'encombrance, les sorts, les compétences, les caractéristiques et plus encore — pour tout votre groupe, en temps réel.
 
-## Stack
+![Party page](docs/screenshot-party.png)
 
-| Layer    | Tech                                            |
-| -------- | ----------------------------------------------- |
-| Frontend | React 18 + Vite + Tailwind CSS (mobile-first)   |
-| Backend  | Fastify 4 + better-sqlite3 (Node 20)            |
-| Auth     | Username/password (bcrypt + JWT)                |
-| Data     | 5e SRD items (5e-bits/5e-database, MIT + OGL)   |
-| Deploy   | Docker Compose (2 services)                     |
+## ✨ Fonctionnalités
 
-All weights are stored and displayed in **kilograms**. SRD source data (in lb) is converted at import time.
+### 🎒 Inventaire complet
+- 599 objets du SRD 5e (catalogue consultable et filtrable)
+- Poids en **kilogrammes** (valeurs métriques officielles du SRD français)
+- Encombrance avec barre visuelle et effets (paliers STR × 2.5 / 5 / 7.5 kg)
+- Emplacements de stockage : porté, montures, conteneurs (avec poids par emplacement)
+- Bourse : pièces de cuivre, argent, électrum, or, platine
+- Transfert d'objets entre personnages
 
-## Quick start (dev)
+![Inventory](docs/screenshot-inventory.png)
+![Mobile inventory](docs/mobile-inventory.png)
+
+### ⚔️ Caractéristiques
+- 6 scores de caractéristiques (FOR, DEX, CON, INT, SAG, CHA) avec modificateurs
+- Classe, niveau, race, historique
+- Stats dérivées : bonus de maîtrise, initiative, perception passive, **CA calculée** (depuis l'armure équipée + DEX), DD de sauvegarde des sorts, dé de vie
+
+![Stats](docs/screenshot-stats.png)
+
+### 🎯 Compétences
+- 18 compétences + 6 jets de sauvegarde
+- Bascule de maîtrise en un clic (calcul automatique des modificateurs)
+- Groupé par caractéristique
+
+![Skills](docs/screenshot-skills.png)
+
+### ✨ Sorts
+- **490 sorts** du SRD + extensions (Xanathar, Tasha, Fizban) — tous en français depuis AideDD.org
+- Traqueur d'emplacements de sort (calculé selon la classe et le niveau)
+- Liste de sorts connus/préparés avec bascule ★/☆
+- Limite de préparation par classe (formule SRD officielle)
+- Grimoire consultable avec filtres par classe, niveau, école
+- **Badges de stats calculés** : DD de sauvegarde, bonus d'attaque, dés de dégâts (mis à l'échelle pour les tours de magie)
+
+![Spells](docs/screenshot-spells.png)
+![Mobile spells](docs/mobile-spells.png)
+
+### 📋 Traits
+- Capacités libres (classe, race, historique, dons, personnalisé)
+- **Système de modèles** : insérez des valeurs calculées avec `{{save_dc}}`, `{{prof}}`, `{{str_mod}}`, `{{skill:perception}}`, etc.
+- Aperçu en direct lors de l'édition
+
+![Traits](docs/screenshot-traits.png)
+
+### 👤 Description
+- Portrait du personnage (téléversement d'image)
+- Attributs physiques : alignement, sexe, âge, taille, poids, peau, yeux, cheveux
+- Personnalité : traits, idéaux, liens, défauts
+
+![Description](docs/screenshot-description.png)
+
+### 🎭 PNJ
+- Tableau de bord des PNJ partagé au sein du groupe
+- Création/édition par tout membre du groupe
+- Filtres par faction, disposition, statut
+
+### 📝 Notes
+- Notes libres avec formatage Markdown simple
+- Mode édition + aperçu en direct
+- Idéal pour les quêtes, le lore, les rappels
+
+![Notes](docs/screenshot-notes.png)
+
+## 🏗️ Stack technique
+
+| Couche | Technologie |
+|---|---|
+| Frontend | React 18 + Vite + Tailwind CSS (mobile-first, PWA) |
+| Backend | Fastify 5 + better-sqlite3 (Node 20) |
+| Auth | bcrypt + JWT |
+| Sync | WebSocket temps réel (synchronisation chirurgicale) |
+| Données | 5e SRD (5e-bits/5e-database) + AideDD.org |
+| Deploy | Docker Compose multi-arch (GHCR) |
+
+## 🚀 Démarrage rapide
+
+### Docker (images pré-construites)
 
 ```bash
-# 1. Install dependencies (all workspaces)
-npm install
-
-# 2. Import the SRD item catalog (lb → kg) into data/items-seed.json
-npm run import-items
-
-# 3. Run DB migration + seed items
-npm run migrate
-npm run seed
-
-# 4. Start both API and web in dev mode
-npm run dev
-```
-
-- Web app: http://localhost:5173
-- API: http://localhost:4000  (health check: `/api/health`)
-
-## Quick start (Docker — pre-built images)
-
-```bash
-# Set a secure JWT secret
-export JWT_SECRET="your-secret-here"
-
-# Pull and run the pre-built images from GitHub Container Registry
+export JWT_SECRET="votre-secret-ici"
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-- Web app: http://localhost:8080
-- API: http://localhost:4010
+- App : http://localhost:8080
+- API : http://localhost:4010
 
-Images are published automatically on every push to `main`:
-- `ghcr.io/wazoakarapace/dnd-inventory-api:main`
-- `ghcr.io/wazoakarapace/dnd-inventory-web:main`
-
-## Quick start (Docker — build from source)
+### Docker (build depuis le source)
 
 ```bash
 docker compose up --build
 ```
 
-- Web app: http://localhost:8080
-- API: http://localhost:4010
+### Développement local
 
-## Dev API (for ToA integration)
-
-The API runs on port 4000 with CORS enabled. Key endpoints:
-
-```
-GET  /api/health
-POST /api/auth/register    { username, password, display_name } → { token }
-POST /api/auth/login       { username, password } → { token }
-GET  /api/me               (Bearer token) → user
-GET  /api/items            ?search=&category=&rarity= → paginated catalog
-GET  /api/characters/:id/inventory   → items + computed weight (kg) + encumbrance
+```bash
+npm install
+npm run import-items    # Importe le catalogue SRD (lb → kg)
+npm run import-spells   # Importe les sorts SRD
+npm run migrate         # Crée les tables
+npm run seed            # Insère les données
+npm run dev             # Démarre API + Web
 ```
 
-See `docs/API.md` (generated from Fastify OpenAPI) once the server is running.
+- Web : http://localhost:5173
+- API : http://localhost:4000
 
-## Encumbrance
+## 📊 Encombrance (SRD français, système métrique)
 
-DMG variant encumbrance, official French SRD metric values (5e-drs.fr):
+| Palier | Seuil (kg) | Effet |
+|---|---|---|
+| Encombré | FOR × **2.5** kg | Vitesse −3 m |
+| Lourdement encombré | FOR × **5** kg | Vitesse −6 m · Désavantage FOR/CON |
+| Surchargé | FOR × **7.5** kg | Immobilisé |
 
-| Tier                | Threshold (kg)     | Effect                                       |
-| ------------------- | ------------------ | -------------------------------------------- |
-| Encumbered          | STR × **2.5** kg   | Vitesse réduite de 3 m                       |
-| Heavily encumbered  | STR × **5** kg     | Vitesse réduite de 6 m · Désavantage FOR/CON |
-| Max carry           | STR × **7.5** kg   | Immobilisé — impossible de se déplacer       |
+Poids des pièces inclus : 1 pièce ≈ 10 g (50 pièces = 0.5 kg).
 
-Coin weight is included: 1 coin ≈ 10 g (50 coins = 0.5 kg, 100 coins = 1 kg). A hoard of 5000 gold pieces weighs 50 kg.
+## 🎭 Classes prises en charge
 
-## Item data license
+13 classes du SRD + extensions, avec données propres à chaque classe :
 
-Item data is from [5e-bits/5e-database](https://github.com/5e-bits/5e-database) — MIT licensed code, OGL v1.0a content. See `data/LICENSE`.
+| Classe | Dé de vie | Incantation | Préparation | Source |
+|---|---|---|---|---|
+| Artificier | d8 | Demi (INT) | Oui | Tasha's |
+| Barde | d8 | Complète (CHA) | Non | SRD |
+| Clerc | d8 | Complète (SAG) | Oui | SRD |
+| Druide | d8 | Complète (SAG) | Oui | SRD |
+| Ensorceleur | d6 | Complète (CHA) | Non | SRD |
+| Magicien | d6 | Complète (INT) | Oui | SRD |
+| Occultiste | d8 | Pacte (CHA) | Non | SRD |
+| Paladin | d10 | Demi (CHA) | Oui | SRD |
+| Rôdeur | d10 | Demi (SAG) | Oui | SRD |
+| Barbare, Guerrier, Moine, Roublard | — | Non | — | SRD |
 
-## License
+Chaque classe calcule automatiquement : dés de vie, sauvegardes maîtrisées, emplacements de sort, DD de sauvegarde, limite de préparation.
 
-MIT (code). Item data: OGL v1.0a.
+## 🔄 Synchronisation temps réel
+
+L'application utilise WebSocket pour synchroniser instantanément tous les joueurs connectés :
+- **Suppression d'écho serveur** : l'auteur d'une action ne reçoit pas l'événement (pas de double-rafraîchissement)
+- **Debounce 300ms** : les événements rapides sont coalescés (1 rafraîchissement au lieu de N)
+- **Rafraîchissement silencieux** : les pages de liste ne clignotent pas (pas de spinner)
+- **Garde de diff** : les réponses identiques ne déclenchent pas de re-rendu
+
+## 📱 Mobile-first
+
+L'interface est conçue pour mobile d'abord, avec adaptation responsive desktop :
+
+![Mobile party](docs/mobile-party.png)
+![Mobile stats](docs/mobile-stats.png)
+
+## 📜 Licence
+
+- **Code** : MIT
+- **Données d'objets** : [5e-bits/5e-database](https://github.com/5e-bits/5e-database) (MIT + OGL v1.0a)
+- **Traductions françaises** : [AideDD.org](https://www.aidedd.org) / [5e-drs.fr](https://5e-drs.fr)
+
+## 🔗 Liens
+
+- **Dépôt** : [github.com/WazoAkaRapace/dnd-inventory](https://github.com/WazoAkaRapace/dnd-inventory)
+- **Images Docker** : `ghcr.io/wazoakarapace/dnd-inventory-api:main` / `ghcr.io/wazoakarapace/dnd-inventory-web:main`
