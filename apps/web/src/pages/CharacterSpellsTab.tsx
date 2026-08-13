@@ -374,7 +374,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                                 castingMod={castingMod}
                                 profBonus={profBonus}
                                 isCaster={isCaster}
-                                charLevel={charLevel}
+                                charLevel={level}
                               />
                               <div className="flex flex-wrap gap-x-3 gap-y-0.5 pt-1 text-ink-400">
                                 <span>⏱ {spell.castingTime}</span>
