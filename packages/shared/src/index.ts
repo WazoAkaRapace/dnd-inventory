@@ -435,7 +435,7 @@ export type ProficiencyLevel = 0 | 1 | 2;
 
 // ---------- Classes (SRD reference: hit dice, saves, spellcasting) ----------
 
-export type SpellcastingType = 'none' | 'full' | 'half' | 'pact';
+export type SpellcastingType = 'none' | 'full' | 'half' | 'pact' | 'artificier';
 
 export interface ClassInfo {
   name: string;                    // French: "Magicien", "Guerrier"
@@ -447,7 +447,7 @@ export interface ClassInfo {
 }
 
 export const DND_CLASSES: ClassInfo[] = [
-  { name: 'Artificier',   hitDie: 8,  savingThrows: ['constitution', 'intelligence'], spellcasting: 'half', spellcastingAbility: 'intelligence', preparesSpells: true },
+  { name: 'Artificier',   hitDie: 8,  savingThrows: ['constitution', 'intelligence'], spellcasting: 'artificier', spellcastingAbility: 'intelligence', preparesSpells: true },
   { name: 'Barbare',      hitDie: 12, savingThrows: ['strength', 'constitution'],  spellcasting: 'none', preparesSpells: false },
   { name: 'Barde',        hitDie: 8,  savingThrows: ['dexterity', 'charisma'],     spellcasting: 'full', spellcastingAbility: 'charisma', preparesSpells: false },
   { name: 'Clerc',        hitDie: 8,  savingThrows: ['wisdom', 'charisma'],        spellcasting: 'full', spellcastingAbility: 'wisdom', preparesSpells: true },
@@ -486,7 +486,8 @@ export function computePreparedSpellsLimit(
 ): number | null {
   if (!classInfo.preparesSpells || !classInfo.spellcastingAbility) return null;
   const mod = abilityModifier(castingAbilityScore);
-  const effectiveLevel = classInfo.spellcasting === 'half' ? Math.floor(level / 2) : level;
+  const effectiveLevel = (classInfo.spellcasting === 'half' || classInfo.spellcasting === 'artificier')
+    ? Math.floor(level / 2) : level;
   return Math.max(1, mod + effectiveLevel);
 }
 
@@ -548,6 +549,35 @@ export const SPELL_SLOTS_HALF: number[][] = [
 ];
 
 /**
+ * Artificier spell slots by level (1-20).
+ * Unlike Paladin/Ranger, the Artificier gets spell slots at level 1
+ * and follows its own progression table from Tasha's Cauldron.
+ * Max spell level is 5 (9-element array, entries 6-9 are always 0).
+ */
+export const SPELL_SLOTS_ARTIFICIER: number[][] = [
+  [2,0,0,0,0,0,0,0,0], // L1
+  [2,0,0,0,0,0,0,0,0], // L2
+  [3,0,0,0,0,0,0,0,0], // L3
+  [3,0,0,0,0,0,0,0,0], // L4
+  [4,2,0,0,0,0,0,0,0], // L5
+  [4,2,0,0,0,0,0,0,0], // L6
+  [4,3,0,0,0,0,0,0,0], // L7
+  [4,3,0,0,0,0,0,0,0], // L8
+  [4,3,2,0,0,0,0,0,0], // L9
+  [4,3,2,0,0,0,0,0,0], // L10
+  [4,3,3,0,0,0,0,0,0], // L11
+  [4,3,3,0,0,0,0,0,0], // L12
+  [4,3,3,1,0,0,0,0,0], // L13
+  [4,3,3,1,0,0,0,0,0], // L14
+  [4,3,3,2,0,0,0,0,0], // L15
+  [4,3,3,2,0,0,0,0,0], // L16
+  [4,3,3,3,1,0,0,0,0], // L17
+  [4,3,3,3,1,0,0,0,0], // L18
+  [4,3,3,3,2,0,0,0,0], // L19
+  [4,3,3,3,2,0,0,0,0], // L20
+];
+
+/**
  * Pact magic (Warlock) slots by level (1-20).
  * Warlocks get 2 slots of a single level that scales with character level.
  * Represented as [slotLevel-1 filled with the count, rest 0].
@@ -579,7 +609,11 @@ export const SPELL_SLOTS_PACT: number[][] = [
 /** Get max spell slots for a character level + spellcasting type. Returns 9-element array. */
 export function maxSpellSlots(level: number, type: SpellcastingType): number[] {
   const idx = Math.max(0, Math.min(19, level - 1));
-  const table = type === 'half' ? SPELL_SLOTS_HALF : type === 'pact' ? SPELL_SLOTS_PACT : SPELL_SLOTS_FULL;
+  const table =
+    type === 'half' ? SPELL_SLOTS_HALF :
+    type === 'pact' ? SPELL_SLOTS_PACT :
+    type === 'artificier' ? SPELL_SLOTS_ARTIFICIER :
+    SPELL_SLOTS_FULL;
   return table[idx] ?? [0,0,0,0,0,0,0,0,0];
 }
 
