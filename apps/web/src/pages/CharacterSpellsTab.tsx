@@ -21,6 +21,7 @@ import {
   formatModifier,
   maxSpellSlots,
   findClass,
+  computePreparedSpellsLimit,
 } from '@dnd-inventory/shared';
 
 interface Props {
@@ -77,6 +78,12 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
 
   const slots = isCaster ? maxSpellSlots(level, castingType) : [0,0,0,0,0,0,0,0,0];
   const slotsUsed = character.spellSlotsUsed ?? [0,0,0,0,0,0,0,0,0];
+
+  // Spell preparation limit (classes that prepare: Magicien, Clerc, Druide, Paladin, Rôdeur, Artificier)
+  const preparedLimit = classInfo && castingAbility
+    ? computePreparedSpellsLimit(classInfo, level, (character[castingAbility as keyof Character] as number) ?? 10)
+    : null;
+  const preparedCount = charSpells.filter((cs) => cs.prepared).length;
 
   // Fetch character's known spells
   const fetchCharSpells = useCallback(async () => {
@@ -301,8 +308,17 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
         {/* Known spells */}
         <section className="card p-4 sm:p-5 space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="font-display text-lg font-semibold">
+            <h2 className="font-display text-lg font-semibold flex items-center gap-2">
               Sorts connus <span className="text-ink-400 text-sm font-normal">({charSpells.length})</span>
+              {preparedLimit !== null && (
+                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                  preparedCount > preparedLimit
+                    ? 'bg-red-100 text-red-700 border border-red-200'
+                    : 'bg-blood-50 text-blood-700 border border-blood-200'
+                }`}>
+                  {preparedCount} / {preparedLimit} préparés
+                </span>
+              )}
             </h2>
             {/* Mobile: open catalog as bottom sheet */}
             <button

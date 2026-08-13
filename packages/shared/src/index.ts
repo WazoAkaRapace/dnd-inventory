@@ -443,22 +443,23 @@ export interface ClassInfo {
   savingThrows: AbilityKey[];      // 2 abilities
   spellcasting: SpellcastingType;
   spellcastingAbility?: AbilityKey; // INT, WIS, CHA (for casters)
+  preparesSpells: boolean;         // true = must prepare from known list (Wizard/Cleric/Druid/Paladin/Ranger/Artificer)
 }
 
 export const DND_CLASSES: ClassInfo[] = [
-  { name: 'Artificier',   hitDie: 8,  savingThrows: ['constitution', 'intelligence'], spellcasting: 'half', spellcastingAbility: 'intelligence' },
-  { name: 'Barbare',      hitDie: 12, savingThrows: ['strength', 'constitution'],  spellcasting: 'none' },
-  { name: 'Barde',        hitDie: 8,  savingThrows: ['dexterity', 'charisma'],     spellcasting: 'full', spellcastingAbility: 'charisma' },
-  { name: 'Clerc',        hitDie: 8,  savingThrows: ['wisdom', 'charisma'],        spellcasting: 'full', spellcastingAbility: 'wisdom' },
-  { name: 'Druide',       hitDie: 8,  savingThrows: ['intelligence', 'wisdom'],    spellcasting: 'full', spellcastingAbility: 'wisdom' },
-  { name: 'Ensorceleur',  hitDie: 6,  savingThrows: ['constitution', 'charisma'],  spellcasting: 'full', spellcastingAbility: 'charisma' },
-  { name: 'Guerrier',     hitDie: 10, savingThrows: ['strength', 'constitution'],  spellcasting: 'none' },
-  { name: 'Magicien',     hitDie: 6,  savingThrows: ['intelligence', 'wisdom'],    spellcasting: 'full', spellcastingAbility: 'intelligence' },
-  { name: 'Moine',        hitDie: 8,  savingThrows: ['strength', 'dexterity'],     spellcasting: 'none' },
-  { name: 'Occultiste',   hitDie: 8,  savingThrows: ['wisdom', 'charisma'],        spellcasting: 'pact', spellcastingAbility: 'charisma' },
-  { name: 'Paladin',      hitDie: 10, savingThrows: ['wisdom', 'charisma'],        spellcasting: 'half', spellcastingAbility: 'charisma' },
-  { name: 'Rôdeur',       hitDie: 10, savingThrows: ['strength', 'dexterity'],     spellcasting: 'half', spellcastingAbility: 'wisdom' },
-  { name: 'Roublard',     hitDie: 8,  savingThrows: ['dexterity', 'intelligence'], spellcasting: 'none' },
+  { name: 'Artificier',   hitDie: 8,  savingThrows: ['constitution', 'intelligence'], spellcasting: 'half', spellcastingAbility: 'intelligence', preparesSpells: true },
+  { name: 'Barbare',      hitDie: 12, savingThrows: ['strength', 'constitution'],  spellcasting: 'none', preparesSpells: false },
+  { name: 'Barde',        hitDie: 8,  savingThrows: ['dexterity', 'charisma'],     spellcasting: 'full', spellcastingAbility: 'charisma', preparesSpells: false },
+  { name: 'Clerc',        hitDie: 8,  savingThrows: ['wisdom', 'charisma'],        spellcasting: 'full', spellcastingAbility: 'wisdom', preparesSpells: true },
+  { name: 'Druide',       hitDie: 8,  savingThrows: ['intelligence', 'wisdom'],    spellcasting: 'full', spellcastingAbility: 'wisdom', preparesSpells: true },
+  { name: 'Ensorceleur',  hitDie: 6,  savingThrows: ['constitution', 'charisma'],  spellcasting: 'full', spellcastingAbility: 'charisma', preparesSpells: false },
+  { name: 'Guerrier',     hitDie: 10, savingThrows: ['strength', 'constitution'],  spellcasting: 'none', preparesSpells: false },
+  { name: 'Magicien',     hitDie: 6,  savingThrows: ['intelligence', 'wisdom'],    spellcasting: 'full', spellcastingAbility: 'intelligence', preparesSpells: true },
+  { name: 'Moine',        hitDie: 8,  savingThrows: ['strength', 'dexterity'],     spellcasting: 'none', preparesSpells: false },
+  { name: 'Occultiste',   hitDie: 8,  savingThrows: ['wisdom', 'charisma'],        spellcasting: 'pact', spellcastingAbility: 'charisma', preparesSpells: false },
+  { name: 'Paladin',      hitDie: 10, savingThrows: ['wisdom', 'charisma'],        spellcasting: 'half', spellcastingAbility: 'charisma', preparesSpells: true },
+  { name: 'Rôdeur',       hitDie: 10, savingThrows: ['strength', 'dexterity'],     spellcasting: 'half', spellcastingAbility: 'wisdom', preparesSpells: true },
+  { name: 'Roublard',     hitDie: 8,  savingThrows: ['dexterity', 'intelligence'], spellcasting: 'none', preparesSpells: false },
 ];
 
 /** Find class info by name (case-insensitive, accent-insensitive match). */
@@ -468,6 +469,25 @@ export function findClass(name: string | null | undefined): ClassInfo | null {
   return DND_CLASSES.find((c) =>
     c.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') === normalized
   ) ?? null;
+}
+
+/**
+ * Compute the number of spells a character can have prepared.
+ * Returns null for classes that don't prepare spells (Barde, Ensorceleur, Occultiste, non-casters).
+ *
+ * SRD rules:
+ * - Full casters (Magicien, Clerc, Druide): casting ability mod + class level (min 1)
+ * - Half casters (Paladin, Rôdeur, Artificier): casting ability mod + floor(level / 2) (min 1)
+ */
+export function computePreparedSpellsLimit(
+  classInfo: ClassInfo,
+  level: number,
+  castingAbilityScore: number,
+): number | null {
+  if (!classInfo.preparesSpells || !classInfo.spellcastingAbility) return null;
+  const mod = abilityModifier(castingAbilityScore);
+  const effectiveLevel = classInfo.spellcasting === 'half' ? Math.floor(level / 2) : level;
+  return Math.max(1, mod + effectiveLevel);
 }
 
 // ---------- Spell Slots (Emplacements de sort) ----------
