@@ -94,6 +94,8 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
 
       const category = body.category ?? 'custom';
       const description = body.description ?? null;
+      const counterMax = body.counterMax ?? null;
+      const counterCurrent = counterMax ?? null; // initialize to max
 
       // Compute sort_order as MAX(sort_order)+1 for this character (0 if none yet).
       const maxRow = db
@@ -102,9 +104,9 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
       const sortOrder = (maxRow?.max_sort ?? -1) + 1;
 
       const info = db.prepare(`
-        INSERT INTO character_features (character_id, title, category, description, sort_order)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(char.id, body.title.trim(), category, description, sortOrder);
+        INSERT INTO character_features (character_id, title, category, description, counter_max, counter_current, sort_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(char.id, body.title.trim(), category, description, counterMax, counterCurrent, sortOrder);
 
       const featureId = info.lastInsertRowid as number;
       const row = db.prepare('SELECT * FROM character_features WHERE id = ?').get(featureId);
@@ -154,6 +156,24 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
       if (body.description !== undefined) {
         sets.push('description = ?');
         vals.push(body.description);
+      }
+      if (body.counterMax !== undefined) {
+        sets.push('counter_max = ?');
+        vals.push(body.counterMax);
+        // If setting a new max and current is null or exceeds new max, reset to max
+        if (body.counterMax !== null && (feature.counter_current === null || feature.counter_current > body.counterMax)) {
+          sets.push('counter_current = ?');
+          vals.push(body.counterMax);
+        }
+        // If removing the counter (null), also clear current
+        if (body.counterMax === null) {
+          sets.push('counter_current = ?');
+          vals.push(null);
+        }
+      }
+      if (body.counterCurrent !== undefined) {
+        sets.push('counter_current = ?');
+        vals.push(body.counterCurrent);
       }
       if (sets.length === 0) return reply.code(400).send({ error: 'no fields to update' });
       vals.push(feature.id);

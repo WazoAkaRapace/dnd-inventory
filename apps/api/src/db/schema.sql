@@ -220,6 +220,8 @@ CREATE TABLE IF NOT EXISTS character_features (
   title         TEXT NOT NULL,
   category      TEXT NOT NULL DEFAULT 'custom',  -- class/racial/background/feat/custom
   description   TEXT,                             -- template text with {{variables}}
+  counter_max      INTEGER,                       -- null/0 = no counter; positive = max charges
+  counter_current  INTEGER,                       -- current charge count
   sort_order    INTEGER NOT NULL DEFAULT 0,
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );

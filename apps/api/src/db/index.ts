@@ -116,6 +116,10 @@ const COLUMN_MIGRATIONS: Record<string, Array<{ name: string; ddl: string }>> = 
   inventory: [
     { name: 'storage_location_id', ddl: 'INTEGER REFERENCES storage_locations(id) ON DELETE SET NULL' },
   ],
+  character_features: [
+    { name: 'counter_max', ddl: 'INTEGER' },
+    { name: 'counter_current', ddl: 'INTEGER' },
+  ],
 };
 
 /**

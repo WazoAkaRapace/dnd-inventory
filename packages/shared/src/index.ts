@@ -764,6 +764,8 @@ export interface CharacterFeature {
   title: string;
   category: FeatureCategory;
   description: string | null;  // template text with {{variables}}
+  counterMax: number | null;   // null/0 = no counter; positive = max charges
+  counterCurrent: number | null;
   sortOrder: number;
   createdAt: string;
 }
@@ -772,12 +774,15 @@ export interface CreateCharacterFeaturePayload {
   title: string;
   category?: FeatureCategory;
   description?: string;
+  counterMax?: number;
 }
 
 export interface PatchCharacterFeaturePayload {
   title?: string;
   category?: FeatureCategory;
   description?: string | null;
+  counterMax?: number | null;
+  counterCurrent?: number | null;
 }
 
 export const FEATURE_CATEGORY_LABELS_FR: Record<FeatureCategory, string> = {
