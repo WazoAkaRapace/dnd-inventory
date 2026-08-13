@@ -111,7 +111,9 @@ export default function CombatantRow({
     <div
       className={`card p-3 transition-all ${
         isCurrent ? 'ring-2 ring-blood-500 shadow-lg' : ''
-      } ${combatant.defeated ? 'opacity-50 grayscale' : ''}`}
+      } ${combatant.defeated ? 'opacity-50 grayscale' : ''} ${
+        combatant.type === 'player' ? 'bg-blue-50/60' : 'bg-red-50/40'
+      }`}
     >
       <div className="flex items-center gap-3">
         {/* Initiative (hidden when shown in group header) */}
@@ -145,15 +147,15 @@ export default function CombatantRow({
           </div>
         )}
 
-        {/* Name + type */}
+        {/* Name + status badges */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-display font-semibold">
-              {combatant.type === 'player' ? '🧙' : '👹'} {label ?? combatant.name}
+          <div className="flex items-center gap-2">
+            <span className="font-display font-semibold truncate">
+              {label ?? combatant.name}
             </span>
-            {combatant.defeated && <span className="text-lg">💀</span>}
+            {combatant.defeated && <span className="text-lg shrink-0">💀</span>}
             {isCurrent && !combatant.defeated && (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-blood-600 text-parchment-50 animate-pulse">
+              <span className="text-xs px-1.5 py-0.5 rounded bg-blood-600 text-parchment-50 animate-pulse shrink-0">
                 ◀ Tour
               </span>
             )}

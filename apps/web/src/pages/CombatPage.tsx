@@ -458,10 +458,12 @@ function CombatantList({
             {/* Group header (only for multi-member groups) */}
             {isGroup && (
               <div className={`flex items-center gap-2 px-2 py-1 mb-1 rounded-lg text-sm font-medium ${
-                isCurrentGroup ? 'bg-blood-100 text-blood-700' : 'bg-parchment-100 text-ink-600'
+                isCurrentGroup ? 'bg-blood-100 text-blood-700'
+                : first.type === 'player' ? 'bg-blue-100 text-blue-700'
+                : 'bg-red-100 text-red-700'
               }`}>
                 <span className="font-bold">
-                  {first.type === 'player' ? '🧙' : '👹'} {first.name}
+                  {first.name}
                 </span>
                 <span className="text-xs">
                   {aliveCount}/{totalCount} en vie
