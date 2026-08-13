@@ -26,8 +26,9 @@ import CharacterSkillsTab from './CharacterSkillsTab';
 import CharacterSpellsTab from './CharacterSpellsTab';
 import CharacterFeaturesTab from './CharacterFeaturesTab';
 import CharacterDescriptionTab from './CharacterDescriptionTab';
+import NpcPage from './NpcPage';
 
-type CharacterTab = 'inventory' | 'stats' | 'spells' | 'skills' | 'features' | 'description';
+type CharacterTab = 'inventory' | 'stats' | 'spells' | 'skills' | 'features' | 'description' | 'npcs';
 import {
   LoadingSpinner,
   ErrorMsg,
@@ -667,6 +668,7 @@ export default function CharacterInventoryPage() {
             { key: 'spells', label: 'Sorts', icon: '✨' },
             { key: 'features', label: 'Traits', icon: '📋' },
             { key: 'description', label: 'Description', icon: '👤' },
+            { key: 'npcs', label: 'PNJ', icon: '🎭' },
           ] as { key: CharacterTab; label: string; icon: string }[]).map((tab) => (
             <button
               key={tab.key}
@@ -726,6 +728,9 @@ export default function CharacterInventoryPage() {
           onSaved={refreshInventory}
           onError={(msg) => pushToast(msg, 'error')}
         />
+      )}
+      {activeTab === 'npcs' && (
+        <NpcPage embedded />
       )}
 
       {/* ---------- Inventory tab content ---------- */}
