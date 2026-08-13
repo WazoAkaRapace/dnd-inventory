@@ -694,7 +694,7 @@ function SpellCatalog({
           {offset + PAGE_SIZE < total && (
             <button
               onClick={onLoadMore}
-              className="btn-ghost w-full text-sm py-2"
+              className="btn-ghost text-ink-700 w-full text-sm py-2"
             >
               Charger plus ({total - offset - PAGE_SIZE} restants)
             </button>

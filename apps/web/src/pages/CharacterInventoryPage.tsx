@@ -833,7 +833,7 @@ export default function CharacterInventoryPage() {
       {error && (
         <div className="flex items-start justify-between gap-3">
           <ErrorMsg message={error} />
-          <button onClick={dismissError} className="btn-ghost text-sm shrink-0" aria-label="Fermer l'erreur">✕</button>
+          <button onClick={dismissError} className="btn-ghost text-ink-500 text-sm shrink-0" aria-label="Fermer l'erreur">✕</button>
         </div>
       )}
 
@@ -1171,7 +1171,7 @@ function InventoryRow({
           <div className="flex items-center justify-between gap-3 py-1">
             <span className="text-sm font-medium text-red-700">Retirer {itemName} ?</span>
             <div className="flex gap-2">
-              <button onClick={onCancelDelete} className="btn-ghost text-sm">
+              <button onClick={onCancelDelete} className="btn-ghost text-ink-700 text-sm">
                 Annuler
               </button>
               <button onClick={onConfirmDelete} className="btn-primary text-sm bg-red-600 hover:bg-red-700">

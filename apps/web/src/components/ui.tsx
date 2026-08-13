@@ -268,7 +268,7 @@ export function Modal({
       >
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display text-lg font-semibold">{title}</h2>
-          <button onClick={onClose} className="btn-ghost p-1" aria-label="Fermer">✕</button>
+          <button onClick={onClose} className="btn-ghost text-ink-500 p-1" aria-label="Fermer">✕</button>
         </div>
         {children}
       </div>
@@ -320,7 +320,7 @@ export function BottomSheet({
       >
         <div className="flex items-center justify-between p-4 border-b border-parchment-200 shrink-0">
           <h2 className="font-display text-lg font-semibold">{title}</h2>
-          <button onClick={onClose} className="btn-ghost p-1" aria-label="Fermer">✕</button>
+          <button onClick={onClose} className="btn-ghost text-ink-500 p-1" aria-label="Fermer">✕</button>
         </div>
         <div className="overflow-y-auto p-4 flex-1">{children}</div>
       </div>

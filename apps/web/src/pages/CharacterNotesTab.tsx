@@ -267,7 +267,7 @@ export default function CharacterNotesTab({ character, charId, partyId, onSaved,
             <button onClick={save} disabled={saving || !title.trim()} className="btn-primary flex-1 disabled:opacity-50">
               {saving ? '…' : editing ? 'Enregistrer' : 'Créer'}
             </button>
-            <button onClick={() => setShowModal(false)} className="btn-ghost">Annuler</button>
+            <button onClick={() => setShowModal(false)} className="btn-ghost text-ink-700">Annuler</button>
           </div>
         </div>
       </Modal>

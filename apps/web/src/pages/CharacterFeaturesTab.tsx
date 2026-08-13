@@ -312,7 +312,7 @@ export default function CharacterFeaturesTab({ character, charId, partyId, onSav
             </button>
             <button
               onClick={() => setShowModal(false)}
-              className="btn-ghost"
+              className="btn-ghost text-ink-700"
             >
               Annuler
             </button>
