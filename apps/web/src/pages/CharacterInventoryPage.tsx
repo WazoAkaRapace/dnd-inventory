@@ -683,7 +683,7 @@ export default function CharacterInventoryPage() {
               aria-pressed={activeTab === tab.key}
             >
               <span aria-hidden="true">{tab.icon}</span>
-              <span className="hidden sm:inline">{tab.label}</span>
+              <span>{tab.label}</span>
             </button>
           ))}
         </div>
