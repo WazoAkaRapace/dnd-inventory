@@ -191,6 +191,9 @@ function TransactionsTab({ transactions }: { transactions: Transaction[] }) {
     'remove': 'Retrait',
     'transfer-in': 'Transfert reçu',
     'transfer-out': 'Transfert donné',
+    'consume-food': 'Repas consommé',
+    'consume-water': 'Eau bue',
+    'item': 'Objet',
   };
   return (
     <div className="card divide-y divide-parchment-100">
