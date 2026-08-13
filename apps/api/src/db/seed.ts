@@ -160,6 +160,10 @@ const SPELL_INSERT = `
   )
   ON CONFLICT(srd_index) DO UPDATE SET
     name_fr = excluded.name_fr,
+    casting_time = excluded.casting_time,
+    range_text = excluded.range_text,
+    duration = excluded.duration,
+    material = excluded.material,
     description_fr = excluded.description_fr,
     higher_level_fr = excluded.higher_level_fr,
     classes_json = excluded.classes_json

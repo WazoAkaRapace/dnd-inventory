@@ -20,6 +20,10 @@ interface SeedSpell {
   srdIndex: string;
   name: string;
   nameFr: string | null;
+  castingTime: string | null;
+  rangeText: string | null;
+  duration: string | null;
+  material: string | null;
   descriptionFr: string | null;
   higherLevelFr: string | null;
   [key: string]: unknown;
@@ -192,6 +196,10 @@ function vfSlugFor(spell: SeedSpell): string {
 interface FetchResult {
   descriptionFr: string | null;
   higherLevelFr: string | null;
+  castingTimeFr: string | null;
+  rangeFr: string | null;
+  durationFr: string | null;
+  materialFr: string | null;
 }
 
 async function fetchDescription(vfSlug: string): Promise<FetchResult> {
@@ -200,29 +208,51 @@ async function fetchDescription(vfSlug: string): Promise<FetchResult> {
     const res = await fetch(url, {
       headers: { 'User-Agent': 'DnDInventoryApp/1.0 (spell description translation)' },
     });
-    if (!res.ok) return { descriptionFr: null, higherLevelFr: null };
+    if (!res.ok) return { descriptionFr: null, higherLevelFr: null, castingTimeFr: null, rangeFr: null, durationFr: null, materialFr: null };
     const html = await res.text();
 
+    // Extract properties from AideDD's structured divs:
+    // <div class='t'><strong>Temps d'incantation</strong> : value</div>
+    // <div class='r'><strong>Portée</strong> : value</div>
+    // <div class='c'><strong>Composantes</strong> : V, S, M (material text)</div>
+    // <div class='d'><strong>Durée</strong> : value</div>
+    const timeMatch = html.match(/<div\s+class=['"]t['"]><strong>Temps[^<]*<\/strong>\s*:\s*([^<]*)<\/div>/i);
+    const rangeMatch = html.match(/<div\s+class=['"]r['"]><strong>Port[ée]e<\/strong>\s*:\s*([^<]*)<\/div>/i);
+    const compMatch = html.match(/<div\s+class=['"]c['"]><strong>Composantes<\/strong>\s*:\s*([^<]*)<\/div>/i);
+    const durMatch = html.match(/<div\s+class=['"]d['"]><strong>Dur[ée]e<\/strong>\s*:\s*([^<]*)<\/div>/i);
+
+    const castingTimeFr = timeMatch?.[1]?.trim() || null;
+    const rangeFr = rangeMatch?.[1]?.trim() || null;
+    const durationFr = durMatch?.[1]?.trim() || null;
+
+    // Extract material description from components field: "V, S, M (material text)"
+    let materialFr: string | null = null;
+    if (compMatch) {
+      const compText = compMatch[1].trim();
+      const matMatch = compText.match(/M\s*\(([^)]+)\)/);
+      if (matMatch) materialFr = matMatch[1].trim();
+    }
+
     // Description is in <div class='description'>...</div>
-    // The HTML uses single quotes for attributes
     const descMatch = html.match(/<div\s+class=['"]description['"]>([\s\S]*?)<\/div>/i);
-    if (!descMatch) return { descriptionFr: null, higherLevelFr: null };
+    if (!descMatch) {
+      return { descriptionFr: null, higherLevelFr: null, castingTimeFr, rangeFr, durationFr, materialFr };
+    }
 
     let descHtml = descMatch[1];
 
-    // Split on "Aux niveaux supérieurs" — AideDD uses <strong><em>Aux niveaux supérieurs</em></strong>
+    // Split on "Aux niveaux supérieurs"
     let higherLevelFr: string | null = null;
     const higherMatch = descHtml.match(/<strong><em>Aux niveaux sup[ée]rieurs<\/em><\/strong>\.?\s*(.*?)(?:<br>|$)/i);
     if (higherMatch) {
       higherLevelFr = cleanHtml(higherMatch[1]);
-      // Remove the higher-level part from the main description
       descHtml = descHtml.replace(/<strong><em>Aux niveaux sup[ée]rieurs<\/em><\/strong>[\s\S]*$/i, '');
     }
 
     const descriptionFr = cleanHtml(descHtml);
-    return { descriptionFr: descriptionFr || null, higherLevelFr };
+    return { descriptionFr: descriptionFr || null, higherLevelFr, castingTimeFr, rangeFr, durationFr, materialFr };
   } catch {
-    return { descriptionFr: null, higherLevelFr: null };
+    return { descriptionFr: null, higherLevelFr: null, castingTimeFr: null, rangeFr: null, durationFr: null, materialFr: null };
   }
 }
 
@@ -247,12 +277,23 @@ async function main() {
   console.log(`[translate-desc] loading ${SEED_PATH}`);
   const spells: SeedSpell[] = JSON.parse(readFileSync(SEED_PATH, 'utf8'));
 
-  // Filter to spells that still need descriptionFr, within the batch range
-  const needingFr = spells
+  // Process ALL spells to update French properties (castingTime, range, duration, material)
+  // even if descriptionFr is already present. Filter to spells that still have English properties.
+  const allSpells = spells
     .map((s, i) => ({ spell: s, index: i }))
-    .filter(({ spell }) => !spell.descriptionFr);
+    .filter(({ spell }) => {
+      // Process if any property is still in English (contains feet/miles/English words)
+      const r = spell.rangeText ?? '';
+      const ct = spell.castingTime ?? '';
+      const d = spell.duration ?? '';
+      const m = spell.material ?? '';
+      return r.includes('feet') || r.includes('miles') || r.includes('Self') || r.includes('Touch') || r.includes('Sight')
+        || ct.includes('action') || ct.includes('minute') || ct.includes('hour')
+        || d.includes('Instantaneous') || d.includes('round') || d.includes('minute') || d.includes('hour') || d.includes('Up to') || d.includes('dispelled')
+        || (m && (m.includes('a ') || m.includes('the ') || m.match(/[a-z]{15,}/)));
+    });
 
-  const batch = needingFr.slice(batchStart, batchStart + batchSize);
+  const batch = allSpells.slice(batchStart, batchStart + batchSize);
   console.log(`[translate-desc] batch: start=${batchStart}, size=${batchSize}, spells to process=${batch.length}`);
 
   let updated = 0;
@@ -263,9 +304,14 @@ async function main() {
     const vfSlug = vfSlugFor(spell);
     const result = await fetchDescription(vfSlug);
 
-    if (result.descriptionFr) {
-      spells[index].descriptionFr = result.descriptionFr;
-      spells[index].higherLevelFr = result.higherLevelFr;
+    if (result.castingTimeFr || result.rangeFr || result.durationFr || result.descriptionFr) {
+      if (result.descriptionFr) spells[index].descriptionFr = result.descriptionFr;
+      if (result.higherLevelFr) spells[index].higherLevelFr = result.higherLevelFr;
+      // Overwrite English properties with French + metric versions
+      if (result.castingTimeFr) spells[index].castingTime = result.castingTimeFr;
+      if (result.rangeFr) spells[index].rangeText = result.rangeFr;
+      if (result.durationFr) spells[index].duration = result.durationFr;
+      if (result.materialFr) spells[index].material = result.materialFr;
       updated++;
     } else {
       failed++;
