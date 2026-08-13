@@ -47,6 +47,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
   // Catalog browser
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [catalogLevel, setCatalogLevel] = useState<string>('');
   const [catalogSchool, setCatalogSchool] = useState<string>('');
   const [catalogSpells, setCatalogSpells] = useState<Spell[]>([]);
@@ -84,6 +85,12 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
     fetchCharSpells();
   }, [fetchCharSpells]);
 
+  // Debounce search input (same pattern as items catalog)
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(catalogSearch), 300);
+    return () => clearTimeout(t);
+  }, [catalogSearch]);
+
   // Fetch catalog with filters
   const fetchCatalog = useCallback(async (offset = 0) => {
     setCatalogLoading(true);
@@ -92,7 +99,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
       if (character.characterClass) params.class = character.characterClass;
       if (catalogLevel !== '') params.level = catalogLevel;
       if (catalogSchool) params.school = catalogSchool;
-      if (catalogSearch.trim()) params.search = catalogSearch.trim();
+      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       const res = await api.get('/api/spells', { params });
       setCatalogSpells(res.data.spells);
       setCatalogTotal(res.data.total);
@@ -103,17 +110,19 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
     } finally {
       setCatalogLoading(false);
     }
-  }, [character.characterClass, catalogLevel, catalogSchool, catalogSearch]);
+  }, [character.characterClass, catalogLevel, catalogSchool, debouncedSearch]);
 
-  // Fetch catalog when it becomes visible: on mobile when BottomSheet opens,
-  // on desktop (lg+) it's always visible so fetch on mount.
+  // Only fetch when there's a search query or active filters — don't preload all spells
+  const hasQuery = !!(debouncedSearch.trim() || catalogLevel !== '' || catalogSchool);
+
   useEffect(() => {
-    const isDesktop = window.innerWidth >= 1024;
-    if (catalogOpen || isDesktop) {
-      const t = setTimeout(() => fetchCatalog(0), 250);
-      return () => clearTimeout(t);
+    if (hasQuery) {
+      fetchCatalog(0);
+    } else {
+      setCatalogSpells([]);
+      setCatalogTotal(0);
     }
-  }, [catalogOpen, fetchCatalog]);
+  }, [fetchCatalog, hasQuery]);
 
   const addSpell = async (spellId: number) => {
     setAddingSpellId(spellId);
@@ -461,7 +470,15 @@ function SpellCatalog({
       {loading ? (
         <p className="text-sm text-ink-400 animate-pulse text-center py-4">Chargement…</p>
       ) : spells.length === 0 ? (
-        <p className="text-sm text-ink-400 italic text-center py-4">Aucun sort trouvé.</p>
+        search.trim() || level !== '' || school ? (
+          <p className="text-sm text-ink-400 italic text-center py-4">Aucun sort trouvé.</p>
+        ) : (
+          <div className="text-center py-8 space-y-1">
+            <p className="text-3xl">📝</p>
+            <p className="text-sm text-ink-400">Recherchez un sort</p>
+            <p className="text-xs text-ink-400">Tapez le nom d'un sort ou filtrez par niveau/école.</p>
+          </div>
+        )
       ) : (
         <>
           <p className="text-xs text-ink-400">{total} sort(s)</p>
