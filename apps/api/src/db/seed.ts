@@ -61,24 +61,58 @@ const INSERT = `
     source, party_id, category, srd_index, name, name_fr, rarity,
     weight_kg, cost_qty, cost_unit, description,
     damage_dice, damage_type, ac_base, str_min, stealth_disadvantage,
-    properties_json, survival_tags, image_path
+    properties_json, survival_tags, aliases, image_path
   ) VALUES (
     'srd', NULL, ?, ?, ?, ?, ?,
     ?, ?, ?, ?,
     ?, ?, ?, ?, ?,
-    ?, ?, ?
+    ?, ?, ?, ?
   )
   ON CONFLICT(srd_index) DO UPDATE SET
     name_fr = excluded.name_fr,
     weight_kg = excluded.weight_kg,
     description = excluded.description,
-    survival_tags = excluded.survival_tags
+    survival_tags = excluded.survival_tags,
+    aliases = excluded.aliases
 `;
 
 // SRD items that count as food or water for survival tracking
 const SURVIVAL_TAGS: Record<string, string[]> = {
   'rations-1-day': ['food'],
   'waterskin': ['water'],
+};
+
+// Alternative search names for items where the official French translation
+// differs from common usage or AideDD naming
+const ITEM_ALIASES: Record<string, string[]> = {
+  'tinkers-tools': ['bricoleur', 'outils de bricoleur'],
+  'thieves-tools': ['outils de voleur', 'crochetage'],
+  'disguise-kit': ['kit de déguisement'],
+  'forgery-kit': ['kit de contrefaçon', 'falsification'],
+  'herbalism-kit': ["kit d'herboriste", 'herboristerie'],
+  'poisoners-kit': ["kit d'empoisonneur", "empoisonnement"],
+  'navigators-tools': ['outils de navigation'],
+  'alchemists-supplies': ["fournitures d'alchimiste", 'alchimie'],
+  'brewers-supplies': ['fournitures de brasseur', 'brasserie'],
+  'calligraphers-supplies': ['fournitures de calligraphe', 'calligraphie'],
+  'carpenters-tools': ['outils de charpentier', 'charpente'],
+  'cartographers-tools': ['outils de cartographe', 'cartographie'],
+  'cobblers-tools': ['outils de cordonnier', 'cordonnerie'],
+  'cooks-utensils': ['ustensiles de cuisinier', 'cuisine'],
+  'glassblowers-tools': ['outils de verrier', 'verrerie'],
+  'jewelers-tools': ['outils de joaillier', 'joaillerie'],
+  'leatherworkers-tools': ['outils de tanneur', 'tannerie'],
+  'masons-tools': ['outils de maçon', 'maçonnerie'],
+  'painters-supplies': ['fournitures de peintre', 'peinture'],
+  'potters-tools': ['outils de potier', 'poterie'],
+  'smiths-tools': ['outils de forgeron', 'forge'],
+  'weavers-tools': ['outils de tisserand', 'tissage'],
+  'woodcarvers-tools': ['outils de sculpteur sur bois', 'sculpture'],
+  'scale-mail': ['armure d\'écailles', 'écailles'],
+  'mage-armor': ['armure du mage'],
+  'crossbow-light': ['arbalète légère'],
+  'crossbow-heavy': ['arbalète lourde'],
+  'crossbow-hand': ['arbalète de poing'],
 };
 
 const COUNT_SQL = `SELECT COUNT(*) as n FROM items WHERE source = 'srd'`;
@@ -111,6 +145,7 @@ export function seedItems(): void {
         it.stealthDisadvantage ? 1 : 0,
         JSON.stringify(it.properties),
         JSON.stringify(SURVIVAL_TAGS[it.srdIndex] || []),
+        JSON.stringify(ITEM_ALIASES[it.srdIndex] || []),
         it.imagePath,
       );
     }

@@ -43,11 +43,13 @@ export async function itemRoutes(app: FastifyInstance) {
         srd_index LIKE ? ESCAPE '\\' OR
         normalize(name) LIKE normalize(?) OR
         normalize(name_fr) LIKE normalize(?) OR
-        normalize(REPLACE(name, '-', ' ')) LIKE normalize(?)
+        normalize(REPLACE(name, '-', ' ')) LIKE normalize(?) OR
+        normalize(COALESCE(aliases, '')) LIKE normalize(?)
       )`);
       params.push(
         `%${search}%`, `%${search}%`, `%${search}%`,
         `%${norm}%`, `%${norm}%`, `%${norm}%`,
+        `%${norm}%`,
       );
     }
     if (category) {
