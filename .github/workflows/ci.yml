@@ -17,7 +17,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Check for secrets in tracked files
         run: |
           echo "Scanning for potential secrets..."
@@ -67,7 +67,7 @@ jobs:
       digest-web-amd64: ${{ steps.save-digest.outputs.web-amd64 }}
       digest-web-arm64: ${{ steps.save-digest.outputs.web-arm64 }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
@@ -119,7 +119,7 @@ jobs:
       matrix:
         component: [api, web]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download digests
         uses: actions/download-artifact@v4
