@@ -137,11 +137,17 @@ export default function CombatantRow({
 
   return (
     <div
-      className={`card p-3 transition-all relative ${
-        isCurrent ? 'ring-2 ring-blood-500 shadow-lg' : ''
+      className={`card p-3 pt-4 transition-all relative ${
+        isCurrent ? 'shadow-[0_0_0_2px_rgba(185,28,28,0.6),0_0_16px_rgba(185,28,28,0.3)]' : ''
       } ${combatant.defeated ? 'opacity-50 grayscale' : ''} ${cardClass}`}
       style={cardBg}
     >
+      {/* Floating "Tour" label on top of card */}
+      {isCurrent && !combatant.defeated && (
+        <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-blood-600 text-parchment-50 text-xs font-bold shadow-md z-10 whitespace-nowrap">
+          ◀ Tour
+        </span>
+      )}
       {/* ═══ Zone 1: Identity + card management ═══ */}
       <div className="flex items-center gap-2">
         {/* Initiative */}
@@ -203,11 +209,6 @@ export default function CombatantRow({
 
         {/* Status badges */}
         {combatant.defeated && <span className="text-lg shrink-0">💀</span>}
-        {isCurrent && !combatant.defeated && (
-          <span className="text-xs px-1.5 py-0.5 rounded bg-blood-600 text-parchment-50 animate-pulse shrink-0">
-            ◀ Tour
-          </span>
-        )}
       </div>
 
       {/* Conditions */}
