@@ -70,7 +70,9 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
   const fetchCharSpells = useCallback(async () => {
     try {
       const res = await api.get(`/api/characters/${charId}/spells`);
-      setCharSpells(res.data);
+      // API returns { spells: CharacterSpell[] } — extract the array
+      const data = res.data?.spells ?? res.data ?? [];
+      setCharSpells(Array.isArray(data) ? data : []);
     } catch {
       // Character might not have spells endpoint yet
     } finally {

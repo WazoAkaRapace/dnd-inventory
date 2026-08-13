@@ -39,3 +39,4 @@ docker-data/
 .agents/
 .zcode/
 .impeccable/
+gui-test-screenshots/
