@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import api from '../api';
 import { useSyncEvent, useSync } from '../sync';
 import type { PartyDetail, CharacterSummary, CreateCustomItem } from '@dnd-inventory/shared';
-import { LoadingSpinner, EmptyState, Modal, ErrorMsg } from '../components/ui';
+import { LoadingSpinner, EmptyState, Modal, ErrorMsg, CategoryBadge } from '../components/ui';
 
 interface Transaction {
   id: number;
@@ -224,6 +224,23 @@ function CustomItemsTab({ partyId, onAdd, showAdd }: { partyId: string; onAdd: (
   const [desc, setDesc] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [customItems, setCustomItems] = useState<any[]>([]);
+  const [loadingItems, setLoadingItems] = useState(true);
+
+  const loadCustomItems = useCallback(async () => {
+    try {
+      const res = await api.get('/api/items', { params: { limit: 200 } });
+      // Filter to only this party's custom items
+      const partyItems = (res.data.items || []).filter((i: any) => i.partyId === Number(partyId));
+      setCustomItems(partyItems);
+    } catch {
+      setCustomItems([]);
+    } finally {
+      setLoadingItems(false);
+    }
+  }, [partyId]);
+
+  useEffect(() => { loadCustomItems(); }, [loadCustomItems]);
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
@@ -238,6 +255,7 @@ function CustomItemsTab({ partyId, onAdd, showAdd }: { partyId: string; onAdd: (
       await api.post(`/api/parties/${partyId}/items`, payload);
       setSuccess(`"${name}" ajouté au catalogue`);
       setName(''); setWeight(''); setDesc(''); setCategory('custom');
+      await loadCustomItems();
       onAdd();
     } catch (err: any) {
       setError(err.response?.data?.error || 'Erreur');
@@ -246,6 +264,36 @@ function CustomItemsTab({ partyId, onAdd, showAdd }: { partyId: string; onAdd: (
 
   return (
     <div className="space-y-4">
+      {/* Existing custom items list */}
+      <div className="card p-4">
+        <h3 className="font-display text-lg font-semibold mb-3">
+          Objets personnalisés <span className="text-ink-400 text-sm font-normal">({customItems.length})</span>
+        </h3>
+        {loadingItems ? (
+          <p className="text-sm text-ink-400 animate-pulse">Chargement…</p>
+        ) : customItems.length === 0 ? (
+          <p className="text-sm text-ink-400 italic">Aucun objet personnalisé. Créez-en un ci-dessous.</p>
+        ) : (
+          <ul className="space-y-2">
+            {customItems.map((item) => (
+              <li key={item.id} className="bg-parchment-50 rounded-lg border border-parchment-200 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-ink-800">{item.nameFr || item.name}</span>
+                  <div className="flex items-center gap-2 text-xs text-ink-400">
+                    {item.weightKg !== null && <span>{item.weightKg} kg</span>}
+                    <CategoryBadge category={item.category} />
+                  </div>
+                </div>
+                {item.description && (
+                  <p className="text-xs text-ink-500 mt-1">{item.description}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Create form */}
       <div className="card p-4">
         <h3 className="font-display text-lg font-semibold mb-3">Créer un objet personnalisé</h3>
         <p className="text-sm text-ink-400 mb-4">
