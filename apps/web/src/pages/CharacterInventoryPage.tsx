@@ -974,7 +974,8 @@ export default function CharacterInventoryPage() {
         </>
       )}
 
-      {/* ---------- Mobile FAB: open catalog as bottom sheet ---------- */}
+      {/* ---------- Mobile FAB: open catalog as bottom sheet (inventory tab only) ---------- */}
+      {activeTab === 'inventory' && (
       <button
         onClick={() => setCatalogOpen(true)}
         className="lg:hidden fab-enter fixed bottom-5 right-5 z-30 w-14 h-14 rounded-full bg-blood-600 text-white shadow-lg flex items-center justify-center text-2xl font-light hover:bg-blood-700 active:scale-95 transition-all"
@@ -982,6 +983,7 @@ export default function CharacterInventoryPage() {
       >
         +
       </button>
+      )}
 
       {/* ---------- Mobile catalog bottom sheet ---------- */}
       <BottomSheet open={catalogOpen} onClose={() => setCatalogOpen(false)} title="Catalogue">
