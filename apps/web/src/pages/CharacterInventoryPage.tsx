@@ -21,6 +21,11 @@ import {
   COIN_LABELS_FR,
   DND_CONDITIONS_FR,
 } from '@dnd-inventory/shared';
+import CharacterStatsTab from './CharacterStatsTab';
+import CharacterSkillsTab from './CharacterSkillsTab';
+import CharacterSpellsTab from './CharacterSpellsTab';
+
+type CharacterTab = 'inventory' | 'stats' | 'spells' | 'skills';
 import {
   LoadingSpinner,
   ErrorMsg,
@@ -157,6 +162,9 @@ export default function CharacterInventoryPage() {
 
   // First-run tour
   const [showTour, setShowTour] = useState(false);
+
+  // Active tab (inventory / stats / spells / skills)
+  const [activeTab, setActiveTab] = useState<CharacterTab>('inventory');
   useEffect(() => {
     const seen = localStorage.getItem('dnd-inv-tour-seen');
     if (!seen && !loading) {
@@ -647,6 +655,61 @@ export default function CharacterInventoryPage() {
         </div>
       </Modal>
 
+      {/* ---------- Tab navigation ---------- */}
+      <div className="sticky top-14 z-20 -mx-4 px-4 sm:mx-0 sm:px-0">
+        <div className="flex items-center gap-1 bg-parchment-100 rounded-xl p-1 overflow-x-auto no-scrollbar">
+          {([
+            { key: 'inventory', label: 'Inventaire', icon: '🎒' },
+            { key: 'stats', label: 'Caractéristiques', icon: '⚔️' },
+            { key: 'skills', label: 'Compétences', icon: '🎯' },
+            { key: 'spells', label: 'Sorts', icon: '✨' },
+          ] as { key: CharacterTab; label: string; icon: string }[]).map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                activeTab === tab.key
+                  ? 'bg-blood-600 text-white shadow-sm'
+                  : 'text-ink-600 hover:bg-parchment-200'
+              }`}
+              aria-pressed={activeTab === tab.key}
+            >
+              <span aria-hidden="true">{tab.icon}</span>
+              <span className="hidden sm:inline">{tab.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ---------- Non-inventory tabs (rendered when selected) ---------- */}
+      {activeTab === 'stats' && (
+        <CharacterStatsTab
+          character={character}
+          charId={Number(charId)}
+          onSaved={refreshInventory}
+          onError={(msg) => pushToast(msg, 'error')}
+        />
+      )}
+      {activeTab === 'skills' && (
+        <CharacterSkillsTab
+          character={character}
+          charId={Number(charId)}
+          onSaved={refreshInventory}
+          onError={(msg) => pushToast(msg, 'error')}
+        />
+      )}
+      {activeTab === 'spells' && (
+        <CharacterSpellsTab
+          character={character}
+          charId={Number(charId)}
+          onSaved={refreshInventory}
+          onError={(msg) => pushToast(msg, 'error')}
+        />
+      )}
+
+      {/* ---------- Inventory tab content ---------- */}
+      {activeTab === 'inventory' && (
+        <>
       {/* ---------- Survival panel: exhaustion, conditions, deprivation ---------- */}
       <SurvivalPanel
         character={character}
@@ -818,6 +881,8 @@ export default function CharacterInventoryPage() {
           onBlur={saveCoins}
         />
       </section>
+        </>
+      )}
 
       {/* ---------- Mobile FAB: open catalog as bottom sheet ---------- */}
       <button

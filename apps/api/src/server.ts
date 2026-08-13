@@ -7,7 +7,7 @@ import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import websocket from '@fastify/websocket';
 import { migrate } from './db/index.ts';
-import { seedItems } from './db/seed.ts';
+import { seedItems, seedSpells } from './db/seed.ts';
 import { authRoutes } from './routes/auth.ts';
 import { partyRoutes } from './routes/parties.ts';
 import { characterRoutes } from './routes/characters.ts';
@@ -15,6 +15,8 @@ import { inventoryRoutes } from './routes/inventory.ts';
 import { itemRoutes } from './routes/items.ts';
 import { locationRoutes } from './routes/locations.ts';
 import { npcRoutes } from './routes/npcs.ts';
+import { spellRoutes } from './routes/spells.ts';
+import { characterSpellRoutes } from './routes/character-spells.ts';
 import { registerWsRoutes } from './sync/ws.ts';
 
 const PORT = parseInt(process.env.PORT || '4000', 10);
@@ -75,6 +77,8 @@ async function buildServer() {
   await app.register(inventoryRoutes, { prefix: '/api' });
   await app.register(locationRoutes, { prefix: '/api' });
   await app.register(npcRoutes, { prefix: '/api' });
+  await app.register(spellRoutes, { prefix: '/api' });
+  await app.register(characterSpellRoutes, { prefix: '/api' });
 
   // WebSocket (real-time sync)
   await registerWsRoutes(app);
@@ -89,6 +93,11 @@ async function start() {
     seedItems();
   } catch (err) {
     console.warn(`[server] seed skipped: ${(err as Error).message}`);
+  }
+  try {
+    seedSpells();
+  } catch (err) {
+    console.warn(`[server] spell seed skipped: ${(err as Error).message}`);
   }
 
   const app = await buildServer();

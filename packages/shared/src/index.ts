@@ -234,6 +234,20 @@ export interface CharacterSummary {
   maxHp: number;
   currentHp: number;
   tempHp: number;
+  // Character sheet
+  level: number;
+  dexterity: number;
+  constitution: number;
+  intelligence: number;
+  wisdom: number;
+  charisma: number;
+  characterClass: string | null;
+  race: string | null;
+  background: string | null;
+  speed: number;             // meters
+  skillProficiencies: string[];        // skill keys: ["acrobatics","arcanes",...]
+  savingThrowProficiencies: string[];  // ability keys: ["strength","constitution"]
+  spellSlotsUsed: number[];            // 9 entries, used per spell level 1-9
 }
 
 export interface Character extends CharacterSummary {
@@ -251,6 +265,10 @@ export interface CreateCharacterPayload {
   name: string;
   strength: number;
   capacityMultiplier?: number;
+  characterClass?: string;
+  level?: number;
+  race?: string;
+  background?: string;
 }
 
 export interface PatchCharacterPayload {
@@ -270,6 +288,306 @@ export interface PatchCharacterPayload {
   electrum?: number;
   gold?: number;
   platinum?: number;
+  // Character sheet
+  level?: number;
+  dexterity?: number;
+  constitution?: number;
+  intelligence?: number;
+  wisdom?: number;
+  charisma?: number;
+  characterClass?: string | null;
+  race?: string | null;
+  background?: string | null;
+  speed?: number;
+  skillProficiencies?: string[];
+  savingThrowProficiencies?: string[];
+  spellSlotsUsed?: number[];
+}
+
+// ---------- D&D 5e Abilities (Caractéristiques) ----------
+
+export type AbilityKey = 'strength' | 'dexterity' | 'constitution' | 'intelligence' | 'wisdom' | 'charisma';
+
+export interface AbilityInfo {
+  key: AbilityKey;
+  label: string;      // "Force"
+  shortLabel: string; // "FOR"
+  abbr: string;       // "FOR" (same as shortLabel, for convenience)
+}
+
+export const DND_ABILITIES: AbilityInfo[] = [
+  { key: 'strength',     label: 'Force',         shortLabel: 'FOR', abbr: 'FOR' },
+  { key: 'dexterity',    label: 'Dextérité',     shortLabel: 'DEX', abbr: 'DEX' },
+  { key: 'constitution', label: 'Constitution',  shortLabel: 'CON', abbr: 'CON' },
+  { key: 'intelligence', label: 'Intelligence',  shortLabel: 'INT', abbr: 'INT' },
+  { key: 'wisdom',       label: 'Sagesse',       shortLabel: 'SAG', abbr: 'SAG' },
+  { key: 'charisma',     label: 'Charisme',      shortLabel: 'CHA', abbr: 'CHA' },
+];
+
+export const ABILITY_LABELS_FR: Record<AbilityKey, string> = {
+  strength: 'Force',
+  dexterity: 'Dextérité',
+  constitution: 'Constitution',
+  intelligence: 'Intelligence',
+  wisdom: 'Sagesse',
+  charisma: 'Charisme',
+};
+
+export const ABILITY_SHORT_FR: Record<AbilityKey, string> = {
+  strength: 'FOR',
+  dexterity: 'DEX',
+  constitution: 'CON',
+  intelligence: 'INT',
+  wisdom: 'SAG',
+  charisma: 'CHA',
+};
+
+/** Compute ability modifier: floor((score - 10) / 2) */
+export function abilityModifier(score: number): number {
+  return Math.floor((score - 10) / 2);
+}
+
+/** Format a modifier for display: +3, -1, +0 */
+export function formatModifier(mod: number): string {
+  return mod >= 0 ? `+${mod}` : `${mod}`;
+}
+
+// ---------- Proficiency Bonus ----------
+
+/** Proficiency bonus by character level (1-20). */
+export function proficiencyBonus(level: number): number {
+  if (level >= 17) return 6;
+  if (level >= 13) return 5;
+  if (level >= 9) return 4;
+  if (level >= 5) return 3;
+  return 2;
+}
+
+// ---------- Skills (Compétences) — 18 skills ----------
+
+export type SkillKey =
+  | 'acrobatics' | 'arcanes' | 'athletics' | 'deception' | 'history'
+  | 'insight' | 'intimidation' | 'investigation' | 'medicine' | 'nature'
+  | 'perception' | 'performance' | 'persuasion' | 'religion'
+  | 'sleightOfHand' | 'stealth' | 'survival' | 'animalHandling';
+
+export interface SkillInfo {
+  key: SkillKey;
+  label: string;       // French name: "Acrobaties"
+  ability: AbilityKey; // associated ability
+}
+
+export const DND_SKILLS: SkillInfo[] = [
+  { key: 'acrobatics',      label: 'Acrobaties',     ability: 'dexterity' },
+  { key: 'animalHandling',  label: 'Dressage',       ability: 'wisdom' },
+  { key: 'arcanes',         label: 'Arcanes',        ability: 'intelligence' },
+  { key: 'athletics',       label: 'Athlétisme',     ability: 'strength' },
+  { key: 'deception',       label: 'Supercherie',    ability: 'charisma' },
+  { key: 'history',         label: 'Histoire',       ability: 'intelligence' },
+  { key: 'insight',         label: 'Perspicacité',   ability: 'wisdom' },
+  { key: 'intimidation',    label: 'Intimidation',   ability: 'charisma' },
+  { key: 'investigation',   label: 'Investigation',  ability: 'intelligence' },
+  { key: 'medicine',        label: 'Médecine',       ability: 'wisdom' },
+  { key: 'nature',          label: 'Nature',         ability: 'intelligence' },
+  { key: 'perception',      label: 'Perception',     ability: 'wisdom' },
+  { key: 'performance',     label: 'Représentation', ability: 'charisma' },
+  { key: 'persuasion',      label: 'Persuasion',     ability: 'charisma' },
+  { key: 'religion',        label: 'Religion',       ability: 'intelligence' },
+  { key: 'sleightOfHand',   label: 'Escamotage',    ability: 'dexterity' },
+  { key: 'stealth',         label: 'Discrétion',     ability: 'dexterity' },
+  { key: 'survival',        label: 'Survie',         ability: 'wisdom' },
+];
+
+/** Skill proficiency level: 0=none, 1=proficient, 2=expertise (double proficiency) */
+export type ProficiencyLevel = 0 | 1 | 2;
+
+// ---------- Classes (SRD reference: hit dice, saves, spellcasting) ----------
+
+export type SpellcastingType = 'none' | 'full' | 'half' | 'pact';
+
+export interface ClassInfo {
+  name: string;                    // French: "Magicien", "Guerrier"
+  hitDie: number;                  // 6, 8, 10, 12
+  savingThrows: AbilityKey[];      // 2 abilities
+  spellcasting: SpellcastingType;
+  spellcastingAbility?: AbilityKey; // INT, WIS, CHA (for casters)
+}
+
+export const DND_CLASSES: ClassInfo[] = [
+  { name: 'Barbare',      hitDie: 12, savingThrows: ['strength', 'constitution'],  spellcasting: 'none' },
+  { name: 'Barde',        hitDie: 8,  savingThrows: ['dexterity', 'charisma'],     spellcasting: 'full', spellcastingAbility: 'charisma' },
+  { name: 'Clerc',        hitDie: 8,  savingThrows: ['wisdom', 'charisma'],        spellcasting: 'full', spellcastingAbility: 'wisdom' },
+  { name: 'Druide',       hitDie: 8,  savingThrows: ['intelligence', 'wisdom'],    spellcasting: 'full', spellcastingAbility: 'wisdom' },
+  { name: 'Ensorceleur',  hitDie: 6,  savingThrows: ['constitution', 'charisma'],  spellcasting: 'full', spellcastingAbility: 'charisma' },
+  { name: 'Guerrier',     hitDie: 10, savingThrows: ['strength', 'constitution'],  spellcasting: 'none' },
+  { name: 'Magicien',     hitDie: 6,  savingThrows: ['intelligence', 'wisdom'],    spellcasting: 'full', spellcastingAbility: 'intelligence' },
+  { name: 'Moine',        hitDie: 8,  savingThrows: ['strength', 'dexterity'],     spellcasting: 'none' },
+  { name: 'Occultiste',   hitDie: 8,  savingThrows: ['wisdom', 'charisma'],        spellcasting: 'pact', spellcastingAbility: 'charisma' },
+  { name: 'Paladin',      hitDie: 10, savingThrows: ['wisdom', 'charisma'],        spellcasting: 'half', spellcastingAbility: 'charisma' },
+  { name: 'Rôdeur',       hitDie: 10, savingThrows: ['strength', 'dexterity'],     spellcasting: 'half', spellcastingAbility: 'wisdom' },
+  { name: 'Roublard',     hitDie: 8,  savingThrows: ['dexterity', 'intelligence'], spellcasting: 'none' },
+];
+
+/** Find class info by name (case-insensitive, accent-insensitive match). */
+export function findClass(name: string | null | undefined): ClassInfo | null {
+  if (!name) return null;
+  const normalized = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return DND_CLASSES.find((c) =>
+    c.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') === normalized
+  ) ?? null;
+}
+
+// ---------- Spell Slots (Emplacements de sort) ----------
+
+/**
+ * Full caster spell slots by level (1-20).
+ * Each row is [slotsL1..slotsL9] for that character level.
+ * Cantrips (L0) are at-will and not tracked here.
+ */
+export const SPELL_SLOTS_FULL: number[][] = [
+  [2,0,0,0,0,0,0,0,0], // L1
+  [3,0,0,0,0,0,0,0,0], // L2
+  [4,2,0,0,0,0,0,0,0], // L3
+  [4,3,0,0,0,0,0,0,0], // L4
+  [4,3,2,0,0,0,0,0,0], // L5
+  [4,3,3,0,0,0,0,0,0], // L6
+  [4,3,3,1,0,0,0,0,0], // L7
+  [4,3,3,2,0,0,0,0,0], // L8
+  [4,3,3,3,1,0,0,0,0], // L9
+  [4,3,3,3,2,0,0,0,0], // L10
+  [4,3,3,3,2,1,0,0,0], // L11
+  [4,3,3,3,2,1,0,0,0], // L12
+  [4,3,3,3,2,1,1,0,0], // L13
+  [4,3,3,3,2,1,1,0,0], // L14
+  [4,3,3,3,2,1,1,1,0], // L15
+  [4,3,3,3,2,1,1,1,0], // L16
+  [4,3,3,3,2,1,1,1,1], // L17
+  [4,3,3,3,3,1,1,1,1], // L18
+  [4,3,3,3,3,2,1,1,1], // L19
+  [4,3,3,3,3,2,2,1,1], // L20
+];
+
+/**
+ * Half caster (Paladin, Ranger) spell slots by level (1-20).
+ * Paladin/Ranger get slots starting at character level 2.
+ */
+export const SPELL_SLOTS_HALF: number[][] = [
+  [0,0,0,0,0,0,0,0,0], // L1
+  [2,0,0,0,0,0,0,0,0], // L2
+  [3,0,0,0,0,0,0,0,0], // L3
+  [3,0,0,0,0,0,0,0,0], // L4
+  [4,2,0,0,0,0,0,0,0], // L5
+  [4,2,0,0,0,0,0,0,0], // L6
+  [4,3,0,0,0,0,0,0,0], // L7
+  [4,3,0,0,0,0,0,0,0], // L8
+  [4,3,2,0,0,0,0,0,0], // L9
+  [4,3,2,0,0,0,0,0,0], // L10
+  [4,3,3,0,0,0,0,0,0], // L11
+  [4,3,3,0,0,0,0,0,0], // L12
+  [4,3,3,1,0,0,0,0,0], // L13
+  [4,3,3,1,0,0,0,0,0], // L14
+  [4,3,3,2,0,0,0,0,0], // L15
+  [4,3,3,2,0,0,0,0,0], // L16
+  [4,3,3,3,1,0,0,0,0], // L17
+  [4,3,3,3,1,0,0,0,0], // L18
+  [4,3,3,3,2,0,0,0,0], // L19
+  [4,3,3,3,2,0,0,0,0], // L20
+];
+
+/**
+ * Pact magic (Warlock) slots by level (1-20).
+ * Warlocks get 2 slots of a single level that scales with character level.
+ * Represented as [slotLevel-1 filled with the count, rest 0].
+ * e.g. level 5 = [0,2,0,0,0,0,0,0,0] (2 slots of level 2).
+ */
+export const SPELL_SLOTS_PACT: number[][] = [
+  [2,0,0,0,0,0,0,0,0], // L1
+  [2,0,0,0,0,0,0,0,0], // L2
+  [2,0,0,0,0,0,0,0,0], // L3
+  [0,2,0,0,0,0,0,0,0], // L4
+  [0,2,0,0,0,0,0,0,0], // L5
+  [0,0,2,0,0,0,0,0,0], // L6
+  [0,0,2,0,0,0,0,0,0], // L7
+  [0,0,0,2,0,0,0,0,0], // L8
+  [0,0,0,2,0,0,0,0,0], // L9
+  [0,0,0,0,2,0,0,0,0], // L10
+  [0,0,0,0,2,0,0,0,0], // L11
+  [0,0,0,0,2,0,0,0,0], // L12
+  [0,0,0,0,2,0,0,0,0], // L13
+  [0,0,0,0,2,0,0,0,0], // L14
+  [0,0,0,0,2,0,0,0,0], // L15
+  [0,0,0,0,2,0,0,0,0], // L16
+  [0,0,0,0,0,2,0,0,0], // L17
+  [0,0,0,0,0,2,0,0,0], // L18
+  [0,0,0,0,0,2,0,0,0], // L19
+  [0,0,0,0,0,0,2,0,0], // L20
+];
+
+/** Get max spell slots for a character level + spellcasting type. Returns 9-element array. */
+export function maxSpellSlots(level: number, type: SpellcastingType): number[] {
+  const idx = Math.max(0, Math.min(19, level - 1));
+  const table = type === 'half' ? SPELL_SLOTS_HALF : type === 'pact' ? SPELL_SLOTS_PACT : SPELL_SLOTS_FULL;
+  return table[idx] ?? [0,0,0,0,0,0,0,0,0];
+}
+
+/** Spell save DC: 8 + casting ability modifier + proficiency bonus. */
+export function spellSaveDC(castingMod: number, profBonus: number): number {
+  return 8 + castingMod + profBonus;
+}
+
+/** Passive perception: 10 + WIS mod + proficiency bonus (if proficient). */
+export function passivePerception(wisMod: number, profBonus: number, proficient: boolean): number {
+  return 10 + wisMod + (proficient ? profBonus : 0);
+}
+
+// ---------- Spells (SRD catalog) ----------
+
+export type SpellSchool =
+  | 'abjuration' | 'conjuration' | 'divination' | 'enchantment'
+  | 'evocation' | 'illusion' | 'necromancy' | 'transmutation';
+
+export const SPELL_SCHOOL_LABELS_FR: Record<SpellSchool, string> = {
+  abjuration: 'Abjuration',
+  conjuration: 'Invocation',
+  divination: 'Divination',
+  enchantment: 'Enchantement',
+  evocation: 'Évocation',
+  illusion: 'Illusion',
+  necromancy: 'Nécromancie',
+  transmutation: 'Transmutation',
+};
+
+export interface Spell {
+  id: number;
+  srdIndex: string;
+  name: string;
+  nameFr: string | null;
+  level: number;               // 0-9 (0 = cantrip)
+  school: SpellSchool;
+  castingTime: string | null;
+  rangeText: string | null;
+  components: string[];        // ["V","S","M"]
+  material: string | null;
+  duration: string | null;
+  concentration: boolean;
+  ritual: boolean;
+  description: string | null;
+  descriptionFr: string | null;
+  higherLevel: string | null;
+  higherLevelFr: string | null;
+  attackType: string | null;   // "ranged"/"melee" or null
+  damageJson: string | null;
+  dcJson: string | null;
+  classes: string[];           // French class names: ["Magicien","Ensorceleur"]
+}
+
+export interface CharacterSpell {
+  id: number;                  // character_spells.id
+  characterId: number;
+  spell: Spell;
+  prepared: boolean;
+  sortOrder: number;
+  addedAt: string;
 }
 
 // ---------- Inventory & Storage ----------

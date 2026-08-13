@@ -41,6 +41,20 @@ CREATE TABLE IF NOT EXISTS characters (
   max_hp      INTEGER NOT NULL DEFAULT 1 CHECK (max_hp >= 1),
   current_hp  INTEGER NOT NULL DEFAULT 1,
   temp_hp     INTEGER NOT NULL DEFAULT 0,
+  -- Character sheet: ability scores, class/race/level, skills, spells
+  level               INTEGER NOT NULL DEFAULT 1 CHECK (level >= 1 AND level <= 20),
+  dexterity           INTEGER NOT NULL DEFAULT 10,
+  constitution        INTEGER NOT NULL DEFAULT 10,
+  intelligence        INTEGER NOT NULL DEFAULT 10,
+  wisdom              INTEGER NOT NULL DEFAULT 10,
+  charisma            INTEGER NOT NULL DEFAULT 10,
+  character_class     TEXT,
+  race                TEXT,
+  background          TEXT,
+  speed               INTEGER NOT NULL DEFAULT 9,  -- meters (9m = 30ft)
+  skill_proficiencies         TEXT NOT NULL DEFAULT '[]',  -- JSON array of skill keys
+  saving_throw_proficiencies  TEXT NOT NULL DEFAULT '[]',  -- JSON array of ability keys
+  spell_slots_used            TEXT NOT NULL DEFAULT '[0,0,0,0,0,0,0,0,0]',  -- JSON: used per level 1-9
   notes       TEXT,
   copper      INTEGER NOT NULL DEFAULT 0,
   silver      INTEGER NOT NULL DEFAULT 0,
@@ -137,3 +151,47 @@ CREATE TABLE IF NOT EXISTS npcs (
 );
 CREATE INDEX IF NOT EXISTS idx_npcs_party ON npcs(party_id);
 CREATE INDEX IF NOT EXISTS idx_npcs_shared ON npcs(party_id, is_shared);
+
+-- ---------- SRD Spell catalog (reference data, seeded) ----------
+
+CREATE TABLE IF NOT EXISTS spells (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  srd_index       TEXT NOT NULL UNIQUE,   -- "acid-arrow", "fireball"
+  name            TEXT NOT NULL,           -- English name
+  name_fr         TEXT,                    -- French name from AideDD
+  level           INTEGER NOT NULL,        -- 0-9 (0 = cantrip / tour de magie)
+  school          TEXT NOT NULL,           -- lowercase: abjuration, conjuration, etc.
+  casting_time    TEXT,
+  range_text      TEXT,
+  components      TEXT NOT NULL DEFAULT '[]',  -- JSON: ["V","S","M"]
+  material        TEXT,
+  duration        TEXT,
+  concentration   INTEGER NOT NULL DEFAULT 0,
+  ritual          INTEGER NOT NULL DEFAULT 0,
+  description     TEXT,
+  description_fr  TEXT,                    -- French description from AideDD
+  higher_level    TEXT,
+  higher_level_fr TEXT,
+  attack_type     TEXT,                     -- "ranged"/"melee" or NULL
+  damage_json     TEXT,                     -- JSON: {type, atSlotLevel:{...}}
+  dc_json         TEXT,                     -- JSON: {type, success: "half"/"none"}
+  classes_json    TEXT NOT NULL DEFAULT '[]', -- JSON: ["Magicien","Ensorceleur"] (French class names)
+  sort_order      INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_spells_level ON spells(level);
+CREATE INDEX IF NOT EXISTS idx_spells_name ON spells(name);
+CREATE INDEX IF NOT EXISTS idx_spells_name_fr ON spells(name_fr);
+
+-- ---------- Character ↔ Spell (known/prepared spells) ----------
+
+CREATE TABLE IF NOT EXISTS character_spells (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  character_id  INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+  spell_id      INTEGER NOT NULL REFERENCES spells(id) ON DELETE CASCADE,
+  prepared      INTEGER NOT NULL DEFAULT 0,  -- 1 = prepared/ready, 0 = known but not prepared
+  sort_order    INTEGER NOT NULL DEFAULT 0,
+  added_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(character_id, spell_id)
+);
+CREATE INDEX IF NOT EXISTS idx_character_spells_char ON character_spells(character_id);
+CREATE INDEX IF NOT EXISTS idx_character_spells_spell ON character_spells(spell_id);
