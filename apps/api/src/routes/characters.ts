@@ -123,6 +123,7 @@ export async function characterRoutes(app: FastifyInstance) {
         'alignment', 'sex', 'height', 'weight', 'age', 'skin', 'eyes', 'hair',
         'portraitUrl', 'personalityTraits', 'ideals', 'bonds', 'flaws', 'appearance',
         'armorClassOverride',
+        'deathSaveSuccesses', 'deathSaveFailures',
       ];
       const sets: string[] = [];
       const vals: any[] = [];
@@ -140,6 +141,8 @@ export async function characterRoutes(app: FastifyInstance) {
         portraitUrl: 'portrait_url',
         personalityTraits: 'personality_traits',
         armorClassOverride: 'armor_class_override',
+        deathSaveSuccesses: 'death_save_successes',
+        deathSaveFailures: 'death_save_failures',
       };
       // Fields stored as JSON arrays — serialize on write
       const jsonFields = new Set([

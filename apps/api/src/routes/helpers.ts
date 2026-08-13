@@ -144,6 +144,8 @@ export function mapCharacterSummary(row: any): CharacterSummary {
     flaws: row.flaws ?? null,
     appearance: row.appearance ?? null,
     armorClassOverride: row.armor_class_override ?? null,
+    deathSaveSuccesses: row.death_save_successes ?? 0,
+    deathSaveFailures: row.death_save_failures ?? 0,
   };
 }
 

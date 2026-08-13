@@ -2083,6 +2083,11 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
       {/* HP tracker */}
       <HpTracker character={character} charId={charId} markLocalMutation={markLocalMutation} onSaved={onSaved} onError={onError} />
 
+      {/* Death saves — only shown at 0 HP */}
+      {character.currentHp <= 0 && (
+        <DeathSaveTracker character={character} charId={charId} markLocalMutation={markLocalMutation} onSaved={onSaved} onError={onError} />
+      )}
+
       {/* Exhaustion */}
       <div>
         <div className="flex items-baseline justify-between mb-1.5">
@@ -2209,6 +2214,100 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
         </div>
       </div>
     </section>
+  );
+}
+
+function DeathSaveTracker({ character, charId, markLocalMutation, onSaved, onError }: {
+  character: Character;
+  charId: number;
+  markLocalMutation: () => void;
+  onSaved: () => Promise<void>;
+  onError: (msg: string) => void;
+}) {
+  const [successes, setSuccesses] = useState(character.deathSaveSuccesses ?? 0);
+  const [failures, setFailures] = useState(character.deathSaveFailures ?? 0);
+
+  useEffect(() => {
+    setSuccesses(character.deathSaveSuccesses ?? 0);
+    setFailures(character.deathSaveFailures ?? 0);
+  }, [character.deathSaveSuccesses, character.deathSaveFailures]);
+
+  const updateSaves = async (type: 'successes' | 'failures', value: number) => {
+    const clamped = Math.max(0, Math.min(3, value));
+    markLocalMutation();
+    try {
+      await api.patch(`/api/characters/${charId}`, { [type]: clamped });
+      await onSaved();
+    } catch {
+      onError('Erreur de mise à jour');
+    }
+  };
+
+  const isDead = failures >= 3;
+  const isStable = successes >= 3;
+
+  return (
+    <div className={`rounded-xl p-3 border ${isDead ? 'bg-red-50 border-red-300' : isStable ? 'bg-green-50 border-green-300' : 'bg-parchment-100 border-parchment-300'}`}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-medium text-ink-700">💀 Jets de sauvegarde contre la mort</span>
+        {isDead && <span className="text-xs font-bold text-red-600">MORT</span>}
+        {isStable && <span className="text-xs font-bold text-green-600">STABLE</span>}
+      </div>
+      <div className="flex items-center justify-between gap-4">
+        {/* Successes */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-green-600 font-medium">Succès</span>
+          <button
+            onClick={() => updateSaves('successes', successes - 1)}
+            disabled={successes <= 0}
+            className="w-6 h-6 rounded bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm flex items-center justify-center"
+            aria-label="Retirer un succès"
+          >−</button>
+          <div className="flex items-center gap-1">
+            {[0, 1, 2].map((i) => (
+              <button
+                key={i}
+                onClick={() => updateSaves('successes', i + 1 === successes ? i : i + 1)}
+                className={`w-6 h-6 rounded-full border-2 transition-colors ${
+                  i < successes
+                    ? 'bg-green-500 border-green-500'
+                    : 'bg-white border-parchment-300 hover:border-green-400'
+                }`}
+                aria-label={`Succès ${i + 1}`}
+              >
+                {i < successes && <span className="text-white text-xs">✓</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+        {/* Failures */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            {[0, 1, 2].map((i) => (
+              <button
+                key={i}
+                onClick={() => updateSaves('failures', i + 1 === failures ? i : i + 1)}
+                className={`w-6 h-6 rounded-full border-2 transition-colors ${
+                  i < failures
+                    ? 'bg-red-500 border-red-500'
+                    : 'bg-white border-parchment-300 hover:border-red-400'
+                }`}
+                aria-label={`Échec ${i + 1}`}
+              >
+                {i < failures && <span className="text-white text-xs">✗</span>}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => updateSaves('failures', failures + 1)}
+            disabled={failures >= 3}
+            className="w-6 h-6 rounded bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm flex items-center justify-center"
+            aria-label="Ajouter un échec"
+          >+</button>
+          <span className="text-xs text-red-600 font-medium">Échecs</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
