@@ -195,3 +195,16 @@ CREATE TABLE IF NOT EXISTS character_spells (
 );
 CREATE INDEX IF NOT EXISTS idx_character_spells_char ON character_spells(character_id);
 CREATE INDEX IF NOT EXISTS idx_character_spells_spell ON character_spells(spell_id);
+
+-- ---------- Character features (free-form traits, class/racial/background/feat) ----------
+
+CREATE TABLE IF NOT EXISTS character_features (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  character_id  INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+  title         TEXT NOT NULL,
+  category      TEXT NOT NULL DEFAULT 'custom',  -- class/racial/background/feat/custom
+  description   TEXT,                             -- template text with {{variables}}
+  sort_order    INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_character_features_char ON character_features(character_id);

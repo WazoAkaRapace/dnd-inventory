@@ -14,6 +14,7 @@ import type {
   Spell,
   CharacterSpell,
   SpellSchool,
+  CharacterFeature,
 } from '@dnd-inventory/shared';
 
 /** Parse a JSON column that's guaranteed to be an array; never throws. */
@@ -252,5 +253,21 @@ export function mapCharacterSpell(row: any): CharacterSpell {
     prepared: !!row.prepared,
     sortOrder: row.sort_order ?? 0,
     addedAt: row.added_at,
+  };
+}
+
+/**
+ * Map a raw character_features row to CharacterFeature.
+ * Handles snake_case → camelCase for the free-form trait columns.
+ */
+export function mapFeature(row: any): CharacterFeature {
+  return {
+    id: row.id,
+    characterId: row.character_id,
+    title: row.title,
+    category: row.category,
+    description: row.description,
+    sortOrder: row.sort_order,
+    createdAt: row.created_at,
   };
 }

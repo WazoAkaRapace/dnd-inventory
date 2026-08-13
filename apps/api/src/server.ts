@@ -17,6 +17,7 @@ import { locationRoutes } from './routes/locations.ts';
 import { npcRoutes } from './routes/npcs.ts';
 import { spellRoutes } from './routes/spells.ts';
 import { characterSpellRoutes } from './routes/character-spells.ts';
+import { characterFeatureRoutes } from './routes/character-features.ts';
 import { registerWsRoutes } from './sync/ws.ts';
 
 const PORT = parseInt(process.env.PORT || '4000', 10);
@@ -79,6 +80,7 @@ async function buildServer() {
   await app.register(npcRoutes, { prefix: '/api' });
   await app.register(spellRoutes, { prefix: '/api' });
   await app.register(characterSpellRoutes, { prefix: '/api' });
+  await app.register(characterFeatureRoutes, { prefix: '/api' });
 
   // WebSocket (real-time sync)
   await registerWsRoutes(app);

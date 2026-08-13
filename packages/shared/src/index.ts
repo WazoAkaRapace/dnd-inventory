@@ -591,6 +591,148 @@ export interface CharacterSpell {
   addedAt: string;
 }
 
+// ---------- Character features (free-form traits with templating) ----------
+
+export type FeatureCategory = 'class' | 'racial' | 'background' | 'feat' | 'custom';
+
+export interface CharacterFeature {
+  id: number;
+  characterId: number;
+  title: string;
+  category: FeatureCategory;
+  description: string | null;  // template text with {{variables}}
+  sortOrder: number;
+  createdAt: string;
+}
+
+export interface CreateCharacterFeaturePayload {
+  title: string;
+  category?: FeatureCategory;
+  description?: string;
+}
+
+export interface PatchCharacterFeaturePayload {
+  title?: string;
+  category?: FeatureCategory;
+  description?: string | null;
+}
+
+export const FEATURE_CATEGORY_LABELS_FR: Record<FeatureCategory, string> = {
+  class: 'Classe',
+  racial: 'Race',
+  background: 'Historique',
+  feat: 'Don',
+  custom: 'Personnalisé',
+};
+
+/**
+ * Render a feature template by replacing {{variable}} tokens with computed
+ * values from the character's stats. Unknown variables are left as-is.
+ *
+ * Supported variables:
+ *   {{name}} {{level}} {{class}} {{race}} {{background}} {{speed}} {{max_hp}}
+ *   {{prof}} {{initiative}} {{passive_perception}} {{save_dc}} {{spell_attack}}
+ *   {{str}} {{dex}} {{con}} {{int}} {{wis}} {{cha}}
+ *   {{str_mod}} {{dex_mod}} {{con_mod}} {{int_mod}} {{wis_mod}} {{cha_mod}}
+ *   {{save:str}} {{save:dex}} {{save:con}} {{save:int}} {{save:wis}} {{save:cha}}
+ *   {{skill:athletics}} {{skill:perception}} {{skill:arcanes}} ... (18 skills)
+ */
+export function renderFeatureTemplate(text: string, character: Character): string {
+  if (!text) return text;
+
+  const level = character.level ?? 1;
+  const prof = proficiencyBonus(level);
+  const classInfo = findClass(character.characterClass);
+  const castingAbility = classInfo?.spellcastingAbility;
+  const isCaster = !!(classInfo && classInfo.spellcasting !== 'none' && castingAbility);
+  const castingMod = isCaster && castingAbility
+    ? abilityModifier((character[castingAbility as keyof Character] as number) ?? 10)
+    : 0;
+  const wisMod = abilityModifier(character.wisdom ?? 10);
+  const dexMod = abilityModifier(character.dexterity ?? 10);
+  const hasPerception = (character.skillProficiencies ?? []).includes('perception');
+  const saveProfs = new Set(character.savingThrowProficiencies ?? []);
+
+  // Build variable map
+  const vars: Record<string, string> = {
+    name: character.name,
+    level: String(level),
+    class: character.characterClass ?? '',
+    race: character.race ?? '',
+    background: character.background ?? '',
+    speed: String(character.speed ?? 9),
+    max_hp: String(character.maxHp ?? 1),
+    prof: formatModifier(prof),
+    initiative: formatModifier(dexMod),
+    passive_perception: String(passivePerception(wisMod, prof, hasPerception)),
+  };
+
+  // Spellcasting variables
+  if (isCaster) {
+    vars.save_dc = String(spellSaveDC(castingMod, prof));
+    vars.spell_attack = formatModifier(castingMod + prof);
+  }
+
+  // Ability scores and modifiers
+  const abilities: Array<{ key: string; field: keyof Character }> = [
+    { key: 'str', field: 'strength' },
+    { key: 'dex', field: 'dexterity' },
+    { key: 'con', field: 'constitution' },
+    { key: 'int', field: 'intelligence' },
+    { key: 'wis', field: 'wisdom' },
+    { key: 'cha', field: 'charisma' },
+  ];
+
+  for (const { key, field } of abilities) {
+    const score = (character[field] as number) ?? 10;
+    vars[key] = String(score);
+    vars[`${key}_mod`] = formatModifier(abilityModifier(score));
+    // Saving throw modifiers
+    vars[`save:${key}`] = formatModifier(
+      abilityModifier(score) + (saveProfs.has(field as string) ? prof : 0),
+    );
+  }
+
+  // Skill modifiers
+  for (const skill of DND_SKILLS) {
+    const score = (character[skill.ability as keyof Character] as number) ?? 10;
+    const proficient = (character.skillProficiencies ?? []).includes(skill.key);
+    vars[`skill:${skill.key}`] = formatModifier(
+      abilityModifier(score) + (proficient ? prof : 0),
+    );
+  }
+
+  // Replace all {{variable}} tokens
+  return text.replace(/\{\{(\w+:[\w]+|\w+)\}\}/g, (match, key: string) => {
+    return vars[key] ?? match; // Leave unknown variables as-is
+  });
+}
+
+/** List of available template variables for the help UI. */
+export const TEMPLATE_VARIABLES: Array<{ syntax: string; description: string }> = [
+  { syntax: '{{name}}', description: 'Nom du personnage' },
+  { syntax: '{{level}}', description: 'Niveau' },
+  { syntax: '{{class}}', description: 'Classe' },
+  { syntax: '{{race}}', description: 'Race' },
+  { syntax: '{{prof}}', description: 'Bonus de maîtrise (+3)' },
+  { syntax: '{{save_dc}}', description: 'DD de sauvegarde des sorts (14)' },
+  { syntax: '{{spell_attack}}', description: 'Bonus d\'attaque de sort (+6)' },
+  { syntax: '{{str_mod}}', description: 'Modificateur de Force (+4)' },
+  { syntax: '{{dex_mod}}', description: 'Modificateur de Dextérité (+2)' },
+  { syntax: '{{con_mod}}', description: 'Modificateur de Constitution (+1)' },
+  { syntax: '{{int_mod}}', description: 'Modificateur d\'Intelligence (+3)' },
+  { syntax: '{{wis_mod}}', description: 'Modificateur de Sagesse (+1)' },
+  { syntax: '{{cha_mod}}', description: 'Modificateur de Charisme (+0)' },
+  { syntax: '{{save:dex}}', description: 'Sauvegarde de Dextérité (+2)' },
+  { syntax: '{{save:con}}', description: 'Sauvegarde de Constitution (+1)' },
+  { syntax: '{{skill:perception}}', description: 'Modificateur de Perception (+4)' },
+  { syntax: '{{skill:athletics}}', description: "Modificateur d'Athlétisme (+4)" },
+  { syntax: '{{passive_perception}}', description: 'Perception passive (14)' },
+  { syntax: '{{initiative}}', description: 'Initiative (+2)' },
+  { syntax: '{{speed}}', description: 'Vitesse en mètres (9)' },
+  { syntax: '{{max_hp}}', description: 'PV maximum' },
+];
+
 // ---------- Inventory & Storage ----------
 
 export type StorageType = 'carried' | 'mount' | 'container';
