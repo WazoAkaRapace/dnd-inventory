@@ -30,8 +30,16 @@ export async function itemRoutes(app: FastifyInstance) {
     const where: string[] = [];
     const params: any[] = [];
 
-    // Default: global SRD items (party_id IS NULL). Custom items visible globally for now.
-    where.push('(party_id IS NULL)');
+    // Show global SRD items + custom items from the user's parties
+    const userPartyIds = (db.prepare('SELECT party_id FROM party_members WHERE user_id = ?').all(userId) as any[])
+      .map((r) => r.party_id);
+    if (userPartyIds.length > 0) {
+      const placeholders = userPartyIds.map(() => '?').join(',');
+      where.push(`(party_id IS NULL OR party_id IN (${placeholders}))`);
+      params.push(...userPartyIds);
+    } else {
+      where.push('(party_id IS NULL)');
+    }
 
     if (search) {
       // Accent-insensitive search using a custom SQLite function registered in server.ts.
