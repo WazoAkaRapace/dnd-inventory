@@ -308,6 +308,7 @@ CREATE TABLE IF NOT EXISTS combatants (
   conditions      TEXT NOT NULL DEFAULT '[]',    -- JSON: [{name,duration}]
   sort_order      INTEGER NOT NULL DEFAULT 0,
   defeated        INTEGER NOT NULL DEFAULT 0,
+  card_color      TEXT,                           -- hex color for card background, NULL = default
   created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_combatants_encounter ON combatants(encounter_id);

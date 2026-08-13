@@ -1232,6 +1232,7 @@ export interface Combatant {
   conditions: CombatantCondition[];
   sortOrder: number;
   defeated: boolean;
+  cardColor: string | null; // hex color for the card background, null = default
 }
 
 export type EncounterStatus = 'setup' | 'active' | 'ended';
@@ -1291,6 +1292,7 @@ export interface PatchCombatantPayload {
   maxHitPoints?: number;
   conditions?: CombatantCondition[];
   defeated?: boolean;
+  cardColor?: string | null;
 }
 
 export interface SetInitiativePayload {

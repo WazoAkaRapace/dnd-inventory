@@ -126,6 +126,7 @@ const COLUMN_MIGRATIONS: Record<string, Array<{ name: string; ddl: string }>> = 
   ],
   combatants: [
     { name: 'group_id', ddl: 'INTEGER' },
+    { name: 'card_color', ddl: 'TEXT' },
   ],
 };
 

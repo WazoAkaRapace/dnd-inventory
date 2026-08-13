@@ -9,6 +9,18 @@ import type { Combatant, CombatantCondition } from '@dnd-inventory/shared';
 import ConditionsEditor from './ConditionsEditor';
 import MonsterStatBlock from './MonsterStatBlock';
 
+const CARD_COLORS = [
+  null,           // default (type-based)
+  '#fef3c7',      // amber
+  '#dcfce7',      // green
+  '#dbeafe',      // blue
+  '#fce7f3',      // pink
+  '#f3e8ff',      // purple
+  '#fed7aa',      // orange
+  '#fee2e2',      // red
+  '#e0e7ff',      // indigo
+];
+
 interface Props {
   combatant: Combatant;
   label?: string; // override display name (e.g., "Gobelin 1" for group members)
@@ -42,6 +54,7 @@ export default function CombatantRow({
   const [showStatBlock, setShowStatBlock] = useState(false);
   const [editHp, setEditHp] = useState('');
   const [editMaxHp, setEditMaxHp] = useState('');
+  const [showColorPicker, setShowColorPicker] = useState(false);
   const [initInput, setInitInput] = useState(
     combatant.initiative !== null ? String(combatant.initiative) : '',
   );
@@ -114,13 +127,20 @@ export default function CombatantRow({
   const needsInitRoll = combatant.initiative === null && !hideInitiative && (isGM || canSetInitiative);
   const showInitBadge = combatant.initiative !== null && !hideInitiative;
 
+  // Card background: custom color if set, otherwise type-based default
+  const cardBg = combatant.cardColor
+    ? { backgroundColor: combatant.cardColor }
+    : undefined;
+  const cardClass = combatant.cardColor
+    ? '' // custom color overrides the type-based bg
+    : combatant.type === 'player' ? 'bg-blue-50/60' : 'bg-red-50/40';
+
   return (
     <div
       className={`card p-3 transition-all relative ${
         isCurrent ? 'ring-2 ring-blood-500 shadow-lg' : ''
-      } ${combatant.defeated ? 'opacity-50 grayscale' : ''} ${
-        combatant.type === 'player' ? 'bg-blue-50/60' : 'bg-red-50/40'
-      }`}
+      } ${combatant.defeated ? 'opacity-50 grayscale' : ''} ${cardClass}`}
+      style={cardBg}
     >
       {/* Row 1: Name + initiative + status badges */}
       <div className="flex items-center gap-2">
@@ -220,6 +240,13 @@ export default function CombatantRow({
                 📜
               </button>
             )}
+            <button
+              onClick={() => setShowColorPicker(!showColorPicker)}
+              className="btn-secondary text-xs px-2 py-1"
+              title="Couleur de la carte"
+            >
+              🎨
+            </button>
             <button
               onClick={() => setShowActions(!showActions)}
               className="btn-secondary text-xs px-2 py-1"
@@ -358,6 +385,53 @@ export default function CombatantRow({
         slug={combatant.monsterSlug}
         onClose={() => setShowStatBlock(false)}
       />
+
+      {/* Color picker popup (portal to body) */}
+      {showColorPicker && isGM && createPortal(
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
+          onClick={() => setShowColorPicker(false)}
+        >
+          <div
+            className="card w-full max-w-sm rounded-b-none p-4 sheet-enter bg-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-display font-semibold text-sm">Couleur de la carte</h3>
+              <button
+                onClick={() => setShowColorPicker(false)}
+                className="btn-ghost text-ink-500 p-1 text-sm"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {CARD_COLORS.map((color, idx) => {
+                const isSelected = combatant.cardColor === color;
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      onPatch(combatant.id, { cardColor: color });
+                      setShowColorPicker(false);
+                    }}
+                    className={`w-full h-12 rounded-lg border-2 transition-all ${
+                      isSelected ? 'border-blood-600 ring-2 ring-blood-300' : 'border-parchment-200'
+                    } ${color === null ? 'bg-white' : ''}`}
+                    style={color ? { backgroundColor: color } : undefined}
+                    title={color === null ? 'Par défaut' : color}
+                  >
+                    {color === null && (
+                      <span className="text-xs text-ink-400">Défaut</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

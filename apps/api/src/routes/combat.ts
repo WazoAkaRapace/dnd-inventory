@@ -60,6 +60,7 @@ function mapCombatant(row: any): Combatant {
     conditions: parseConditions(row.conditions),
     sortOrder: row.sort_order ?? 0,
     defeated: !!row.defeated,
+    cardColor: row.card_color ?? null,
   };
 }
 
@@ -527,6 +528,7 @@ export async function combatRoutes(app: FastifyInstance) {
       if (body.maxHitPoints !== undefined) { sets.push('max_hit_points = ?'); vals.push(Math.max(1, body.maxHitPoints)); }
       if (body.conditions !== undefined) { sets.push('conditions = ?'); vals.push(JSON.stringify(body.conditions)); }
       if (body.defeated !== undefined) { sets.push('defeated = ?'); vals.push(body.defeated ? 1 : 0); }
+      if (body.cardColor !== undefined) { sets.push('card_color = ?'); vals.push(body.cardColor); }
 
       if (sets.length === 0) return reply.code(400).send({ error: 'no fields to update' });
 
