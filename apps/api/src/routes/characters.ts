@@ -157,6 +157,8 @@ export async function characterRoutes(app: FastifyInstance) {
           sets.push(`${col} = ?`);
           if (jsonFields.has(key as string)) {
             vals.push(JSON.stringify(body[key]));
+          } else if (typeof body[key] === 'boolean') {
+            vals.push(body[key] ? 1 : 0);
           } else {
             vals.push(body[key]);
           }
