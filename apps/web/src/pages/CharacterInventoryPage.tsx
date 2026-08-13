@@ -303,14 +303,24 @@ export default function CharacterInventoryPage() {
     if (!charId) return;
     try {
       const res = await api.get<CharacterInventory>(`/api/characters/${charId}/inventory`);
-      setData(res.data);
-      // Sync coin state from server (covers both local and remote mutations)
-      setCoins({
-        copper: res.data.character.copper,
-        silver: res.data.character.silver,
-        electrum: res.data.character.electrum,
-        gold: res.data.character.gold,
-        platinum: res.data.character.platinum,
+      // Diff guard: only update state if data actually changed.
+      // This prevents deep re-renders when the response is identical
+      // (e.g. after a no-op sync event or unchanged data).
+      const newDataStr = JSON.stringify(res.data);
+      setData((prev) => {
+        if (prev && JSON.stringify(prev) === newDataStr) return prev;
+        return res.data;
+      });
+      // Sync coins only if values changed
+      setCoins((prev) => {
+        const next = {
+          copper: res.data.character.copper,
+          silver: res.data.character.silver,
+          electrum: res.data.character.electrum,
+          gold: res.data.character.gold,
+          platinum: res.data.character.platinum,
+        };
+        return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
       });
       // Update active tab if the active location was deleted (fall back to carried)
       setActiveLocationId((prev) => {

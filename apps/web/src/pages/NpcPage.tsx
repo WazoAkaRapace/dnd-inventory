@@ -72,9 +72,9 @@ export default function NpcPage({ embedded = false }: { embedded?: boolean }) {
     setTimeout(() => setFeedback(null), 2500);
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!partyId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError('');
     try {
       const [npcRes, partyRes] = await Promise.all([
@@ -98,7 +98,7 @@ export default function NpcPage({ embedded = false }: { embedded?: boolean }) {
   const currentPartyId = Number(partyId);
   useSyncEvent((event) => {
     if (event.partyId === currentPartyId) {
-      load();
+      load(true); // silent — no spinner flash on sync updates
     }
   }, [currentPartyId]);
 

@@ -23,9 +23,9 @@ export default function PartyPage() {
   const [charLevel, setCharLevel] = useState(1);
   const [charRace, setCharRace] = useState('');
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!partyId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const res = await api.get(`/api/parties/${partyId}`);
       setParty(res.data);
@@ -42,7 +42,7 @@ export default function PartyPage() {
   const currentPartyId = Number(partyId);
   useSyncEvent((event) => {
     if (event.partyId === currentPartyId) {
-      load();
+      load(true); // silent — no spinner flash on sync updates
     }
   }, [currentPartyId]);
 
