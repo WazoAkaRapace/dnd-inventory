@@ -123,7 +123,7 @@ export async function characterRoutes(app: FastifyInstance) {
         'alignment', 'sex', 'height', 'weight', 'age', 'skin', 'eyes', 'hair',
         'portraitUrl', 'personalityTraits', 'ideals', 'bonds', 'flaws', 'appearance',
         'armorClassOverride',
-        'deathSaveSuccesses', 'deathSaveFailures',
+        'deathSaveSuccesses', 'deathSaveFailures', 'inspiration',
       ];
       const sets: string[] = [];
       const vals: any[] = [];
