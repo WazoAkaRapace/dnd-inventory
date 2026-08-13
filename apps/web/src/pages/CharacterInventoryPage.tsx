@@ -111,6 +111,9 @@ export default function CharacterInventoryPage() {
   const [multDraft, setMultDraft] = useState('1');
   const [showMultHelp, setShowMultHelp] = useState(false);
   const [showCarryModal, setShowCarryModal] = useState(false);
+  // Inline-editable character name
+  const [nameDraft, setNameDraft] = useState('');
+  const [editingName, setEditingName] = useState(false);
 
   // Toast system
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -535,6 +538,24 @@ export default function CharacterInventoryPage() {
     }
   };
 
+  const commitName = async () => {
+    const trimmed = nameDraft.trim();
+    if (!trimmed || trimmed === character.name) {
+      setEditingName(false);
+      return;
+    }
+    try {
+      await api.patch(`/api/characters/${charId}`, { name: trimmed });
+      markLocalMutation();
+      await refreshInventory();
+      pushToast('Nom mis à jour');
+    } catch (err: any) {
+      pushToast(err.response?.data?.error || 'Erreur', 'error');
+    } finally {
+      setEditingName(false);
+    }
+  };
+
   const dismissError = () => setError('');
 
   // ---------- Render guards ----------
@@ -591,7 +612,28 @@ export default function CharacterInventoryPage() {
         <div className="card p-4 sm:p-5">
           <div className="flex items-center justify-between gap-3">
             <h1 className="font-display text-xl sm:text-2xl font-bold truncate flex items-center gap-2">
-              {character.name}
+              {editingName ? (
+                <input
+                  type="text"
+                  className="font-display text-xl sm:text-2xl font-bold bg-transparent border-b-2 border-blood-500 outline-none min-w-0 flex-1"
+                  value={nameDraft}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                  onBlur={commitName}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                    if (e.key === 'Escape') { setEditingName(false); }
+                  }}
+                  autoFocus
+                />
+              ) : (
+                <button
+                  onClick={() => { setNameDraft(character.name); setEditingName(true); }}
+                  className="hover:text-blood-600 transition-colors truncate"
+                  title="Cliquer pour renommer"
+                >
+                  {character.name}
+                </button>
+              )}
               <button
                 onClick={() => setShowCarryModal(true)}
                 className="text-ink-400 hover:text-blood-600 transition-colors"
