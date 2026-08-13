@@ -678,7 +678,7 @@ export default function CharacterInventoryPage() {
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
                 activeTab === tab.key
                   ? 'bg-blood-600 text-white shadow-sm'
-                  : 'text-ink-600 hover:bg-parchment-200'
+                  : 'text-ink-900 hover:bg-parchment-200'
               }`}
               aria-pressed={activeTab === tab.key}
             >
