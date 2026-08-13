@@ -1,6 +1,29 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-parchment-50: #fdfaf3;
+  --color-parchment-100: #f7f0e1;
+  --color-parchment-200: #ece0c4;
+  --color-parchment-300: #ddcb9e;
+  --color-parchment-400: #c9b074;
+  --color-parchment-500: #b8975a;
+
+  --color-blood-500: #8b1a1a;
+  --color-blood-600: #7a1f1f;
+  --color-blood-700: #651515;
+
+  --color-ink-900: #2a1f14;
+  --color-ink-700: #4a3825;
+  --color-ink-500: #6b5640;
+  --color-ink-400: #8a7558;
+
+  --color-gold-400: #d4af37;
+  --color-gold-500: #b8975a;
+
+  --font-display: "Cinzel", Georgia, serif;
+  --font-body: "Iowan Old Style", Palatino, Georgia, serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+}
 
 :root {
   /* Light theme only — the app is parchment-themed, not dark-mode */
