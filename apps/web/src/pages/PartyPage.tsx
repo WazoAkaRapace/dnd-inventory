@@ -206,15 +206,26 @@ function CharacterCard({ c, partyId }: { c: CharacterSummary; partyId: string })
       to={`/party/${partyId}/character/${c.id}`}
       className="card p-4 hover:shadow-md transition-shadow block"
     >
-      <h3 className="font-display text-lg font-semibold">{c.name}</h3>
-      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-ink-500">
-        {c.characterClass && (
-          <span>{c.characterClass}{c.level ? ` ${c.level}` : ''}</span>
+      <div className="flex items-start gap-3">
+        {c.portraitUrl && (
+          <img
+            src={c.portraitUrl}
+            alt={c.name}
+            className="w-12 h-12 rounded-full object-cover border-2 border-parchment-300 shrink-0"
+          />
         )}
-        {c.race && <span>{c.race}</span>}
-        <span>💪 FOR {c.strength}</span>
+        <div className="min-w-0 flex-1">
+          <h3 className="font-display text-lg font-semibold truncate">{c.name}</h3>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-ink-500">
+            {c.characterClass && (
+              <span>{c.characterClass}{c.level ? ` ${c.level}` : ''}</span>
+            )}
+            {c.race && <span>{c.race}</span>}
+            <span>💪 FOR {c.strength}</span>
+          </div>
+          <p className="text-xs text-ink-400 mt-2">Joueur: {c.ownerName}</p>
+        </div>
       </div>
-      <p className="text-xs text-ink-400 mt-2">Joueur: {c.ownerName}</p>
     </Link>
   );
 }
