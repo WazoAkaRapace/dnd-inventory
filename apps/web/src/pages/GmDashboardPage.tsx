@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../api';
-import { useSyncEvent, useSync } from '../sync';
-import type { PartyDetail, CharacterSummary, CreateCustomItem } from '@dnd-inventory/shared';
+import { useSyncEvent } from '../sync';
+import type { PartyDetail, CharacterSummary, CreateCustomItem, CharacterInventory } from '@dnd-inventory/shared';
+import {
+  abilityModifier, formatModifier, proficiencyBonus, passivePerception, computeAC,
+} from '@dnd-inventory/shared';
 import { LoadingSpinner, EmptyState, Modal, ErrorMsg, CategoryBadge } from '../components/ui';
 
 interface Transaction {
@@ -23,7 +26,7 @@ export default function GmDashboardPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<'characters' | 'transactions' | 'custom' | 'survival'>('characters');
+  const [tab, setTab] = useState<'characters' | 'transactions' | 'custom'>('characters');
   const [showAddItem, setShowAddItem] = useState(false);
 
   const load = useCallback(async (silent = false) => {
@@ -78,9 +81,6 @@ export default function GmDashboardPage() {
         <TabButton active={tab === 'custom'} onClick={() => setTab('custom')}>
           Objets custom
         </TabButton>
-        <TabButton active={tab === 'survival'} onClick={() => setTab('survival')}>
-          Survie
-        </TabButton>
       </div>
 
       {tab === 'characters' && (
@@ -93,10 +93,6 @@ export default function GmDashboardPage() {
 
       {tab === 'custom' && (
         <CustomItemsTab partyId={partyId!} />
-      )}
-
-      {tab === 'survival' && (
-        <SurvivalTab characters={party.characters} onReload={load} />
       )}
     </div>
   );
@@ -118,6 +114,24 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
 function CharactersTab({ characters, partyId, onReload }: { characters: CharacterSummary[]; partyId: string; onReload: () => void }) {
   const [deleteTarget, setDeleteTarget] = useState<CharacterSummary | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [inventories, setInventories] = useState<Record<number, CharacterInventory>>({});
+
+  // Fetch all character inventories in parallel for AC, weight %, food/water counts
+  const loadInventories = useCallback(async (chars: CharacterSummary[]) => {
+    const results = await Promise.allSettled(
+      chars.map((c) => api.get<CharacterInventory>(`/api/characters/${c.id}/inventory`)),
+    );
+    const map: Record<number, CharacterInventory> = {};
+    chars.forEach((c, i) => {
+      const r = results[i];
+      if (r.status === 'fulfilled') map[c.id] = r.value.data;
+    });
+    setInventories(map);
+  }, []);
+
+  useEffect(() => {
+    if (characters.length > 0) loadInventories(characters);
+  }, [characters, loadInventories]);
 
   async function confirmDelete() {
     if (!deleteTarget) return;
@@ -136,46 +150,130 @@ function CharactersTab({ characters, partyId, onReload }: { characters: Characte
   if (characters.length === 0) {
     return <EmptyState icon="🧙" title="Aucun personnage" hint="Les joueurs doivent créer leurs personnages." />;
   }
+
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {characters.map((c) => (
-        <div key={c.id} className="card p-4 hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between gap-2">
-            <Link to={`/party/${partyId}/character/${c.id}`} className="min-w-0 flex-1">
-              <h3 className="font-display text-lg font-semibold">{c.name}</h3>
-              <div className="mt-1 flex gap-4 text-sm text-ink-500">
-                <span>💪 FOR {c.strength}</span>
+      {characters.map((c) => {
+        const inv = inventories[c.id];
+        const entries = inv?.entries || [];
+        const dexMod = abilityModifier(c.dexterity ?? 10);
+        const wisMod = abilityModifier(c.wisdom ?? 10);
+        const level = c.level ?? 1;
+        const prof = proficiencyBonus(level);
+        const hasPerception = c.skillProficiencies?.includes('perception') ?? false;
+        const pp = passivePerception(wisMod, prof, hasPerception);
+        const acResult = inv ? computeAC(entries, dexMod) : null;
+        const effectiveAC = c.armorClassOverride ?? acResult?.ac ?? 10 + dexMod;
+        const enc = inv?.encumbrance;
+        const weightPct = enc ? Math.min(100, Math.round(enc.pct)) : 0;
+        const hpPct = c.maxHp > 0 ? Math.max(0, Math.min(100, Math.round((c.currentHp / c.maxHp) * 100))) : 0;
+        const hpColor = c.currentHp <= 0 ? 'bg-red-500' : hpPct < 33 ? 'bg-orange-500' : hpPct < 66 ? 'bg-yellow-500' : 'bg-green-500';
+
+        // Food/water from inventory
+        const foodCount = entries.reduce((sum, e) => sum + (e.item.survivalTags?.includes('food') ? e.quantity : 0), 0);
+        const fullWaterCount = entries.reduce((sum, e) => {
+          if (!e.item.survivalTags?.includes('water')) return sum;
+          if (e.notes && e.notes.includes('empty')) return sum;
+          return sum + e.quantity;
+        }, 0);
+
+        const exhColor = c.exhaustion === 0 ? 'bg-green-500' : c.exhaustion <= 2 ? 'bg-yellow-500' : c.exhaustion <= 4 ? 'bg-orange-500' : 'bg-red-500';
+
+        return (
+          <div key={c.id} className="card p-4 hover:shadow-md transition-shadow">
+            {/* Header: portrait + name + class */}
+            <div className="flex items-start justify-between gap-2">
+              <Link to={`/party/${partyId}/character/${c.id}`} className="min-w-0 flex-1 flex items-center gap-2">
+                {c.portraitUrl ? (
+                  <img src={c.portraitUrl} alt={c.name} className="w-10 h-10 rounded-full object-cover border border-parchment-300 shrink-0" />
+                ) : null}
+                <div className="min-w-0">
+                  <h3 className="font-display font-semibold truncate">{c.name}</h3>
+                  <p className="text-xs text-ink-400">
+                    {c.characterClass ? `${c.characterClass} ` : ''}
+                    {c.level ? `Niv. ${c.level}` : ''}
+                    {c.race ? ` · ${c.race}` : ''}
+                  </p>
+                </div>
+              </Link>
+              <button
+                onClick={() => setDeleteTarget(c)}
+                className="text-ink-400 hover:text-red-600 text-sm shrink-0 p-1"
+                aria-label={`Supprimer ${c.name}`}
+                title="Supprimer le personnage"
+              >🗑</button>
+            </div>
+
+            {/* HP bar */}
+            <div className="mt-3">
+              <div className="flex items-center justify-between text-xs text-ink-500 mb-1">
+                <span>❤️ PV</span>
+                <span className="font-medium">{c.currentHp}{c.tempHp > 0 ? ` (+${c.tempHp})` : ''} / {c.maxHp}</span>
               </div>
-              <p className="text-xs text-ink-400 mt-2">→ Voir l'inventaire</p>
-            </Link>
-            <button
-              onClick={() => setDeleteTarget(c)}
-              className="text-ink-400 hover:text-red-600 text-sm shrink-0 p-1"
-              aria-label={`Supprimer ${c.name}`}
-              title="Supprimer le personnage"
-            >
-              🗑
-            </button>
+              <div className="h-2 bg-parchment-200 rounded-full overflow-hidden">
+                <div className={`h-full ${hpColor} transition-all rounded-full`} style={{ width: `${hpPct}%` }} />
+              </div>
+            </div>
+
+            {/* Inventory weight bar */}
+            {enc && (
+              <div className="mt-2">
+                <div className="flex items-center justify-between text-xs text-ink-500 mb-1">
+                  <span>🎒 Sac</span>
+                  <span>{enc.totalWeightKg.toFixed(1)} / {enc.maxCarryKg.toFixed(0)} kg ({weightPct}%)</span>
+                </div>
+                <div className="h-1.5 bg-parchment-200 rounded-full overflow-hidden">
+                  <div className={`h-full transition-all rounded-full ${
+                    weightPct > 100 ? 'bg-red-500' : weightPct > 60 ? 'bg-orange-400' : 'bg-blue-400'
+                  }`} style={{ width: `${Math.min(100, weightPct)}%` }} />
+                </div>
+              </div>
+            )}
+
+            {/* Stats row: CA, PP, food, water */}
+            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+              <span className="font-medium">🛡 CA <span className="text-ink-800 font-bold">{effectiveAC}</span></span>
+              <span className="font-medium">👁 PP <span className="text-ink-800 font-bold">{pp}</span></span>
+              <span className="text-ink-500">🍖 {foodCount}</span>
+              <span className="text-ink-500">💧 {fullWaterCount}</span>
+              {c.exhaustion > 0 && (
+                <span className="inline-flex items-center gap-1">
+                  <span className={`w-2 h-2 rounded-full ${exhColor}`} />
+                  <span className="text-ink-500">Épuis. {c.exhaustion}</span>
+                </span>
+              )}
+              {c.currentHp <= 0 && (
+                <span className="text-red-600 font-medium">💀 {c.deathSaveSuccesses}/3 ✓ · {c.deathSaveFailures}/3 ✗</span>
+              )}
+            </div>
+
+            {/* Conditions */}
+            {c.conditions && c.conditions.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {c.conditions.map((cond) => (
+                  <span key={cond} className="text-[10px] px-1.5 py-0.5 rounded-full bg-blood-50 text-blood-700 border border-blood-200">
+                    {cond}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {/* Delete confirmation modal */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40" onClick={() => !deleting && setDeleteTarget(null)}>
-          <div className="card w-full sm:max-w-sm p-5 rounded-b-none sm:rounded-b-2xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-display text-lg font-semibold mb-2">Supprimer {deleteTarget.name} ?</h3>
-            <p className="text-sm text-ink-500 mb-4">Cette action est irréversible. Tout l'inventaire et la monnaie seront perdus.</p>
-            <div className="flex gap-2">
-              <button onClick={() => setDeleteTarget(null)} disabled={deleting} className="btn-secondary flex-1">
-                Annuler
-              </button>
-              <button onClick={confirmDelete} disabled={deleting} className="btn-primary flex-1 bg-red-600 hover:bg-red-700">
-                {deleting ? 'Suppression…' : 'Supprimer'}
-              </button>
-            </div>
+        <Modal open={!!deleteTarget} onClose={() => !deleting && setDeleteTarget(null)} title={`Supprimer ${deleteTarget.name} ?`}>
+          <p className="text-sm text-ink-500 mb-4">Cette action est irréversible. Tout l'inventaire et la monnaie seront perdus.</p>
+          <div className="flex gap-2">
+            <button onClick={() => setDeleteTarget(null)} disabled={deleting} className="btn-secondary flex-1">
+              Annuler
+            </button>
+            <button onClick={confirmDelete} disabled={deleting} className="btn-primary flex-1 bg-red-600 hover:bg-red-700">
+              {deleting ? 'Suppression…' : 'Supprimer'}
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
@@ -414,195 +512,6 @@ function CustomItemsTab({ partyId }: { partyId: string }) {
           </div>
         </div>
       </Modal>
-    </div>
-  );
-}
-
-// ---------- Survival tab ----------
-
-const GM_EXHAUSTION_EFFECTS_FR: string[] = [
-  'Aucun effet',
-  'Désavantage aux jets de caractéristique',
-  'Vitesse réduite de moitié',
-  'Désavantage aux attaques et sauvegardes',
-  'PV max réduits de moitié',
-  'Vitesse réduite à 0',
-  'Mort',
-];
-
-function gmExhaustionColor(level: number): string {
-  if (level <= 1) return 'text-green-600';
-  if (level <= 3) return 'text-yellow-600';
-  if (level <= 5) return 'text-orange-600';
-  return 'text-red-600';
-}
-
-function deprivationTone(days: number): string {
-  if (days >= 5) return 'text-red-700 font-semibold';
-  if (days >= 3) return 'text-amber-700 font-semibold';
-  return 'text-ink-600';
-}
-
-function SurvivalTab({
-  characters,
-  onReload,
-}: {
-  characters: CharacterSummary[];
-  onReload: () => void | Promise<void>;
-}) {
-  const { markLocalMutation } = useSync();
-  const [busyId, setBusyId] = useState<number | null>(null);
-
-  const patchExhaustion = async (char: CharacterSummary, level: number) => {
-    if (level === char.exhaustion) return;
-    markLocalMutation();
-    setBusyId(char.id);
-    try {
-      await api.patch(`/api/characters/${char.id}`, { exhaustion: level });
-      await onReload();
-    } catch {
-      // surfaced via parent reload / silent
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const patchSurvival = async (char: CharacterSummary, field: 'foodDays' | 'waterDays', value: number) => {
-    const clamped = Math.max(0, value);
-    if (clamped === char[field]) return;
-    markLocalMutation();
-    setBusyId(char.id);
-    try {
-      await api.patch(`/api/characters/${char.id}`, { [field]: clamped });
-      await onReload();
-    } catch {
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  if (characters.length === 0) {
-    return <EmptyState icon="🧙" title="Aucun personnage" hint="Les joueurs doivent créer leurs personnages." />;
-  }
-
-  return (
-    <div className="card divide-y divide-parchment-100">
-      {/* Header row (hidden on mobile — table is card-stacked) */}
-      <div className="hidden sm:grid grid-cols-[2fr_3fr_2fr_2fr] gap-3 p-3 text-xs font-medium text-ink-400 uppercase tracking-wide">
-        <span>Personnage</span>
-        <span>Épuisement</span>
-        <span>États</span>
-        <span>Privation</span>
-      </div>
-
-      {characters.map((c) => (
-        <div
-          key={c.id}
-          className="p-3 grid gap-2 sm:grid-cols-[2fr_3fr_2fr_2fr] sm:gap-3 sm:items-center"
-        >
-          {/* Name */}
-          <div className="min-w-0">
-            <Link
-              to={`/party/${c.partyId}/character/${c.id}`}
-              className="font-display font-semibold hover:underline truncate block"
-            >
-              {c.name}
-            </Link>
-            <p className="text-xs text-ink-400">{c.ownerName}</p>
-          </div>
-
-          {/* Exhaustion diamonds + quick +/- */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-0.5" role="group" aria-label={`Épuisement de ${c.name}`}>
-              {Array.from({ length: 7 }, (_, i) => {
-                const active = i <= c.exhaustion && i > 0;
-                return (
-                  <span
-                    key={i}
-                    className={`text-lg leading-none ${gmExhaustionColor(c.exhaustion)} ${active ? 'opacity-100' : 'opacity-25'}`}
-                    title={`Niveau ${i}${i > 0 ? ` — ${GM_EXHAUSTION_EFFECTS_FR[i]}` : ''}`}
-                    aria-hidden="true"
-                  >
-                    {active ? '◆' : '◇'}
-                  </span>
-                );
-              })}
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => patchExhaustion(c, Math.max(0, c.exhaustion - 1))}
-                disabled={busyId === c.id || c.exhaustion <= 0}
-                className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-sm font-medium flex items-center justify-center"
-                aria-label={`Diminuer l'épuisement de ${c.name}`}
-              >
-                −
-              </button>
-              <button
-                type="button"
-                onClick={() => patchExhaustion(c, Math.min(6, c.exhaustion + 1))}
-                disabled={busyId === c.id || c.exhaustion >= 6}
-                className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-sm font-medium flex items-center justify-center"
-                aria-label={`Augmenter l'épuisement de ${c.name}`}
-              >
-                +
-              </button>
-            </div>
-          </div>
-
-          {/* Conditions */}
-          <div className="flex flex-wrap gap-1">
-            {c.conditions.length === 0 ? (
-              <span className="text-xs text-ink-400 italic">—</span>
-            ) : (
-              c.conditions.map((cond) => (
-                <span
-                  key={cond}
-                  className="inline-block px-1.5 py-0.5 rounded-full bg-blood-50 text-blood-800 text-xs font-medium border border-blood-200"
-                >
-                  {cond}
-                </span>
-              ))
-            )}
-          </div>
-
-          {/* Deprivation with +/- steppers */}
-          <div className="flex flex-col gap-1.5 text-xs">
-            <div className="flex items-center gap-1">
-              <span className={deprivationTone(c.foodDays)}>🍖</span>
-              <button
-                onClick={() => patchSurvival(c, 'foodDays', c.foodDays - 1)}
-                disabled={busyId === c.id || c.foodDays <= 0}
-                className="w-6 h-6 rounded bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-xs flex items-center justify-center"
-                aria-label={`Diminuer jours sans nourriture de ${c.name}`}
-              >−</button>
-              <span className={`min-w-[2rem] text-center ${deprivationTone(c.foodDays)}`}>{c.foodDays} j</span>
-              <button
-                onClick={() => patchSurvival(c, 'foodDays', c.foodDays + 1)}
-                disabled={busyId === c.id}
-                className="w-6 h-6 rounded bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-xs flex items-center justify-center"
-                aria-label={`Augmenter jours sans nourriture de ${c.name}`}
-              >+</button>
-            </div>
-            <div className="flex items-center gap-1">
-              <span className={deprivationTone(c.waterDays)}>💧</span>
-              <button
-                onClick={() => patchSurvival(c, 'waterDays', c.waterDays - 1)}
-                disabled={busyId === c.id || c.waterDays <= 0}
-                className="w-6 h-6 rounded bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-xs flex items-center justify-center"
-                aria-label={`Diminuer jours sans eau de ${c.name}`}
-              >−</button>
-              <span className={`min-w-[2rem] text-center ${deprivationTone(c.waterDays)}`}>{c.waterDays} j</span>
-              <button
-                onClick={() => patchSurvival(c, 'waterDays', c.waterDays + 1)}
-                disabled={busyId === c.id}
-                className="w-6 h-6 rounded bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-xs flex items-center justify-center"
-                aria-label={`Augmenter jours sans eau de ${c.name}`}
-              >+</button>
-            </div>
-          </div>
-        </div>
-      ))}
     </div>
   );
 }
