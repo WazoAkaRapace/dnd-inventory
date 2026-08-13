@@ -251,16 +251,17 @@ function rollAttack(bonus: number): { roll: number; natural: number; total: numb
   return { roll: total, natural, total };
 }
 
-/** Roll a dice formula like "2d6+5" → { total, rolls } */
-function rollDamage(formula: string): { total: number; rolls: number[] } {
+/** Roll a dice formula like "2d6+5" → { total, rolls }. Doubles dice on crit (not flat bonus). */
+function rollDamage(formula: string, crit = false): { total: number; rolls: number[] } {
   const match = formula.match(/^(\d+)d(\d+)(?:([+-]\d+))?$/);
   if (!match) return { total: 0, rolls: [] };
   const numDice = parseInt(match[1], 10);
   const dieSize = parseInt(match[2], 10);
   const flatBonus = match[3] ? parseInt(match[3], 10) : 0;
+  const diceCount = crit ? numDice * 2 : numDice;
   const rolls: number[] = [];
   let total = flatBonus;
-  for (let i = 0; i < numDice; i++) {
+  for (let i = 0; i < diceCount; i++) {
     const r = Math.floor(Math.random() * dieSize) + 1;
     rolls.push(r);
     total += r;
@@ -276,13 +277,18 @@ function ActionEntry({ action }: { action: MonsterAction }) {
 
   const handleAttack = () => {
     if (action.attackBonus == null) return;
-    setAttackResult(rollAttack(action.attackBonus));
+    const result = rollAttack(action.attackBonus);
+    setAttackResult(result);
     setDamageResult(null); // clear previous damage
+    // On a crit, auto-roll double damage
+    if (result.natural === 20 && action.damageDice) {
+      setDamageResult(rollDamage(action.damageDice, true));
+    }
   };
 
   const handleDamage = () => {
     if (!action.damageDice) return;
-    setDamageResult(rollDamage(action.damageDice));
+    setDamageResult(rollDamage(action.damageDice, isCrit));
   };
 
   const isCrit = attackResult?.natural === 20;
@@ -332,8 +338,12 @@ function ActionEntry({ action }: { action: MonsterAction }) {
           )}
           {/* Damage result */}
           {damageResult && (
-            <span className="px-2 py-1 rounded-lg text-sm font-bold font-mono bg-orange-200 text-orange-800">
+            <span className={`px-2 py-1 rounded-lg text-sm font-bold font-mono ${
+              isCrit ? 'bg-green-200 text-green-800' : 'bg-orange-200 text-orange-800'
+            }`}>
+              {isCrit && '🎯 '}
               {damageResult.total} dégâts{action.damageType ? ` ${action.damageType}` : ''}
+              {isCrit && <span className="text-xs font-normal ml-1">×2!</span>}
               <span className="text-xs font-normal ml-1 opacity-70">({damageResult.rolls.join('+')})</span>
             </span>
           )}
