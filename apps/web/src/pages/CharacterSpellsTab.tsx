@@ -11,10 +11,7 @@ import {
   type SpellSchool,
   type SpellcastingType,
   SPELL_SCHOOL_LABELS_FR,
-  DND_SKILLS,
-  abilityModifier,
-  formatModifier,
-  proficiencyBonus,
+  DND_CLASSES,
   maxSpellSlots,
   findClass,
 } from '@dnd-inventory/shared';
@@ -50,6 +47,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [catalogLevel, setCatalogLevel] = useState<string>('');
   const [catalogSchool, setCatalogSchool] = useState<string>('');
+  const [catalogClass, setCatalogClass] = useState<string>(character.characterClass ?? '');
   const [catalogSpells, setCatalogSpells] = useState<Spell[]>([]);
   const [catalogTotal, setCatalogTotal] = useState(0);
   const [catalogLoading, setCatalogLoading] = useState(false);
@@ -96,7 +94,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
     setCatalogLoading(true);
     try {
       const params: Record<string, string | number> = { limit: PAGE_SIZE, offset };
-      if (character.characterClass) params.class = character.characterClass;
+      if (catalogClass) params.class = catalogClass;
       if (catalogLevel !== '') params.level = catalogLevel;
       if (catalogSchool) params.school = catalogSchool;
       if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
@@ -110,10 +108,10 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
     } finally {
       setCatalogLoading(false);
     }
-  }, [character.characterClass, catalogLevel, catalogSchool, debouncedSearch]);
+  }, [catalogClass, catalogLevel, catalogSchool, debouncedSearch]);
 
   // Only fetch when there's a search query or active filters — don't preload all spells
-  const hasQuery = !!(debouncedSearch.trim() || catalogLevel !== '' || catalogSchool);
+  const hasQuery = !!(debouncedSearch.trim() || catalogLevel !== '' || catalogSchool || catalogClass);
 
   useEffect(() => {
     if (hasQuery) {
@@ -222,12 +220,13 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
     search: catalogSearch,
     level: catalogLevel,
     school: catalogSchool,
-    charClass: character.characterClass,
+    selectedClass: catalogClass,
     addingSpellId,
     knownSpellIds: new Set(charSpells.map((cs) => cs.spell.id)),
     onSearch: setCatalogSearch,
     onLevel: setCatalogLevel,
     onSchool: setCatalogSchool,
+    onClass: setCatalogClass,
     onAdd: addSpell,
     onLoadMore: () => fetchCatalog(catalogOffset + PAGE_SIZE),
   };
@@ -399,12 +398,13 @@ function SpellCatalog({
   search,
   level,
   school,
-  charClass,
+  selectedClass,
   addingSpellId,
   knownSpellIds,
   onSearch,
   onLevel,
   onSchool,
+  onClass,
   onAdd,
   onLoadMore,
 }: {
@@ -415,12 +415,13 @@ function SpellCatalog({
   search: string;
   level: string;
   school: string;
-  charClass: string | null;
+  selectedClass: string;
   addingSpellId: number | null;
   knownSpellIds: Set<number>;
   onSearch: (v: string) => void;
   onLevel: (v: string) => void;
   onSchool: (v: string) => void;
+  onClass: (v: string) => void;
   onAdd: (id: number) => void;
   onLoadMore: () => void;
 }) {
@@ -437,6 +438,17 @@ function SpellCatalog({
           value={search}
           onChange={(e) => onSearch(e.target.value)}
         />
+        <select
+          className="input py-1.5 text-sm w-full"
+          value={selectedClass}
+          onChange={(e) => onClass(e.target.value)}
+          aria-label="Filtrer par classe"
+        >
+          <option value="">Toutes classes</option>
+          {DND_CLASSES.map((c) => (
+            <option key={c.name} value={c.name}>{c.name}</option>
+          ))}
+        </select>
         <div className="flex gap-2">
           <select
             className="input py-1.5 text-sm flex-1"
@@ -461,9 +473,6 @@ function SpellCatalog({
             ))}
           </select>
         </div>
-        {charClass && (
-          <p className="text-xs text-ink-400">Filtré par classe : {charClass}</p>
-        )}
       </div>
 
       {/* Results */}
