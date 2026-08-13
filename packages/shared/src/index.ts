@@ -266,6 +266,7 @@ export interface CharacterSummary {
   armorClassOverride: number | null;
   deathSaveSuccesses: number;  // 0-3
   deathSaveFailures: number;   // 0-3
+  inspiration: boolean;
 }
 
 export interface Character extends CharacterSummary {
@@ -338,6 +339,7 @@ export interface PatchCharacterPayload {
   armorClassOverride?: number | null;
   deathSaveSuccesses?: number;
   deathSaveFailures?: number;
+  inspiration?: boolean;
 }
 
 // ---------- D&D 5e Abilities (Caractéristiques) ----------

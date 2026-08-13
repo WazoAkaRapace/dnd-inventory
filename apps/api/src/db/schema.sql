@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS characters (
   armor_class_override INTEGER,  -- null = computed from equipped armor, number = manual
   death_save_successes INTEGER NOT NULL DEFAULT 0,  -- 0-3
   death_save_failures  INTEGER NOT NULL DEFAULT 0,  -- 0-3
+  inspiration INTEGER NOT NULL DEFAULT 0,  -- 0 or 1
   notes       TEXT,
   copper      INTEGER NOT NULL DEFAULT 0,
   silver      INTEGER NOT NULL DEFAULT 0,

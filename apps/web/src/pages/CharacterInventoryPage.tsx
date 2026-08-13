@@ -2083,6 +2083,29 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
       {/* HP tracker */}
       <HpTracker character={character} charId={charId} markLocalMutation={markLocalMutation} onSaved={onSaved} onError={onError} />
 
+      {/* Inspiration toggle */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={async () => {
+            markLocalMutation();
+            try {
+              await api.patch(`/api/characters/${charId}`, { inspiration: !character.inspiration });
+              await onSaved();
+            } catch { onError('Erreur'); }
+          }}
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${
+            character.inspiration
+              ? 'bg-gold-400/20 text-gold-500 border-gold-400'
+              : 'bg-parchment-100 text-ink-400 border-parchment-300 hover:border-gold-400'
+          }`}
+          aria-pressed={character.inspiration}
+          title="L'inspiration permet de relancer un d20 et de garder le meilleur résultat"
+        >
+          <span className="text-base">{character.inspiration ? '✨' : '✧'}</span>
+          Inspiration
+        </button>
+      </div>
+
       {/* Death saves — only shown at 0 HP */}
       {character.currentHp <= 0 && (
         <DeathSaveTracker character={character} charId={charId} markLocalMutation={markLocalMutation} onSaved={onSaved} onError={onError} />
@@ -2235,8 +2258,9 @@ function DeathSaveTracker({ character, charId, markLocalMutation, onSaved, onErr
   const updateSaves = async (type: 'successes' | 'failures', value: number) => {
     const clamped = Math.max(0, Math.min(3, value));
     markLocalMutation();
+    const field = type === 'successes' ? 'deathSaveSuccesses' : 'deathSaveFailures';
     try {
-      await api.patch(`/api/characters/${charId}`, { [type]: clamped });
+      await api.patch(`/api/characters/${charId}`, { [field]: clamped });
       await onSaved();
     } catch {
       onError('Erreur de mise à jour');
