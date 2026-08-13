@@ -138,9 +138,12 @@ export default function CombatantRow({
   return (
     <div
       className={`card p-3 pt-4 transition-all relative ${
-        isCurrent ? 'shadow-[0_0_0_2px_rgba(185,28,28,0.6),0_0_16px_rgba(185,28,28,0.3)]' : ''
+        isCurrent ? 'ring-2 ring-blood-500' : ''
       } ${combatant.defeated ? 'opacity-50 grayscale' : ''} ${cardClass}`}
-      style={cardBg}
+      style={{
+        ...cardBg,
+        ...(isCurrent ? { boxShadow: '0 0 0 2px rgb(185 28 28 / 0.7), 0 0 20px 4px rgb(185 28 28 / 0.35), 0 1px 2px rgba(42,31,20,0.04)' } : {}),
+      }}
     >
       {/* Floating "Tour" label on top of card */}
       {isCurrent && !combatant.defeated && (
