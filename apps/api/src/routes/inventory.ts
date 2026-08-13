@@ -228,7 +228,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
       `).run(char.id, body.itemId, qty, equipped, notes, locId);
 
       // Log transaction
-      const itemRow = db.prepare('SELECT name FROM items WHERE id = ?').get(body.itemId) as any;
+      const itemRow = db.prepare('SELECT COALESCE(name_fr, name) AS name FROM items WHERE id = ?').get(body.itemId) as any;
       db.prepare(`
         INSERT INTO transactions (party_id, character_id, item_id, item_name, delta_qty, reason, actor_user_id)
         VALUES (?, ?, ?, ?, ?, 'add', ?)
@@ -299,7 +299,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
       if (body.quantity !== undefined) {
         const delta = body.quantity - oldQty;
         if (delta !== 0) {
-          const itemRow = db.prepare('SELECT name FROM items WHERE id = ?').get(inv.item_id) as any;
+          const itemRow = db.prepare('SELECT COALESCE(name_fr, name) AS name FROM items WHERE id = ?').get(inv.item_id) as any;
           db.prepare(`
             INSERT INTO transactions (party_id, character_id, item_id, item_name, delta_qty, reason, actor_user_id)
             VALUES (?, ?, ?, ?, ?, 'adjust', ?)
@@ -345,7 +345,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
       const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(inv.character_id) as any;
       if (!isPartyMember(char.party_id, userId)) return reply.code(403).send({ error: 'not a member' });
 
-      const itemRow = db.prepare('SELECT name FROM items WHERE id = ?').get(inv.item_id) as any;
+      const itemRow = db.prepare('SELECT COALESCE(name_fr, name) AS name FROM items WHERE id = ?').get(inv.item_id) as any;
       db.prepare(`
         INSERT INTO transactions (party_id, character_id, item_id, item_name, delta_qty, reason, actor_user_id)
         VALUES (?, ?, ?, ?, ?, 'remove', ?)
@@ -401,7 +401,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
           ON CONFLICT(character_id, item_id) DO UPDATE SET quantity = quantity + excluded.quantity
         `).run(toCharacterId, inv.item_id, qty);
 
-        const itemRow = db.prepare('SELECT name FROM items WHERE id = ?').get(inv.item_id) as any;
+        const itemRow = db.prepare('SELECT COALESCE(name_fr, name) AS name FROM items WHERE id = ?').get(inv.item_id) as any;
         const itemName = itemRow?.name || 'item';
         db.prepare(`
           INSERT INTO transactions (party_id, character_id, item_id, item_name, delta_qty, reason, actor_user_id)
