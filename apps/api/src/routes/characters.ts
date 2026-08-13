@@ -35,14 +35,19 @@ export async function characterRoutes(app: FastifyInstance) {
       const db = getDb();
       const info = db.prepare(`
         INSERT INTO characters
-          (party_id, owner_id, name, strength, capacity_multiplier)
-        VALUES (?, ?, ?, ?, ?)
+          (party_id, owner_id, name, strength, capacity_multiplier,
+           character_class, level, race, background)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         partyId,
         userId,
         body.name.trim(),
         strength,
         capMult,
+        body.characterClass ?? null,
+        body.level ?? 1,
+        body.race ?? null,
+        body.background ?? null,
       );
       const row = db.prepare(`
         SELECT c.*, u.display_name AS owner_name
@@ -110,6 +115,13 @@ export async function characterRoutes(app: FastifyInstance) {
         'exhaustion', 'conditions', 'foodDays', 'waterDays',
         'maxHp', 'currentHp', 'tempHp',
         'notes', 'copper', 'silver', 'electrum', 'gold', 'platinum',
+        // Character sheet
+        'level', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma',
+        'characterClass', 'race', 'background', 'speed',
+        'skillProficiencies', 'savingThrowProficiencies', 'spellSlotsUsed',
+        // Description / personality
+        'alignment', 'sex', 'height', 'weight', 'age', 'skin', 'eyes', 'hair',
+        'portraitUrl', 'personalityTraits', 'ideals', 'bonds', 'flaws', 'appearance',
       ];
       const sets: string[] = [];
       const vals: any[] = [];
@@ -120,13 +132,25 @@ export async function characterRoutes(app: FastifyInstance) {
         maxHp: 'max_hp',
         currentHp: 'current_hp',
         tempHp: 'temp_hp',
+        characterClass: 'character_class',
+        skillProficiencies: 'skill_proficiencies',
+        savingThrowProficiencies: 'saving_throw_proficiencies',
+        spellSlotsUsed: 'spell_slots_used',
+        portraitUrl: 'portrait_url',
+        personalityTraits: 'personality_traits',
       };
+      // Fields stored as JSON arrays — serialize on write
+      const jsonFields = new Set([
+        'conditions',
+        'skillProficiencies',
+        'savingThrowProficiencies',
+        'spellSlotsUsed',
+      ]);
       for (const key of allowed) {
         if (body[key] !== undefined) {
           const col = fieldMap[key as string] || key;
           sets.push(`${col} = ?`);
-          // conditions is a JSON array — serialize for SQLite
-          if (key === 'conditions') {
+          if (jsonFields.has(key as string)) {
             vals.push(JSON.stringify(body[key]));
           } else {
             vals.push(body[key]);

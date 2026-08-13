@@ -10,6 +10,7 @@ import {
   isPartyMember,
   isPartyGM,
   mapInventoryEntry,
+  mapCharacter,
 } from './helpers.ts';
 import {
   computeEncumbrance,
@@ -179,29 +180,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
         char.capacity_multiplier ?? 1,
       );
 
-      const character = {
-        id: char.id,
-        partyId: char.party_id,
-        ownerId: char.owner_id,
-        ownerName: char.owner_name,
-        name: char.name,
-        strength: char.strength,
-        capacityMultiplier: char.capacity_multiplier ?? 1,
-        exhaustion: char.exhaustion ?? 0,
-        conditions: char.conditions ? (typeof char.conditions === 'string' ? JSON.parse(char.conditions) : char.conditions) : [],
-        foodDays: char.food_days ?? 0,
-        waterDays: char.water_days ?? 0,
-        maxHp: char.max_hp ?? 1,
-        currentHp: char.current_hp ?? 1,
-        tempHp: char.temp_hp ?? 0,
-        notes: char.notes,
-        copper: char.copper,
-        silver: char.silver,
-        electrum: char.electrum,
-        gold: char.gold,
-        platinum: char.platinum,
-        createdAt: char.created_at,
-      };
+      const character = mapCharacter(char);
 
       const result: CharacterInventory = {
         character,

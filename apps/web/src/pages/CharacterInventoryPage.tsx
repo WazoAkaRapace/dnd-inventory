@@ -21,6 +21,15 @@ import {
   COIN_LABELS_FR,
   DND_CONDITIONS_FR,
 } from '@dnd-inventory/shared';
+import CharacterStatsTab from './CharacterStatsTab';
+import CharacterSkillsTab from './CharacterSkillsTab';
+import CharacterSpellsTab from './CharacterSpellsTab';
+import CharacterFeaturesTab from './CharacterFeaturesTab';
+import CharacterDescriptionTab from './CharacterDescriptionTab';
+import NpcPage from './NpcPage';
+import CharacterNotesTab from './CharacterNotesTab';
+
+type CharacterTab = 'inventory' | 'stats' | 'spells' | 'skills' | 'features' | 'description' | 'npcs' | 'notes';
 import {
   LoadingSpinner,
   ErrorMsg,
@@ -157,6 +166,9 @@ export default function CharacterInventoryPage() {
 
   // First-run tour
   const [showTour, setShowTour] = useState(false);
+
+  // Active tab (inventory / stats / spells / skills)
+  const [activeTab, setActiveTab] = useState<CharacterTab>('inventory');
   useEffect(() => {
     const seen = localStorage.getItem('dnd-inv-tour-seen');
     if (!seen && !loading) {
@@ -647,6 +659,94 @@ export default function CharacterInventoryPage() {
         </div>
       </Modal>
 
+      {/* ---------- Tab navigation ---------- */}
+      <div className="sticky top-14 z-20 -mx-4 px-4 sm:mx-0 sm:px-0">
+        <div className="flex items-center gap-1 bg-parchment-100 rounded-xl p-1 overflow-x-auto no-scrollbar">
+          {([
+            { key: 'inventory', label: 'Inventaire', icon: '🎒' },
+            { key: 'stats', label: 'Caractéristiques', icon: '⚔️' },
+            { key: 'skills', label: 'Compétences', icon: '🎯' },
+            { key: 'spells', label: 'Sorts', icon: '✨' },
+            { key: 'features', label: 'Traits', icon: '📋' },
+            { key: 'description', label: 'Description', icon: '👤' },
+            { key: 'npcs', label: 'PNJ', icon: '🎭' },
+            { key: 'notes', label: 'Notes', icon: '📝' },
+          ] as { key: CharacterTab; label: string; icon: string }[]).map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                activeTab === tab.key
+                  ? 'bg-blood-600 text-white shadow-sm'
+                  : 'text-ink-900 hover:bg-parchment-200'
+              }`}
+              aria-pressed={activeTab === tab.key}
+            >
+              <span aria-hidden="true">{tab.icon}</span>
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ---------- Non-inventory tabs (rendered when selected) ---------- */}
+      {activeTab === 'stats' && (
+        <CharacterStatsTab
+          character={character}
+          charId={Number(charId)}
+          onSaved={refreshInventory}
+          onError={(msg) => pushToast(msg, 'error')}
+        />
+      )}
+      {activeTab === 'skills' && (
+        <CharacterSkillsTab
+          character={character}
+          charId={Number(charId)}
+          onSaved={refreshInventory}
+          onError={(msg) => pushToast(msg, 'error')}
+        />
+      )}
+      {activeTab === 'spells' && (
+        <CharacterSpellsTab
+          character={character}
+          charId={Number(charId)}
+          onSaved={refreshInventory}
+          onError={(msg) => pushToast(msg, 'error')}
+        />
+      )}
+      {activeTab === 'features' && (
+        <CharacterFeaturesTab
+          character={character}
+          charId={Number(charId)}
+          partyId={partyId}
+          onSaved={refreshInventory}
+          onError={(msg) => pushToast(msg, 'error')}
+        />
+      )}
+      {activeTab === 'description' && (
+        <CharacterDescriptionTab
+          character={character}
+          charId={Number(charId)}
+          onSaved={refreshInventory}
+          onError={(msg) => pushToast(msg, 'error')}
+        />
+      )}
+      {activeTab === 'npcs' && (
+        <NpcPage embedded />
+      )}
+      {activeTab === 'notes' && (
+        <CharacterNotesTab
+          character={character}
+          charId={Number(charId)}
+          partyId={partyId}
+          onSaved={refreshInventory}
+          onError={(msg) => pushToast(msg, 'error')}
+        />
+      )}
+
+      {/* ---------- Inventory tab content ---------- */}
+      {activeTab === 'inventory' && (
+        <>
       {/* ---------- Survival panel: exhaustion, conditions, deprivation ---------- */}
       <SurvivalPanel
         character={character}
@@ -733,7 +833,7 @@ export default function CharacterInventoryPage() {
       {error && (
         <div className="flex items-start justify-between gap-3">
           <ErrorMsg message={error} />
-          <button onClick={dismissError} className="btn-ghost text-sm shrink-0" aria-label="Fermer l'erreur">✕</button>
+          <button onClick={dismissError} className="btn-ghost text-ink-500 text-sm shrink-0" aria-label="Fermer l'erreur">✕</button>
         </div>
       )}
 
@@ -818,6 +918,8 @@ export default function CharacterInventoryPage() {
           onBlur={saveCoins}
         />
       </section>
+        </>
+      )}
 
       {/* ---------- Mobile FAB: open catalog as bottom sheet ---------- */}
       <button
@@ -1069,7 +1171,7 @@ function InventoryRow({
           <div className="flex items-center justify-between gap-3 py-1">
             <span className="text-sm font-medium text-red-700">Retirer {itemName} ?</span>
             <div className="flex gap-2">
-              <button onClick={onCancelDelete} className="btn-ghost text-sm">
+              <button onClick={onCancelDelete} className="btn-ghost text-ink-700 text-sm">
                 Annuler
               </button>
               <button onClick={onConfirmDelete} className="btn-primary text-sm bg-red-600 hover:bg-red-700">

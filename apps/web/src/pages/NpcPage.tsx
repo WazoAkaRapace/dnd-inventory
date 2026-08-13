@@ -45,7 +45,7 @@ type ViewFilter = 'all' | 'shared' | 'mine';
 
 // ---------- Main component ----------
 
-export default function NpcPage() {
+export default function NpcPage({ embedded = false }: { embedded?: boolean }) {
   const { partyId } = useParams<{ partyId: string }>();
   const { user } = useAuth();
 
@@ -186,9 +186,11 @@ export default function NpcPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-3">
-          <Link to={`/party/${partyId}`} className="btn-ghost text-sm">
-            ← Retour
-          </Link>
+          {!embedded && (
+            <Link to={`/party/${partyId}`} className="btn-ghost text-sm">
+              ← Retour
+            </Link>
+          )}
           <h1 className="font-display text-2xl font-bold">🎭 PNJ</h1>
         </div>
         <button onClick={openCreate} className="btn-primary text-sm">

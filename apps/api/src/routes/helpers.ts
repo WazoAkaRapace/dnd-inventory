@@ -11,7 +11,24 @@ import type {
   ItemCategory,
   Rarity,
   CostUnit,
+  Spell,
+  CharacterSpell,
+  SpellSchool,
+  CharacterFeature,
 } from '@dnd-inventory/shared';
+
+/** Parse a JSON column that's guaranteed to be an array; never throws. */
+function parseJsonArray(raw: any, fallback: any[] = []): any[] {
+  if (!raw) return fallback;
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw !== 'string') return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 /** Get the authenticated user id from the JWT-decoded payload. */
 export function getUserId(req: FastifyRequest): number | null {
@@ -97,6 +114,35 @@ export function mapCharacterSummary(row: any): CharacterSummary {
     maxHp: row.max_hp ?? 1,
     currentHp: row.current_hp ?? 1,
     tempHp: row.temp_hp ?? 0,
+    // Character sheet
+    level: row.level ?? 1,
+    dexterity: row.dexterity ?? 10,
+    constitution: row.constitution ?? 10,
+    intelligence: row.intelligence ?? 10,
+    wisdom: row.wisdom ?? 10,
+    charisma: row.charisma ?? 10,
+    characterClass: row.character_class ?? null,
+    race: row.race ?? null,
+    background: row.background ?? null,
+    speed: row.speed ?? 9,
+    skillProficiencies: parseJsonArray(row.skill_proficiencies, []),
+    savingThrowProficiencies: parseJsonArray(row.saving_throw_proficiencies, []),
+    spellSlotsUsed: parseJsonArray(row.spell_slots_used, [0,0,0,0,0,0,0,0,0]),
+    // Description / personality
+    alignment: row.alignment ?? null,
+    sex: row.sex ?? null,
+    height: row.height ?? null,
+    weight: row.weight ?? null,
+    age: row.age ?? null,
+    skin: row.skin ?? null,
+    eyes: row.eyes ?? null,
+    hair: row.hair ?? null,
+    portraitUrl: row.portrait_url ?? null,
+    personalityTraits: row.personality_traits ?? null,
+    ideals: row.ideals ?? null,
+    bonds: row.bonds ?? null,
+    flaws: row.flaws ?? null,
+    appearance: row.appearance ?? null,
   };
 }
 
@@ -151,5 +197,92 @@ export function mapInventoryEntry(row: any): InventoryEntry {
     notes: row.notes,
     storageLocationId: row.storage_location_id ?? null,
     addedAt: row.added_at,
+  };
+}
+
+/**
+ * Map a raw spells row to the Spell domain type.
+ * Handles snake_case → camelCase and JSON parsing of
+ * components / classes_json / damage_json / dc_json.
+ */
+export function mapSpell(row: any): Spell {
+  return {
+    id: row.id,
+    srdIndex: row.srd_index,
+    name: row.name,
+    nameFr: row.name_fr ?? null,
+    level: row.level,
+    school: row.school as SpellSchool,
+    castingTime: row.casting_time ?? null,
+    rangeText: row.range_text ?? null,
+    components: parseJsonArray(row.components, []),
+    material: row.material ?? null,
+    duration: row.duration ?? null,
+    concentration: !!row.concentration,
+    ritual: !!row.ritual,
+    description: row.description ?? null,
+    descriptionFr: row.description_fr ?? null,
+    higherLevel: row.higher_level ?? null,
+    higherLevelFr: row.higher_level_fr ?? null,
+    attackType: row.attack_type ?? null,
+    // damage_json / dc_json are kept as raw JSON strings per the Spell type
+    damageJson: row.damage_json ?? null,
+    dcJson: row.dc_json ?? null,
+    classes: parseJsonArray(row.classes_json, []),
+  };
+}
+
+/**
+ * Map a joined character_spells + spells row to CharacterSpell.
+ * Expects spell columns to be prefixed with `s_` to avoid collisions
+ * with the link table's own columns (id, prepared, sort_order, ...).
+ */
+export function mapCharacterSpell(row: any): CharacterSpell {
+  const spellRow = {
+    id: row.s_id,
+    srd_index: row.s_srd_index,
+    name: row.s_name,
+    name_fr: row.s_name_fr,
+    level: row.s_level,
+    school: row.s_school,
+    casting_time: row.s_casting_time,
+    range_text: row.s_range_text,
+    components: row.s_components,
+    material: row.s_material,
+    duration: row.s_duration,
+    concentration: row.s_concentration,
+    ritual: row.s_ritual,
+    description: row.s_description,
+    description_fr: row.s_description_fr,
+    higher_level: row.s_higher_level,
+    higher_level_fr: row.s_higher_level_fr,
+    attack_type: row.s_attack_type,
+    damage_json: row.s_damage_json,
+    dc_json: row.s_dc_json,
+    classes_json: row.s_classes_json,
+  };
+  return {
+    id: row.id,
+    characterId: row.character_id,
+    spell: mapSpell(spellRow),
+    prepared: !!row.prepared,
+    sortOrder: row.sort_order ?? 0,
+    addedAt: row.added_at,
+  };
+}
+
+/**
+ * Map a raw character_features row to CharacterFeature.
+ * Handles snake_case → camelCase for the free-form trait columns.
+ */
+export function mapFeature(row: any): CharacterFeature {
+  return {
+    id: row.id,
+    characterId: row.character_id,
+    title: row.title,
+    category: row.category,
+    description: row.description,
+    sortOrder: row.sort_order,
+    createdAt: row.created_at,
   };
 }

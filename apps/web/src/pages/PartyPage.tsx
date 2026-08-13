@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import api from '../api';
 import { useSyncEvent } from '../sync';
 import type { PartyDetail, CharacterSummary, CreateCharacterPayload } from '@dnd-inventory/shared';
+import { DND_CLASSES } from '@dnd-inventory/shared';
 import { LoadingSpinner, EmptyState, Modal, ErrorMsg } from '../components/ui';
 import { useAuth } from '../auth';
 
@@ -18,6 +19,9 @@ export default function PartyPage() {
   // New character form
   const [charName, setCharName] = useState('');
   const [charStr, setCharStr] = useState(10);
+  const [charClass, setCharClass] = useState('');
+  const [charLevel, setCharLevel] = useState(1);
+  const [charRace, setCharRace] = useState('');
 
   const load = useCallback(async () => {
     if (!partyId) return;
@@ -47,11 +51,14 @@ export default function PartyPage() {
     const payload: CreateCharacterPayload = {
       name: charName,
       strength: charStr,
+      characterClass: charClass.trim() || undefined,
+      level: charLevel || undefined,
+      race: charRace.trim() || undefined,
     };
     try {
       await api.post(`/api/parties/${partyId}/characters`, payload);
       setShowAddChar(false);
-      setCharName(''); setCharStr(10);
+      setCharName(''); setCharStr(10); setCharClass(''); setCharLevel(1); setCharRace('');
       await load();
     } catch (err: any) {
       setError(err.response?.data?.error || 'Erreur');
@@ -156,9 +163,34 @@ export default function PartyPage() {
             <label className="label">Nom *</label>
             <input className="input" value={charName} onChange={(e) => setCharName(e.target.value)} required />
           </div>
-          <div>
-            <label className="label">Force</label>
-            <input type="number" className="input" value={charStr} min={1} max={30} onChange={(e) => setCharStr(Number(e.target.value))} />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Classe</label>
+              <input
+                className="input"
+                list="dnd-classes-create"
+                value={charClass}
+                onChange={(e) => setCharClass(e.target.value)}
+                placeholder="Magicien"
+              />
+              <datalist id="dnd-classes-create">
+                {DND_CLASSES.map((c) => <option key={c.name} value={c.name} />)}
+              </datalist>
+            </div>
+            <div>
+              <label className="label">Niveau</label>
+              <input type="number" className="input" value={charLevel} min={1} max={20} onChange={(e) => setCharLevel(Number(e.target.value))} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Race</label>
+              <input className="input" value={charRace} onChange={(e) => setCharRace(e.target.value)} placeholder="Haut-elfe" />
+            </div>
+            <div>
+              <label className="label">Force</label>
+              <input type="number" className="input" value={charStr} min={1} max={30} onChange={(e) => setCharStr(Number(e.target.value))} />
+            </div>
           </div>
           {error && <div className="text-red-600 text-sm">{error}</div>}
           <button type="submit" className="btn-primary w-full">Créer</button>
@@ -175,7 +207,11 @@ function CharacterCard({ c, partyId }: { c: CharacterSummary; partyId: string })
       className="card p-4 hover:shadow-md transition-shadow block"
     >
       <h3 className="font-display text-lg font-semibold">{c.name}</h3>
-      <div className="mt-1 flex gap-4 text-sm text-ink-500">
+      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-ink-500">
+        {c.characterClass && (
+          <span>{c.characterClass}{c.level ? ` ${c.level}` : ''}</span>
+        )}
+        {c.race && <span>{c.race}</span>}
         <span>💪 FOR {c.strength}</span>
       </div>
       <p className="text-xs text-ink-400 mt-2">Joueur: {c.ownerName}</p>
