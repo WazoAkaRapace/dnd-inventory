@@ -105,8 +105,11 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
     }
   }, [character.characterClass, catalogLevel, catalogSchool, catalogSearch]);
 
+  // Fetch catalog when it becomes visible: on mobile when BottomSheet opens,
+  // on desktop (lg+) it's always visible so fetch on mount.
   useEffect(() => {
-    if (catalogOpen) {
+    const isDesktop = window.innerWidth >= 1024;
+    if (catalogOpen || isDesktop) {
       const t = setTimeout(() => fetchCatalog(0), 250);
       return () => clearTimeout(t);
     }
@@ -201,6 +204,25 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
     );
   }
 
+  // Shared catalog props
+  const catalogProps = {
+    spells: catalogSpells,
+    total: catalogTotal,
+    loading: catalogLoading,
+    offset: catalogOffset,
+    search: catalogSearch,
+    level: catalogLevel,
+    school: catalogSchool,
+    charClass: character.characterClass,
+    addingSpellId,
+    knownSpellIds: new Set(charSpells.map((cs) => cs.spell.id)),
+    onSearch: setCatalogSearch,
+    onLevel: setCatalogLevel,
+    onSchool: setCatalogSchool,
+    onAdd: addSpell,
+    onLoadMore: () => fetchCatalog(catalogOffset + PAGE_SIZE),
+  };
+
   return (
     <div className="space-y-4">
       {/* Spell slots tracker */}
@@ -249,114 +271,110 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
         </section>
       )}
 
-      {/* Known spells */}
-      <section className="card p-4 sm:p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="font-display text-lg font-semibold">
-            Sorts connus <span className="text-ink-400 text-sm font-normal">({charSpells.length})</span>
-          </h2>
-          <button
-            onClick={() => setCatalogOpen(true)}
-            className="btn-primary text-sm px-3 py-1.5"
-          >
-            + Ajouter
-          </button>
-        </div>
-
-        {loadingSpells ? (
-          <p className="text-sm text-ink-400 animate-pulse">Chargement…</p>
-        ) : spellsByLevel.length === 0 ? (
-          <p className="text-sm text-ink-400 italic">Aucun sort. Cliquez sur « Ajouter » pour parcourir le grimoire.</p>
-        ) : (
-          <div className="space-y-3">
-            {spellsByLevel.map((group) => (
-              <div key={group.level}>
-                <div className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-1.5">
-                  {group.level === 0 ? 'Tours de magie' : `Niveau ${group.level}`}
-                </div>
-                <ul className="space-y-1.5">
-                  {group.spells.map((cs) => {
-                    const spell = cs.spell;
-                    const isExpanded = expandedId === cs.id;
-                    const name = spell.nameFr ?? spell.name;
-                    return (
-                      <li key={cs.id} className="bg-parchment-50 rounded-lg border border-parchment-200 overflow-hidden">
-                        <div className="flex items-center gap-2 p-2.5">
-                          <button
-                            onClick={() => togglePrepared(cs.id, cs.prepared)}
-                            className={`text-lg shrink-0 ${cs.prepared ? 'text-gold-400' : 'text-parchment-300 hover:text-parchment-400'}`}
-                            aria-label={cs.prepared ? 'Sort préparé' : 'Sort non préparé'}
-                            title={cs.prepared ? 'Préparé' : 'Non préparé'}
-                          >
-                            {cs.prepared ? '★' : '☆'}
-                          </button>
-                          <button
-                            onClick={() => setExpandedId(isExpanded ? null : cs.id)}
-                            className="min-w-0 flex-1 text-left"
-                            aria-expanded={isExpanded}
-                          >
-                            <span className="font-medium text-sm text-ink-800 block truncate">{name}</span>
-                            <span className="flex items-center gap-1.5 text-xs text-ink-400">
-                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${SCHOOL_COLORS[spell.school] ?? 'bg-parchment-200'}`}>
-                                {SPELL_SCHOOL_LABELS_FR[spell.school as SpellSchool] ?? spell.school}
-                              </span>
-                              {spell.concentration && <span title="Concentration">🎯</span>}
-                              {spell.ritual && <span title="Rituel">⚗</span>}
-                              <span className="truncate">{spell.castingTime}</span>
-                            </span>
-                          </button>
-                          <button
-                            onClick={() => removeSpell(cs.id)}
-                            className="text-ink-300 hover:text-red-500 text-sm shrink-0 px-1"
-                            aria-label={`Oublier ${name}`}
-                          >
-                            ×
-                          </button>
-                        </div>
-                        {isExpanded && (
-                          <div className="px-3 pb-3 pt-1 border-t border-parchment-200 text-xs text-ink-600 space-y-1.5">
-                            {spell.descriptionFr ?? spell.description}
-                            {spell.higherLevelFr && (
-                              <p className="text-ink-400 italic"><strong>Aux niveaux supérieurs :</strong> {spell.higherLevelFr}</p>
-                            )}
-                            <div className="flex flex-wrap gap-x-3 gap-y-0.5 pt-1 text-ink-400">
-                              <span>⏱ {spell.castingTime}</span>
-                              <span>📡 {spell.rangeText}</span>
-                              <span>⏳ {spell.duration}</span>
-                              <span>📝 {spell.components.join(', ')}</span>
-                              {spell.material && <span>💎 {spell.material}</span>}
-                            </div>
-                          </div>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            ))}
+      {/* Two-column layout on desktop: known spells (left) + catalog (right) */}
+      <div className="grid lg:grid-cols-[3fr_2fr] gap-4 items-start">
+        {/* Known spells */}
+        <section className="card p-4 sm:p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="font-display text-lg font-semibold">
+              Sorts connus <span className="text-ink-400 text-sm font-normal">({charSpells.length})</span>
+            </h2>
+            {/* Mobile: open catalog as bottom sheet */}
+            <button
+              onClick={() => setCatalogOpen(true)}
+              className="btn-primary text-sm px-3 py-1.5 lg:hidden"
+            >
+              + Ajouter
+            </button>
           </div>
-        )}
-      </section>
 
-      {/* Spell catalog browser */}
+          {loadingSpells ? (
+            <p className="text-sm text-ink-400 animate-pulse">Chargement…</p>
+          ) : spellsByLevel.length === 0 ? (
+            <p className="text-sm text-ink-400 italic">Aucun sort. {typeof window !== 'undefined' && window.innerWidth >= 1024 ? 'Parcourez le grimoire →' : 'Cliquez sur « Ajouter » pour parcourir le grimoire.'}</p>
+          ) : (
+            <div className="space-y-3">
+              {spellsByLevel.map((group) => (
+                <div key={group.level}>
+                  <div className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-1.5">
+                    {group.level === 0 ? 'Tours de magie' : `Niveau ${group.level}`}
+                  </div>
+                  <ul className="space-y-1.5">
+                    {group.spells.map((cs) => {
+                      const spell = cs.spell;
+                      const isExpanded = expandedId === cs.id;
+                      const name = spell.nameFr ?? spell.name;
+                      return (
+                        <li key={cs.id} className="bg-parchment-50 rounded-lg border border-parchment-200 overflow-hidden">
+                          <div className="flex items-center gap-2 p-2.5">
+                            <button
+                              onClick={() => togglePrepared(cs.id, cs.prepared)}
+                              className={`text-lg shrink-0 ${cs.prepared ? 'text-gold-400' : 'text-parchment-300 hover:text-parchment-400'}`}
+                              aria-label={cs.prepared ? 'Sort préparé' : 'Sort non préparé'}
+                              title={cs.prepared ? 'Préparé' : 'Non préparé'}
+                            >
+                              {cs.prepared ? '★' : '☆'}
+                            </button>
+                            <button
+                              onClick={() => setExpandedId(isExpanded ? null : cs.id)}
+                              className="min-w-0 flex-1 text-left"
+                              aria-expanded={isExpanded}
+                            >
+                              <span className="font-medium text-sm text-ink-800 block truncate">{name}</span>
+                              <span className="flex items-center gap-1.5 text-xs text-ink-400">
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${SCHOOL_COLORS[spell.school] ?? 'bg-parchment-200'}`}>
+                                  {SPELL_SCHOOL_LABELS_FR[spell.school as SpellSchool] ?? spell.school}
+                                </span>
+                                {spell.concentration && <span title="Concentration">🎯</span>}
+                                {spell.ritual && <span title="Rituel">⚗</span>}
+                                <span className="truncate">{spell.castingTime}</span>
+                              </span>
+                            </button>
+                            <button
+                              onClick={() => removeSpell(cs.id)}
+                              className="text-ink-300 hover:text-red-500 text-sm shrink-0 px-1"
+                              aria-label={`Oublier ${name}`}
+                            >
+                              ×
+                            </button>
+                          </div>
+                          {isExpanded && (
+                            <div className="px-3 pb-3 pt-1 border-t border-parchment-200 text-xs text-ink-600 space-y-1.5">
+                              {spell.descriptionFr ?? spell.description}
+                              {spell.higherLevelFr && (
+                                <p className="text-ink-400 italic"><strong>Aux niveaux supérieurs :</strong> {spell.higherLevelFr}</p>
+                              )}
+                              <div className="flex flex-wrap gap-x-3 gap-y-0.5 pt-1 text-ink-400">
+                                <span>⏱ {spell.castingTime}</span>
+                                <span>📡 {spell.rangeText}</span>
+                                <span>⏳ {spell.duration}</span>
+                                <span>📝 {spell.components.join(', ')}</span>
+                                {spell.material && <span>💎 {spell.material}</span>}
+                              </div>
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Desktop: catalog panel always visible on the right */}
+        <section className="hidden lg:block space-y-3">
+          <h2 className="font-display text-lg font-semibold">Grimoire</h2>
+          <div className="card p-4 space-y-3 max-h-[70vh] overflow-y-auto">
+            <SpellCatalog {...catalogProps} />
+          </div>
+        </section>
+      </div>
+
+      {/* Mobile: catalog as bottom sheet */}
       <BottomSheet open={catalogOpen} onClose={() => setCatalogOpen(false)} title="Grimoire">
-        <SpellCatalog
-          spells={catalogSpells}
-          total={catalogTotal}
-          loading={catalogLoading}
-          offset={catalogOffset}
-          search={catalogSearch}
-          level={catalogLevel}
-          school={catalogSchool}
-          charClass={character.characterClass}
-          addingSpellId={addingSpellId}
-          knownSpellIds={new Set(charSpells.map((cs) => cs.spell.id))}
-          onSearch={setCatalogSearch}
-          onLevel={setCatalogLevel}
-          onSchool={setCatalogSchool}
-          onAdd={addSpell}
-          onLoadMore={() => fetchCatalog(catalogOffset + PAGE_SIZE)}
-        />
+        <SpellCatalog {...catalogProps} />
       </BottomSheet>
     </div>
   );
