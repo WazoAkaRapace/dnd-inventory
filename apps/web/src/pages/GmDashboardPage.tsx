@@ -63,10 +63,6 @@ export default function GmDashboardPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-3">
-          <Link to={`/party/${partyId}`} className="btn-ghost text-ink-700 text-sm">← Retour</Link>
-          <h1 className="font-display text-2xl font-bold">🛡 Table du MD</h1>
-        </div>
         <span className="text-sm text-ink-400">{party.party.name}</span>
       </div>
 

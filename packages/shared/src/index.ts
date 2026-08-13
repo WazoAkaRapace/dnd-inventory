@@ -1119,3 +1119,180 @@ export const ENCUMBRANCE_LABELS_FR: Record<EncumbranceState['tier'], string> = {
   heavilyEncumbered: 'Lourdement encombré',
   overburdened: 'Surchargé',
 };
+
+// ---------- Monsters (French SRD bestiary) ----------
+
+export interface MonsterAction {
+  name: string;
+  desc: string;
+  attackBonus?: number;
+  damageDice?: string;
+  damageType?: string;
+  cost?: number; // legendary actions only: 1/2/3
+}
+
+export interface MonsterSkill {
+  name: string;
+  isExpert: boolean;
+}
+
+/** A full monster stat block from the French SRD bestiary (metric units). */
+export interface Monster {
+  slug: string;
+  nameFr: string;
+  type: string;
+  subtype: string | null;
+  size: string; // French size code: T (Très petit), P (Petit), M (Moyen), G (Grand), TG (Très grand), Gig (Gigantesque), C (Colossal)
+  alignment: string | null;
+  armorClass: number;
+  armorDesc: string | null;
+  hitPoints: number;
+  hitDice: string | null;
+  /** Speeds in meters (walk/swim/fly/climb/burrow). */
+  speed: Partial<Record<'walk' | 'swim' | 'fly' | 'climb' | 'burrow', number>>;
+  abilities: { for: number; dex: number; con: number; int: number; sag: number; cha: number };
+  savingThrows: string[]; // ability short codes that get a save bonus
+  skills: MonsterSkill[];
+  languages: string[];
+  challengeRating: number;
+  xp: number;
+  senses: string | null;
+  telepathy: number | null;
+  damageResistances: string[] | null;
+  damageImmunities: string[] | null;
+  conditionImmunities: string[] | null;
+  traits: MonsterAction[];
+  actions: MonsterAction[];
+  legendaryActions: MonsterAction[];
+}
+
+/** Light row for the picker/search (no prose). */
+export interface MonsterSummary {
+  slug: string;
+  nameFr: string;
+  type: string;
+  size: string;
+  challengeRating: number;
+  armorClass: number;
+  hitPoints: number;
+}
+
+export interface MonsterSearchQuery {
+  search?: string;
+  limit?: number;
+}
+
+/** French size label lookup (5e-drs codes). */
+export const MONSTER_SIZE_LABELS_FR: Record<string, string> = {
+  T: 'Très petit',
+  P: 'Petit',
+  M: 'Moyen',
+  G: 'Grand',
+  TG: 'Très grand',
+  Gig: 'Gigantesque',
+  C: 'Colossal',
+};
+
+/** French CR label (for display). */
+export function formatCR(cr: number): string {
+  if (cr === 0.125) return '1/8';
+  if (cr === 0.25) return '1/4';
+  if (cr === 0.5) return '1/2';
+  return String(cr);
+}
+
+// ---------- Combat (initiative tracker) ----------
+
+export type CombatantType = 'player' | 'monster';
+
+/**
+ * A condition applied to a combatant, with an optional duration.
+ * duration = number of rounds remaining (decremented at the end of the
+ * combatant's turn). null = until dispelled (no auto-expiry).
+ */
+export interface CombatantCondition {
+  name: string;
+  duration: number | null;
+}
+
+export interface Combatant {
+  id: number;
+  encounterId: number;
+  type: CombatantType;
+  characterId: number | null; // set when type === 'player'
+  monsterSlug: string | null; // catalog ref when type === 'monster'
+  name: string; // display name (player char name / monster name)
+  count: number; // group size (1 for players, ≥1 for monster groups)
+  groupId: number | null; // shared by grouped monsters (same initiative, independent HP)
+  initiative: number | null; // null = not yet rolled
+  initiativeBonus: number; // dex mod cached at add time (for tie-breaking)
+  armorClass: number | null; // null = hidden (non-owner player can't see)
+  hitPoints: number | null; // current (null = hidden)
+  maxHitPoints: number | null;
+  conditions: CombatantCondition[];
+  sortOrder: number;
+  defeated: boolean;
+}
+
+export type EncounterStatus = 'setup' | 'active' | 'ended';
+
+export interface Encounter {
+  id: number;
+  partyId: number;
+  name: string;
+  round: number; // 0 = setup, ≥1 = in combat
+  turnIndex: number; // index into the sorted combatants list
+  status: EncounterStatus;
+  createdAt: string;
+}
+
+export interface EncounterDetail extends Encounter {
+  combatants: Combatant[];
+}
+
+export interface EncounterSummary {
+  id: number;
+  partyId: number;
+  name: string;
+  round: number;
+  turnIndex: number;
+  status: EncounterStatus;
+  combatantCount: number;
+  createdAt: string;
+}
+
+export interface CreateEncounterPayload {
+  name: string;
+}
+
+export interface PatchEncounterPayload {
+  name?: string;
+  status?: EncounterStatus;
+  round?: number;
+  turnIndex?: number;
+}
+
+export interface AddMonsterPayload {
+  monsterSlug: string;
+  count?: number;
+  name?: string;
+}
+
+export interface AddPlayerPayload {
+  characterId: number;
+}
+
+export interface PatchCombatantPayload {
+  name?: string;
+  count?: number;
+  initiative?: number;
+  armorClass?: number;
+  hitPoints?: number;
+  maxHitPoints?: number;
+  conditions?: CombatantCondition[];
+  defeated?: boolean;
+}
+
+export interface SetInitiativePayload {
+  initiative: number;
+}

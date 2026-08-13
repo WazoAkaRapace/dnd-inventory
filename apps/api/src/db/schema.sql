@@ -243,3 +243,72 @@ CREATE TABLE IF NOT EXISTS character_notes (
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_character_notes_char ON character_notes(character_id);
+
+-- ---------- SRD Monster catalog (reference data, seeded from 5e-drs.fr) ----------
+
+CREATE TABLE IF NOT EXISTS monsters (
+  slug              TEXT PRIMARY KEY,
+  name_fr           TEXT NOT NULL,
+  type              TEXT,
+  subtype           TEXT,
+  size              TEXT,
+  alignment         TEXT,
+  armor_class       INTEGER,
+  armor_desc        TEXT,
+  hit_points        INTEGER,
+  hit_dice          TEXT,
+  speed_json        TEXT,             -- JSON: {"walk":9,"fly":18}
+  abilities_json    TEXT,             -- JSON: {"for":8,"dex":14,...}
+  saving_throws_json TEXT,            -- JSON: ["con","int"]
+  skills_json       TEXT,             -- JSON: [{"name":"discretion","isExpert":true}]
+  languages_json    TEXT,             -- JSON: ["commun","gobelin"]
+  challenge_rating  REAL,
+  xp                INTEGER,
+  senses            TEXT,
+  telepathy         INTEGER,
+  damage_resistances_json TEXT,
+  damage_immunities_json TEXT,
+  condition_immunities_json TEXT,
+  traits_json       TEXT,             -- JSON: [{name,desc,...}]
+  actions_json      TEXT,             -- JSON: [{name,desc,attackBonus?,damageDice?,...}]
+  legendary_actions_json TEXT,
+  source            TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_monsters_name_fr ON monsters(name_fr);
+CREATE INDEX IF NOT EXISTS idx_monsters_type ON monsters(type);
+CREATE INDEX IF NOT EXISTS idx_monsters_cr ON monsters(challenge_rating);
+
+-- ---------- Combat encounters (initiative tracker, party-scoped) ----------
+
+CREATE TABLE IF NOT EXISTS encounters (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  party_id   INTEGER NOT NULL REFERENCES parties(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  round      INTEGER NOT NULL DEFAULT 0,        -- 0 = setup, >=1 = in combat
+  turn_index INTEGER NOT NULL DEFAULT 0,
+  status     TEXT NOT NULL DEFAULT 'setup' CHECK (status IN ('setup','active','ended')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_encounters_party ON encounters(party_id);
+
+CREATE TABLE IF NOT EXISTS combatants (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  encounter_id    INTEGER NOT NULL REFERENCES encounters(id) ON DELETE CASCADE,
+  type            TEXT NOT NULL CHECK (type IN ('player','monster')),
+  character_id    INTEGER REFERENCES characters(id) ON DELETE CASCADE,
+  monster_slug    TEXT,
+  name            TEXT NOT NULL,
+  count           INTEGER NOT NULL DEFAULT 1,
+  group_id        INTEGER,                       -- shared by grouped monsters (same initiative)
+  initiative      INTEGER,                       -- NULL = not yet rolled
+  initiative_bonus INTEGER NOT NULL DEFAULT 0,   -- dex mod cached at add time
+  armor_class     INTEGER NOT NULL DEFAULT 10,
+  hit_points      INTEGER NOT NULL DEFAULT 1,
+  max_hit_points  INTEGER NOT NULL DEFAULT 1,
+  conditions      TEXT NOT NULL DEFAULT '[]',    -- JSON: [{name,duration}]
+  sort_order      INTEGER NOT NULL DEFAULT 0,
+  defeated        INTEGER NOT NULL DEFAULT 0,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_combatants_encounter ON combatants(encounter_id);
+CREATE INDEX IF NOT EXISTS idx_combatants_character ON combatants(character_id);

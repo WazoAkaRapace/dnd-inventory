@@ -11,11 +11,11 @@
 import { EventEmitter } from 'node:events';
 
 export interface SyncEvent {
-  type: 'inventory:change' | 'character:change' | 'party:change';
+  type: 'inventory:change' | 'character:change' | 'party:change' | 'combat:change';
   partyId: number;
   characterId?: number;
   toCharacterId?: number; // for transfers
-  action?: 'add' | 'remove' | 'transfer' | 'adjust' | 'coins' | 'stats' | 'custom-item' | 'join';
+  action?: 'add' | 'remove' | 'transfer' | 'adjust' | 'coins' | 'stats' | 'custom-item' | 'join' | 'initiative' | 'turn' | 'hp' | 'condition';
   itemName?: string;
   actorUserId?: number;
 }

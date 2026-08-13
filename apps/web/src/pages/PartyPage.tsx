@@ -107,6 +107,9 @@ export default function PartyPage() {
             <Link to={`/party/${partyId}/npcs`} className="btn-secondary text-sm">
               🎭 PNJ
             </Link>
+            <Link to={`/party/${partyId}/combat`} className="btn-secondary text-sm">
+              ⚔ Combat
+            </Link>
           </div>
         </div>
       </div>

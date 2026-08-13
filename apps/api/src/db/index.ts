@@ -124,6 +124,9 @@ const COLUMN_MIGRATIONS: Record<string, Array<{ name: string; ddl: string }>> = 
     { name: 'counter_max', ddl: 'INTEGER' },
     { name: 'counter_current', ddl: 'INTEGER' },
   ],
+  combatants: [
+    { name: 'group_id', ddl: 'INTEGER' },
+  ],
 };
 
 /**
@@ -153,7 +156,43 @@ export function migrate(): void {
   const db = getDb();
   const schemaPath = resolve(__dirname, 'schema.sql');
   const sql = readFileSync(schemaPath, 'utf8');
-  db.exec(sql);
-  console.log(`[db] schema applied to ${getDbPath()}`);
+
+  // Run the full schema (CREATE TABLE IF NOT EXISTS + CREATE INDEX IF NOT EXISTS).
+  // On an existing DB, some CREATE INDEX statements may fail if they reference
+  // a column that hasn't been backfilled yet — that's fine, we retry after
+  // migrateColumns below.
+  try {
+    db.exec(sql);
+  } catch (err: any) {
+    // Re-run statement-by-statement, skipping any that fail (typically a
+    // CREATE INDEX on a not-yet-migrated column).
+    const stmts = sql
+      .split(/;\s*\n/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0 && !s.startsWith('--'));
+    for (const stmt of stmts) {
+      try {
+        db.exec(stmt + ';');
+      } catch {
+        // skip (likely an index on a column added by migrateColumns)
+      }
+    }
+  }
+
   migrateColumns(db);
+
+  // Re-run CREATE INDEX statements now that all columns exist.
+  const indexStmts = sql
+    .split(/;\s*\n/)
+    .map((s) => s.trim())
+    .filter((s) => /^CREATE\s+INDEX/i.test(s));
+  for (const stmt of indexStmts) {
+    try {
+      db.exec(stmt + ';');
+    } catch {
+      // already exists or other benign error
+    }
+  }
+
+  console.log(`[db] schema applied to ${getDbPath()}`);
 }

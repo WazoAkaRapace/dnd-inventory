@@ -4,7 +4,7 @@ import type { User } from '@dnd-inventory/shared';
 // ---------- Types ----------
 
 export interface SyncEvent {
-  type: 'inventory:change' | 'character:change' | 'party:change';
+  type: 'inventory:change' | 'character:change' | 'party:change' | 'combat:change';
   partyId: number;
   characterId?: number;
   toCharacterId?: number;

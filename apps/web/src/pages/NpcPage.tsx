@@ -187,11 +187,8 @@ export default function NpcPage({ embedded = false }: { embedded?: boolean }) {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-3">
           {!embedded && (
-            <Link to={`/party/${partyId}`} className="btn-ghost text-sm">
-              ← Retour
-            </Link>
+            <span className="text-sm text-ink-400">PNJ</span>
           )}
-          <h1 className="font-display text-2xl font-bold">🎭 PNJ</h1>
         </div>
         <button onClick={openCreate} className="btn-primary text-sm">
           + Ajouter un PNJ

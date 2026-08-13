@@ -248,11 +248,130 @@ export function seedSpells(): void {
   console.log(`[seed] SRD spells: ${before} → ${after} (inserted ${after - before})`);
 }
 
+// ---------- Monsters ----------
+
+interface SeedMonsterAction {
+  name: string;
+  desc: string;
+  attackBonus?: number;
+  damageDice?: string;
+  damageType?: string;
+  cost?: number;
+}
+
+interface SeedMonster {
+  slug: string;
+  nameFr: string;
+  type: string;
+  subtype: string | null;
+  size: string;
+  alignment: string | null;
+  armorClass: number;
+  armorDesc: string | null;
+  hitPoints: number;
+  hitDice: string | null;
+  speed: Record<string, number>;
+  abilities: { for: number; dex: number; con: number; int: number; sag: number; cha: number };
+  savingThrows: string[];
+  skills: { name: string; isExpert: boolean }[];
+  languages: string[];
+  challengeRating: number;
+  xp: number;
+  senses: string | null;
+  telepathy: number | null;
+  damageResistances: string[] | null;
+  damageImmunities: string[] | null;
+  conditionImmunities: string[] | null;
+  traits: SeedMonsterAction[];
+  actions: SeedMonsterAction[];
+  legendaryActions: SeedMonsterAction[];
+  source: string;
+  sourcePage: number | null;
+}
+
+const MONSTER_INSERT = `
+  INSERT INTO monsters (
+    slug, name_fr, type, subtype, size, alignment,
+    armor_class, armor_desc, hit_points, hit_dice,
+    speed_json, abilities_json, saving_throws_json, skills_json, languages_json,
+    challenge_rating, xp, senses, telepathy,
+    damage_resistances_json, damage_immunities_json, condition_immunities_json,
+    traits_json, actions_json, legendary_actions_json, source
+  ) VALUES (
+    ?, ?, ?, ?, ?, ?,
+    ?, ?, ?, ?,
+    ?, ?, ?, ?, ?,
+    ?, ?, ?, ?,
+    ?, ?, ?,
+    ?, ?, ?, ?
+  )
+  ON CONFLICT(slug) DO UPDATE SET
+    name_fr = excluded.name_fr,
+    type = excluded.type,
+    armor_class = excluded.armor_class,
+    hit_points = excluded.hit_points,
+    challenge_rating = excluded.challenge_rating,
+    abilities_json = excluded.abilities_json,
+    actions_json = excluded.actions_json,
+    legendary_actions_json = excluded.legendary_actions_json,
+    traits_json = excluded.traits_json
+`;
+
+const MONSTER_COUNT_SQL = `SELECT COUNT(*) as n FROM monsters`;
+
+export function seedMonsters(): void {
+  const db = getDb();
+  const seedPath = resolveSeedPath('monsters-seed.json');
+  const monsters = JSON.parse(readFileSync(seedPath, 'utf8')) as SeedMonster[];
+  console.log(`[seed] loading monsters from ${seedPath}`);
+
+  const before = (db.prepare(MONSTER_COUNT_SQL).get() as { n: number }).n;
+
+  const insert = db.prepare(MONSTER_INSERT);
+  const tx = db.transaction((rows: SeedMonster[]) => {
+    for (const m of rows) {
+      insert.run(
+        m.slug,
+        m.nameFr,
+        m.type,
+        m.subtype,
+        m.size,
+        m.alignment,
+        m.armorClass,
+        m.armorDesc,
+        m.hitPoints,
+        m.hitDice,
+        JSON.stringify(m.speed),
+        JSON.stringify(m.abilities),
+        JSON.stringify(m.savingThrows),
+        JSON.stringify(m.skills),
+        JSON.stringify(m.languages),
+        m.challengeRating,
+        m.xp,
+        m.senses,
+        m.telepathy,
+        m.damageResistances ? JSON.stringify(m.damageResistances) : null,
+        m.damageImmunities ? JSON.stringify(m.damageImmunities) : null,
+        m.conditionImmunities ? JSON.stringify(m.conditionImmunities) : null,
+        JSON.stringify(m.traits),
+        JSON.stringify(m.actions),
+        JSON.stringify(m.legendaryActions),
+        m.source,
+      );
+    }
+  });
+  tx(monsters);
+
+  const after = (db.prepare(MONSTER_COUNT_SQL).get() as { n: number }).n;
+  console.log(`[seed] SRD monsters: ${before} → ${after} (inserted ${after - before})`);
+}
+
 // If run directly, migrate first then seed
 if (import.meta.url === `file://${process.argv[1]}`) {
   const { migrate } = await import('./index.ts');
   migrate();
   seedItems();
   seedSpells();
+  seedMonsters();
   console.log('[seed] done.');
 }
