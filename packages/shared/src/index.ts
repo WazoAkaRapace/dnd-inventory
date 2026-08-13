@@ -414,6 +414,7 @@ export interface ClassInfo {
 }
 
 export const DND_CLASSES: ClassInfo[] = [
+  { name: 'Artificier',   hitDie: 8,  savingThrows: ['constitution', 'intelligence'], spellcasting: 'half', spellcastingAbility: 'intelligence' },
   { name: 'Barbare',      hitDie: 12, savingThrows: ['strength', 'constitution'],  spellcasting: 'none' },
   { name: 'Barde',        hitDie: 8,  savingThrows: ['dexterity', 'charisma'],     spellcasting: 'full', spellcastingAbility: 'charisma' },
   { name: 'Clerc',        hitDie: 8,  savingThrows: ['wisdom', 'charisma'],        spellcasting: 'full', spellcastingAbility: 'wisdom' },
