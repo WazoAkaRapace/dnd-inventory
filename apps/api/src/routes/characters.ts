@@ -122,6 +122,7 @@ export async function characterRoutes(app: FastifyInstance) {
         // Description / personality
         'alignment', 'sex', 'height', 'weight', 'age', 'skin', 'eyes', 'hair',
         'portraitUrl', 'personalityTraits', 'ideals', 'bonds', 'flaws', 'appearance',
+        'armorClassOverride',
       ];
       const sets: string[] = [];
       const vals: any[] = [];
@@ -138,6 +139,7 @@ export async function characterRoutes(app: FastifyInstance) {
         spellSlotsUsed: 'spell_slots_used',
         portraitUrl: 'portrait_url',
         personalityTraits: 'personality_traits',
+        armorClassOverride: 'armor_class_override',
       };
       // Fields stored as JSON arrays — serialize on write
       const jsonFields = new Set([

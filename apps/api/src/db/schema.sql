@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS characters (
   bonds               TEXT,
   flaws               TEXT,
   appearance          TEXT,
+  armor_class_override INTEGER,  -- null = computed from equipped armor, number = manual
   notes       TEXT,
   copper      INTEGER NOT NULL DEFAULT 0,
   silver      INTEGER NOT NULL DEFAULT 0,

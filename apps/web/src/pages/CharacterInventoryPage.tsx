@@ -746,6 +746,7 @@ export default function CharacterInventoryPage() {
         <CharacterStatsTab
           character={character}
           charId={Number(charId)}
+          entries={entries}
           onSaved={refreshInventory}
           onError={(msg) => pushToast(msg, 'error')}
         />

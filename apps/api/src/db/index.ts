@@ -100,6 +100,7 @@ const COLUMN_MIGRATIONS: Record<string, Array<{ name: string; ddl: string }>> = 
     { name: 'bonds', ddl: 'TEXT' },
     { name: 'flaws', ddl: 'TEXT' },
     { name: 'appearance', ddl: 'TEXT' },
+    { name: 'armor_class_override', ddl: 'INTEGER' },
   ],
   items: [
     { name: 'survival_tags', ddl: "TEXT NOT NULL DEFAULT '[]'" },

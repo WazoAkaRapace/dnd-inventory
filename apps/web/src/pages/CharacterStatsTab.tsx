@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import api from '../api';
 import {
   type Character,
+  type InventoryEntry,
   type AbilityKey,
   DND_ABILITIES,
   ABILITY_LABELS_FR,
@@ -16,12 +17,14 @@ import {
   proficiencyBonus,
   spellSaveDC,
   passivePerception,
+  computeAC,
   findClass,
 } from '@dnd-inventory/shared';
 
 interface Props {
   character: Character;
   charId: number;
+  entries: InventoryEntry[];
   onSaved: () => Promise<void>;
   onError: (msg: string) => void;
 }
@@ -36,7 +39,7 @@ const ABILITY_FIELDS: { key: keyof Character; ability: AbilityKey }[] = [
   { key: 'charisma', ability: 'charisma' },
 ];
 
-export default function CharacterStatsTab({ character, charId, onSaved, onError }: Props) {
+export default function CharacterStatsTab({ character, charId, entries, onSaved, onError }: Props) {
   // Drafts for ability scores (auto-save on blur)
   const [abilityDrafts, setAbilityDrafts] = useState<Record<string, string>>({});
   const [classDraft, setClassDraft] = useState(character.characterClass ?? '');
@@ -133,6 +136,28 @@ export default function CharacterStatsTab({ character, charId, onSaved, onError 
     : 0;
   const spellDC = isSpellcaster ? spellSaveDC(castingMod, profBonus) : 0;
 
+  // Armor Class — computed from equipped armor, or manual override
+  const acResult = computeAC(entries, dexMod);
+  const acOverride = character.armorClassOverride;
+  const effectiveAC = acOverride ?? acResult.ac;
+  const [acDraft, setAcDraft] = useState('');
+  const [editingAC, setEditingAC] = useState(false);
+
+  useEffect(() => { setEditingAC(false); }, [character.armorClassOverride]);
+
+  const commitAC = () => {
+    const val = acDraft.trim();
+    if (val === '' || val === 'auto' || val === '0') {
+      patchCharacter({ armorClassOverride: null }, 'Erreur de mise à jour');
+    } else {
+      const num = Number(val);
+      if (Number.isFinite(num) && num > 0) {
+        patchCharacter({ armorClassOverride: Math.round(num) }, 'Erreur de mise à jour');
+      }
+    }
+    setEditingAC(false);
+  };
+
   return (
     <div className="space-y-4">
       {/* Identity: class, level, race, background */}
@@ -224,6 +249,45 @@ export default function CharacterStatsTab({ character, charId, onSaved, onError 
       <section className="card p-4 sm:p-5 space-y-3">
         <h2 className="font-display text-lg font-semibold">Statistiques dérivées</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {/* Armor Class — computed or overridden */}
+          <div className="bg-parchment-100 rounded-xl p-3 text-center">
+            <div className="text-xs font-medium text-ink-500 mb-1">Classe d'armure</div>
+            {editingAC ? (
+              <input
+                type="number"
+                min={0}
+                className="w-12 text-center text-xl font-bold text-ink-800 bg-white border border-parchment-300 rounded-md py-0.5 focus:outline-none focus:border-blood-500"
+                value={acDraft}
+                onChange={(e) => setAcDraft(e.target.value)}
+                onBlur={commitAC}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                  if (e.key === 'Escape') setEditingAC(false);
+                }}
+                placeholder={String(acResult.ac)}
+                autoFocus
+              />
+            ) : (
+              <button
+                onClick={() => { setAcDraft(acOverride ? String(acOverride) : ''); setEditingAC(true); }}
+                className="text-2xl font-bold text-ink-800 hover:text-blood-600 transition-colors"
+                title="Cliquer pour modifier"
+              >
+                {effectiveAC}
+              </button>
+            )}
+            <div className="text-[10px] text-ink-400 mt-0.5">
+              {acOverride !== null ? (
+                <span className="text-blood-600">Manuel · </span>
+              ) : null}
+              {acOverride !== null && (
+                <button onClick={() => patchCharacter({ armorClassOverride: null }, 'Erreur')} className="text-blood-500 hover:underline">
+                  ↺ Auto
+                </button>
+              )}
+              {acOverride === null && acResult.source}
+            </div>
+          </div>
           <DerivedStat label="Bonus de maîtrise" value={formatModifier(profBonus)} />
           <DerivedStat label="Initiative" value={formatModifier(dexMod)} />
           <DerivedStat label="Perception passive" value={String(passPerc)} />
