@@ -22,7 +22,7 @@ export async function itemRoutes(app: FastifyInstance) {
     const userId = requireUser(req, reply);
     if (userId === null) return;
 
-    const { search, category, rarity, limit, offset } = req.query || {};
+    const { search, category, rarity, limit, offset, source } = req.query as any || {};
     const lim = Math.min(parseInt(limit || '50', 10) || 50, 200);
     const off = Math.max(parseInt(offset || '0', 10) || 0, 0);
 
@@ -67,6 +67,10 @@ export async function itemRoutes(app: FastifyInstance) {
     if (rarity && rarity !== 'none') {
       where.push('rarity = ?');
       params.push(rarity);
+    }
+    if (source) {
+      where.push('source = ?');
+      params.push(source);
     }
 
     const sql = `
