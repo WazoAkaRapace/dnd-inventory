@@ -28,6 +28,7 @@ interface Props {
   isGM: boolean;
   canSetInitiative: boolean; // player can set their own
   hideInitiative?: boolean; // initiative shown in parent group header
+  hideTourLabel?: boolean; // "Tour" label shown on group wrapper instead
   onPatch: (id: number, patch: Partial<Combatant>) => void;
   onDelete?: (id: number) => void; // omitted when delete handled by group header
   onSetInitiative: (id: number, initiative: number) => void;
@@ -44,6 +45,7 @@ export default function CombatantRow({
   isGM,
   canSetInitiative,
   hideInitiative,
+  hideTourLabel,
   onPatch,
   onDelete,
   onSetInitiative,
@@ -145,8 +147,8 @@ export default function CombatantRow({
         ...(isCurrent ? { boxShadow: '0 0 0 2px rgb(185 28 28 / 0.7), 0 0 20px 4px rgb(185 28 28 / 0.35), 0 1px 2px rgba(42,31,20,0.04)' } : {}),
       }}
     >
-      {/* Floating "Tour" label on top of card */}
-      {isCurrent && !combatant.defeated && (
+      {/* Floating "Tour" label on top of card (hidden for group members — shown on group wrapper) */}
+      {isCurrent && !combatant.defeated && !hideTourLabel && (
         <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-blood-600 text-parchment-50 text-xs font-bold shadow-md z-10 whitespace-nowrap">
           ◀ Tour
         </span>

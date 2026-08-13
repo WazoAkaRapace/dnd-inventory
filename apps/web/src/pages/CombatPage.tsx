@@ -454,7 +454,13 @@ function CombatantList({
         const totalCount = group.members.length;
 
         return (
-          <div key={group.key}>
+          <div key={group.key} className="relative">
+            {/* Floating "Tour" label for the whole group */}
+            {isCurrentGroup && (
+              <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-blood-600 text-parchment-50 text-xs font-bold shadow-md z-10 whitespace-nowrap">
+                ◀ Tour
+              </span>
+            )}
             {/* Group header (only for multi-member groups) */}
             {isGroup && (
               <div className={`flex items-center gap-2 px-2 py-1 mb-1 rounded-lg text-sm font-medium ${
@@ -521,18 +527,21 @@ function CombatantList({
             )}
 
             {/* Members */}
-            <div className={`space-y-2 ${isGroup ? 'ml-3 border-l-2 border-parchment-200 pl-3' : ''}`}>
+            <div className={`space-y-2 ${isGroup ? 'ml-3 border-l-2 pl-3' : ''} ${
+              isCurrentGroup ? 'border-blood-500' : 'border-parchment-200'
+            }`}>
               {group.members.map((m, memberIdx) => (
                 <CombatantRow
                   key={m.combatant.id}
                   combatant={m.combatant}
                   label={isGroup ? `${m.combatant.name} ${memberIdx + 1}` : undefined}
-                  isCurrent={m.index === turnIndex && status === 'active'}
+                  isCurrent={isCurrentGroup || (m.index === turnIndex && status === 'active')}
                   isGM={isGM}
                   canSetInitiative={!!m.combatant.characterId && party.characters.some(
                     (ch) => ch.id === m.combatant.characterId && ch.ownerId === userId,
                   )}
                   hideInitiative={isGroup} // initiative shown in group header
+                  hideTourLabel={isGroup} // tour label shown on group wrapper
                   onPatch={onPatch}
                   onDelete={isGroup ? undefined : onDelete} // delete handled by group header
                   onSetInitiative={onSetInitiative}
