@@ -30,5 +30,8 @@
     "better-sqlite3@11.10.0": true,
     "esbuild@0.28.2": true,
     "esbuild@0.21.5": true
+  },
+  "dependencies": {
+    "vite": "^8.2.1"
   }
 }
