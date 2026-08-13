@@ -92,7 +92,7 @@ export default function GmDashboardPage() {
       )}
 
       {tab === 'custom' && (
-        <CustomItemsTab partyId={partyId!} onAdd={() => setShowAddItem(true)} showAdd={showAddItem} />
+        <CustomItemsTab partyId={partyId!} />
       )}
 
       {tab === 'survival' && (
@@ -217,15 +217,20 @@ function TransactionsTab({ transactions }: { transactions: Transaction[] }) {
   );
 }
 
-function CustomItemsTab({ partyId, onAdd, showAdd }: { partyId: string; onAdd: () => void; showAdd: boolean }) {
+function CustomItemsTab({ partyId }: { partyId: string }) {
+  const [customItems, setCustomItems] = useState<any[]>([]);
+  const [loadingItems, setLoadingItems] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [editing, setEditing] = useState<any | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  // Form state
   const [name, setName] = useState('');
   const [category, setCategory] = useState('custom');
   const [weight, setWeight] = useState('');
   const [desc, setDesc] = useState('');
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [customItems, setCustomItems] = useState<any[]>([]);
-  const [loadingItems, setLoadingItems] = useState(true);
 
   const loadCustomItems = useCallback(async () => {
     try {
@@ -240,71 +245,149 @@ function CustomItemsTab({ partyId, onAdd, showAdd }: { partyId: string; onAdd: (
 
   useEffect(() => { loadCustomItems(); }, [loadCustomItems]);
 
-  async function create(e: React.FormEvent) {
-    e.preventDefault();
-    setError(''); setSuccess('');
-    const payload: CreateCustomItem = {
-      name,
-      category: category as any,
+  useSyncEvent((event) => {
+    if (event.partyId === Number(partyId) && event.action === 'custom-item') {
+      loadCustomItems();
+    }
+  }, [partyId]);
+
+  const openCreate = () => {
+    setEditing(null);
+    setName(''); setCategory('custom'); setWeight(''); setDesc('');
+    setError('');
+    setShowModal(true);
+  };
+
+  const openEdit = (item: any) => {
+    setEditing(item);
+    setName(item.nameFr || item.name);
+    setCategory(item.category);
+    setWeight(item.weightKg !== null ? String(item.weightKg) : '');
+    setDesc(item.description || '');
+    setError('');
+    setShowModal(true);
+  };
+
+  const save = async () => {
+    if (!name.trim()) { setError('Le nom est requis'); return; }
+    setSaving(true);
+    setError('');
+    const payload = {
+      name: name.trim(),
+      category,
       weightKg: weight ? parseFloat(weight) : null,
-      description: desc || undefined,
+      description: desc.trim() || null,
     };
     try {
-      await api.post(`/api/parties/${partyId}/items`, payload);
-      setSuccess(`"${name}" ajouté au catalogue`);
-      setName(''); setWeight(''); setDesc(''); setCategory('custom');
+      if (editing) {
+        await api.patch(`/api/items/${editing.id}`, payload);
+      } else {
+        await api.post(`/api/parties/${partyId}/items`, payload);
+      }
+      setShowModal(false);
       await loadCustomItems();
-      onAdd();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Erreur');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (id: number) => {
+    try {
+      await api.delete(`/api/items/${id}`);
+      setConfirmDelete(null);
+      await loadCustomItems();
     } catch (err: any) {
       setError(err.response?.data?.error || 'Erreur');
     }
-  }
+  };
 
   return (
     <div className="space-y-4">
-      {/* Existing custom items list */}
-      <div className="card p-4">
-        <h3 className="font-display text-lg font-semibold mb-3">
+      <div className="flex items-center justify-between">
+        <h3 className="font-display text-lg font-semibold">
           Objets personnalisés <span className="text-ink-400 text-sm font-normal">({customItems.length})</span>
         </h3>
-        {loadingItems ? (
-          <p className="text-sm text-ink-400 animate-pulse">Chargement…</p>
-        ) : customItems.length === 0 ? (
-          <p className="text-sm text-ink-400 italic">Aucun objet personnalisé. Créez-en un ci-dessous.</p>
-        ) : (
-          <ul className="space-y-2">
-            {customItems.map((item) => (
-              <li key={item.id} className="bg-parchment-50 rounded-lg border border-parchment-200 p-3">
-                <div className="flex items-center justify-between gap-2">
+        <button onClick={openCreate} className="btn-primary text-sm px-3 py-1.5">
+          + Ajouter
+        </button>
+      </div>
+
+      {loadingItems ? (
+        <p className="text-sm text-ink-400 animate-pulse">Chargement…</p>
+      ) : customItems.length === 0 ? (
+        <div className="card p-8">
+          <EmptyState
+            icon="✨"
+            title="Aucun objet personnalisé"
+            message="Créez des objets non-SRD : trésors spéciaux, objets de quête, armes uniques…"
+          />
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {customItems.map((item) => (
+            <li key={item.id} className="card p-3 flex items-start gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium text-ink-800">{item.nameFr || item.name}</span>
-                  <div className="flex items-center gap-2 text-xs text-ink-400">
-                    {item.weightKg !== null && <span>{item.weightKg} kg</span>}
-                    <CategoryBadge category={item.category} />
-                  </div>
+                  <CategoryBadge category={item.category} />
+                  {item.weightKg !== null && (
+                    <span className="text-xs text-ink-400">{item.weightKg} kg</span>
+                  )}
                 </div>
                 {item.description && (
                   <p className="text-xs text-ink-500 mt-1">{item.description}</p>
                 )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => openEdit(item)}
+                  className="text-ink-400 hover:text-blood-600 text-sm p-1"
+                  aria-label="Modifier"
+                >✎</button>
+                <button
+                  onClick={() => setConfirmDelete(item.id)}
+                  className="text-ink-400 hover:text-red-500 text-sm p-1"
+                  aria-label="Supprimer"
+                >×</button>
+              </div>
+              {confirmDelete === item.id && (
+                <div className="flex items-center gap-2 ml-2">
+                  <button
+                    onClick={() => remove(item.id)}
+                    className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700"
+                  >Supprimer ?</button>
+                  <button
+                    onClick={() => setConfirmDelete(null)}
+                    className="text-xs px-2 py-1 rounded bg-parchment-200 hover:bg-parchment-300"
+                  >Annuler</button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
 
-      {/* Create form */}
-      <div className="card p-4">
-        <h3 className="font-display text-lg font-semibold mb-3">Créer un objet personnalisé</h3>
-        <p className="text-sm text-ink-400 mb-4">
-          Ajoutez des objets non-SRD (trésors spéciaux, objets de quête, etc.). Le poids doit être en kg.
-        </p>
-        <form onSubmit={create} className="space-y-3">
+      {/* Floating + button */}
+      {customItems.length > 0 && (
+        <button
+          onClick={openCreate}
+          className="lg:hidden fab-enter fixed bottom-5 right-5 z-30 w-14 h-14 rounded-full bg-blood-600 text-white shadow-lg flex items-center justify-center text-2xl font-light hover:bg-blood-700 active:scale-95 transition-all"
+          aria-label="Ajouter un objet personnalisé"
+        >+</button>
+      )}
+
+      {/* Create/Edit modal */}
+      <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'Modifier l\'objet' : 'Nouvel objet personnalisé'}>
+        <div className="space-y-3">
           <div className="grid sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Nom *</label>
-              <input className="input" value={name} onChange={(e) => setName(e.target.value)} required />
-            </div>
-            <div>
-              <label className="label">Catégorie</label>
+            <label className="block">
+              <span className="label">Nom *</span>
+              <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Épée du Héros" autoFocus />
+            </label>
+            <label className="block">
+              <span className="label">Catégorie</span>
               <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
                 <option value="custom">Personnalisé</option>
                 <option value="weapon">Arme</option>
@@ -312,23 +395,25 @@ function CustomItemsTab({ partyId, onAdd, showAdd }: { partyId: string; onAdd: (
                 <option value="gear">Équipement</option>
                 <option value="magic">Objet magique</option>
               </select>
-            </div>
+            </label>
           </div>
-          <div className="grid sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Poids (kg)</label>
-              <input type="number" step="0.01" className="input" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="0.5" />
-            </div>
-          </div>
-          <div>
-            <label className="label">Description</label>
-            <textarea className="input" rows={2} value={desc} onChange={(e) => setDesc(e.target.value)} />
-          </div>
+          <label className="block">
+            <span className="label">Poids (kg)</span>
+            <input type="number" step="0.01" className="input" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="0.5" />
+          </label>
+          <label className="block">
+            <span className="label">Description</span>
+            <textarea className="input" rows={2} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Une lame brillant d'une lumière dorée…" />
+          </label>
           {error && <div className="text-red-600 text-sm">{error}</div>}
-          {success && <div className="text-green-600 text-sm">{success}</div>}
-          <button type="submit" className="btn-primary">+ Ajouter au catalogue</button>
-        </form>
-      </div>
+          <div className="flex gap-2 pt-1">
+            <button onClick={save} disabled={saving || !name.trim()} className="btn-primary flex-1 disabled:opacity-50">
+              {saving ? '…' : editing ? 'Enregistrer' : '+ Ajouter au catalogue'}
+            </button>
+            <button onClick={() => setShowModal(false)} className="btn-ghost text-ink-700">Annuler</button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

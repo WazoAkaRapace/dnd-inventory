@@ -4,7 +4,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
-import { requireUser, mapItem } from './helpers.ts';
+import { requireUser, mapItem, isPartyGM } from './helpers.ts';
 import type { ItemCategory, Rarity, CreateCustomItem } from '@dnd-inventory/shared';
 
 interface ItemQuery {
@@ -146,6 +146,68 @@ export async function itemRoutes(app: FastifyInstance) {
       const row = getDb().prepare('SELECT * FROM items WHERE id = ?').get(info.lastInsertRowid);
       bus.emitChange({ type: 'party:change', partyId, action: 'custom-item', actorUserId: userId });
       return reply.code(201).send({ item: mapItem(row) });
+    },
+  );
+
+  // ---------- GM: update a custom item ----------
+  app.patch(
+    '/items/:id',
+    { onRequest: [(app as any).authenticate] },
+    async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+      const userId = requireUser(req, reply);
+      if (userId === null) return;
+      const db = getDb();
+      const itemId = Number(req.params.id);
+      const item = db.prepare('SELECT * FROM items WHERE id = ?').get(itemId) as any;
+      if (!item) return reply.code(404).send({ error: 'item not found' });
+      if (item.source !== 'custom') return reply.code(403).send({ error: 'can only modify custom items' });
+
+      // Check GM access
+      if (!isPartyGM(item.party_id, userId)) {
+        return reply.code(403).send({ error: 'only the GM can modify items' });
+      }
+
+      const body = req.body || {};
+      const sets: string[] = [];
+      const vals: any[] = [];
+      if (body.name !== undefined) { sets.push('name = ?'); vals.push(body.name.trim()); }
+      if (body.category !== undefined) { sets.push('category = ?'); vals.push(body.category); }
+      if (body.rarity !== undefined) { sets.push('rarity = ?'); vals.push(body.rarity); }
+      if (body.weightKg !== undefined) { sets.push('weight_kg = ?'); vals.push(body.weightKg); }
+      if (body.costQty !== undefined) { sets.push('cost_qty = ?'); vals.push(body.costQty); }
+      if (body.costUnit !== undefined) { sets.push('cost_unit = ?'); vals.push(body.costUnit); }
+      if (body.description !== undefined) { sets.push('description = ?'); vals.push(body.description); }
+      if (sets.length === 0) return reply.code(400).send({ error: 'no fields to update' });
+
+      vals.push(itemId);
+      db.prepare(`UPDATE items SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+      const row = db.prepare('SELECT * FROM items WHERE id = ?').get(itemId);
+      bus.emitChange({ type: 'party:change', partyId: item.party_id, action: 'custom-item', actorUserId: userId });
+      return reply.send({ item: mapItem(row) });
+    },
+  );
+
+  // ---------- GM: delete a custom item ----------
+  app.delete(
+    '/items/:id',
+    { onRequest: [(app as any).authenticate] },
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const userId = requireUser(req, reply);
+      if (userId === null) return;
+      const db = getDb();
+      const itemId = Number(req.params.id);
+      const item = db.prepare('SELECT * FROM items WHERE id = ?').get(itemId) as any;
+      if (!item) return reply.code(404).send({ error: 'item not found' });
+      if (item.source !== 'custom') return reply.code(403).send({ error: 'can only delete custom items' });
+
+      // Check GM access
+      if (!isPartyGM(item.party_id, userId)) {
+        return reply.code(403).send({ error: 'only the GM can delete items' });
+      }
+
+      db.prepare('DELETE FROM items WHERE id = ?').run(itemId);
+      bus.emitChange({ type: 'party:change', partyId: item.party_id, action: 'custom-item', actorUserId: userId });
+      return reply.code(204).send();
     },
   );
 }
