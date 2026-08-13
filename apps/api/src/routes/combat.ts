@@ -106,6 +106,26 @@ function sortCombatants(combatants: Combatant[]): Combatant[] {
   });
 }
 
+/**
+ * Roll HP from a hit dice formula like "2d6+0" or "18d10+36".
+ * Each die is rolled individually, then the flat bonus is added.
+ * Falls back to the average HP if the formula can't be parsed.
+ */
+function rollHitPoints(hitDice: string | null, avgHp: number, conMod: number): number {
+  if (!hitDice) return Math.max(1, avgHp);
+  // Parse "2d6+0", "18d10+36", "3d8-1", etc.
+  const match = hitDice.match(/^(\d+)d(\d+)(?:([+-]\d+))?$/);
+  if (!match) return Math.max(1, avgHp);
+  const numDice = parseInt(match[1], 10);
+  const dieSize = parseInt(match[2], 10);
+  const flatBonus = match[3] ? parseInt(match[3], 10) : 0;
+  let total = flatBonus;
+  for (let i = 0; i < numDice; i++) {
+    total += Math.floor(Math.random() * dieSize) + 1;
+  }
+  return Math.max(1, total);
+}
+
 /** Fetch encounter, verify party membership, return the encounter row or send error. */
 async function getEncounterForUser(
   req: FastifyRequest<{ Params: { id: string } }>,
@@ -318,11 +338,13 @@ export async function combatRoutes(app: FastifyInstance) {
       const count = Math.max(1, Math.min(body.count ?? 1, 50));
       const name = (body.name || monster.name_fr).trim();
 
+      // Parse CON modifier for HP rolls (hit dice + CON mod per die)
+      const conMod = abilityModifier(abilities.con ?? 10);
+
       // Create N independent combatants sharing a group_id.
-      // They share initiative (rolled together) and stats, but have
-      // independent HP, conditions, and defeated state.
+      // Each rolls its own HP from the hit dice formula for variety.
       const sortOrder = Date.now();
-      const groupId = sortOrder; // use timestamp as unique group id
+      const groupId = sortOrder;
       const insertStmt = db.prepare(`
         INSERT INTO combatants (encounter_id, type, monster_slug, name, count, group_id, initiative_bonus, armor_class, hit_points, max_hit_points, sort_order)
         VALUES (?, 'monster', ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -330,6 +352,7 @@ export async function combatRoutes(app: FastifyInstance) {
       const createdIds: number[] = [];
       const tx = db.transaction(() => {
         for (let i = 0; i < count; i++) {
+          const hp = rollHitPoints(monster.hit_dice, monster.hit_points ?? 1, conMod);
           const info = insertStmt.run(
             enc.id,
             monster.slug,
@@ -338,8 +361,8 @@ export async function combatRoutes(app: FastifyInstance) {
             groupId,
             dexMod,
             monster.armor_class ?? 10,
-            monster.hit_points ?? 1,
-            monster.hit_points ?? 1,
+            hp,
+            hp,
             sortOrder,
           );
           createdIds.push(Number(info.lastInsertRowid));
