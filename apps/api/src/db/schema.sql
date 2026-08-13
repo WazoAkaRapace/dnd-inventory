@@ -223,3 +223,16 @@ CREATE TABLE IF NOT EXISTS character_features (
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_character_features_char ON character_features(character_id);
+
+-- ---------- Character notes (free-form with simple formatting) ----------
+
+CREATE TABLE IF NOT EXISTS character_notes (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  character_id  INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+  title         TEXT NOT NULL,
+  content       TEXT,                -- Markdown-like plain text
+  sort_order    INTEGER NOT NULL DEFAULT 0,
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_character_notes_char ON character_notes(character_id);

@@ -27,8 +27,9 @@ import CharacterSpellsTab from './CharacterSpellsTab';
 import CharacterFeaturesTab from './CharacterFeaturesTab';
 import CharacterDescriptionTab from './CharacterDescriptionTab';
 import NpcPage from './NpcPage';
+import CharacterNotesTab from './CharacterNotesTab';
 
-type CharacterTab = 'inventory' | 'stats' | 'spells' | 'skills' | 'features' | 'description' | 'npcs';
+type CharacterTab = 'inventory' | 'stats' | 'spells' | 'skills' | 'features' | 'description' | 'npcs' | 'notes';
 import {
   LoadingSpinner,
   ErrorMsg,
@@ -669,6 +670,7 @@ export default function CharacterInventoryPage() {
             { key: 'features', label: 'Traits', icon: '📋' },
             { key: 'description', label: 'Description', icon: '👤' },
             { key: 'npcs', label: 'PNJ', icon: '🎭' },
+            { key: 'notes', label: 'Notes', icon: '📝' },
           ] as { key: CharacterTab; label: string; icon: string }[]).map((tab) => (
             <button
               key={tab.key}
@@ -731,6 +733,15 @@ export default function CharacterInventoryPage() {
       )}
       {activeTab === 'npcs' && (
         <NpcPage embedded />
+      )}
+      {activeTab === 'notes' && (
+        <CharacterNotesTab
+          character={character}
+          charId={Number(charId)}
+          partyId={partyId}
+          onSaved={refreshInventory}
+          onError={(msg) => pushToast(msg, 'error')}
+        />
       )}
 
       {/* ---------- Inventory tab content ---------- */}

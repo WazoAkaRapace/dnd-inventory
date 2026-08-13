@@ -738,6 +738,28 @@ export function renderFeatureTemplate(text: string, character: Character): strin
   });
 }
 
+// ---------- Character notes (free-form with simple formatting) ----------
+
+export interface CharacterNote {
+  id: number;
+  characterId: number;
+  title: string;
+  content: string | null;
+  sortOrder: number;
+  updatedAt: string;
+  createdAt: string;
+}
+
+export interface CreateCharacterNotePayload {
+  title: string;
+  content?: string;
+}
+
+export interface PatchCharacterNotePayload {
+  title?: string;
+  content?: string | null;
+}
+
 /** List of available template variables for the help UI. */
 export const TEMPLATE_VARIABLES: Array<{ syntax: string; description: string }> = [
   { syntax: '{{name}}', description: 'Nom du personnage' },
