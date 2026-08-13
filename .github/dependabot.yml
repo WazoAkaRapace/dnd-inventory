@@ -1,0 +1,112 @@
+version: 2
+
+updates:
+  # Root package.json (workspace dependencies)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "npm"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "react-router-dom"
+      build-tools:
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+          - "tsx"
+          - "esbuild"
+          - "tailwindcss"
+          - "postcss"
+          - "autoprefixer"
+      dev-tools:
+        patterns:
+          - "typescript"
+          - "@types/*"
+          - "eslint"
+          - "eslint-*"
+
+  # API workspace
+  - package-ecosystem: "npm"
+    directory: "/apps/api"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "npm"
+      - "api"
+    commit-message:
+      prefix: "chore(api-deps)"
+    groups:
+      fastify:
+        patterns:
+          - "fastify"
+          - "@fastify/*"
+      database:
+        patterns:
+          - "better-sqlite3"
+
+  # Web workspace
+  - package-ecosystem: "npm"
+    directory: "/apps/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "npm"
+      - "web"
+    commit-message:
+      prefix: "chore(web-deps)"
+
+  # Shared workspace
+  - package-ecosystem: "npm"
+    directory: "/packages/shared"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "npm"
+      - "shared"
+    commit-message:
+      prefix: "chore(shared-deps)"
+
+  # Docker images
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "chore(docker)"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "chore(ci)"
