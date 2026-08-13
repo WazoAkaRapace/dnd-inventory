@@ -25,8 +25,9 @@ import CharacterStatsTab from './CharacterStatsTab';
 import CharacterSkillsTab from './CharacterSkillsTab';
 import CharacterSpellsTab from './CharacterSpellsTab';
 import CharacterFeaturesTab from './CharacterFeaturesTab';
+import CharacterDescriptionTab from './CharacterDescriptionTab';
 
-type CharacterTab = 'inventory' | 'stats' | 'spells' | 'skills' | 'features';
+type CharacterTab = 'inventory' | 'stats' | 'spells' | 'skills' | 'features' | 'description';
 import {
   LoadingSpinner,
   ErrorMsg,
@@ -665,6 +666,7 @@ export default function CharacterInventoryPage() {
             { key: 'skills', label: 'Compétences', icon: '🎯' },
             { key: 'spells', label: 'Sorts', icon: '✨' },
             { key: 'features', label: 'Traits', icon: '📋' },
+            { key: 'description', label: 'Description', icon: '👤' },
           ] as { key: CharacterTab; label: string; icon: string }[]).map((tab) => (
             <button
               key={tab.key}
@@ -713,6 +715,14 @@ export default function CharacterInventoryPage() {
           character={character}
           charId={Number(charId)}
           partyId={partyId}
+          onSaved={refreshInventory}
+          onError={(msg) => pushToast(msg, 'error')}
+        />
+      )}
+      {activeTab === 'description' && (
+        <CharacterDescriptionTab
+          character={character}
+          charId={Number(charId)}
           onSaved={refreshInventory}
           onError={(msg) => pushToast(msg, 'error')}
         />

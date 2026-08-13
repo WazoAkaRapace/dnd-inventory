@@ -128,6 +128,21 @@ export function mapCharacterSummary(row: any): CharacterSummary {
     skillProficiencies: parseJsonArray(row.skill_proficiencies, []),
     savingThrowProficiencies: parseJsonArray(row.saving_throw_proficiencies, []),
     spellSlotsUsed: parseJsonArray(row.spell_slots_used, [0,0,0,0,0,0,0,0,0]),
+    // Description / personality
+    alignment: row.alignment ?? null,
+    sex: row.sex ?? null,
+    height: row.height ?? null,
+    weight: row.weight ?? null,
+    age: row.age ?? null,
+    skin: row.skin ?? null,
+    eyes: row.eyes ?? null,
+    hair: row.hair ?? null,
+    portraitUrl: row.portrait_url ?? null,
+    personalityTraits: row.personality_traits ?? null,
+    ideals: row.ideals ?? null,
+    bonds: row.bonds ?? null,
+    flaws: row.flaws ?? null,
+    appearance: row.appearance ?? null,
   };
 }
 

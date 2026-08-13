@@ -248,6 +248,21 @@ export interface CharacterSummary {
   skillProficiencies: string[];        // skill keys: ["acrobatics","arcanes",...]
   savingThrowProficiencies: string[];  // ability keys: ["strength","constitution"]
   spellSlotsUsed: number[];            // 9 entries, used per spell level 1-9
+  // Description / personality
+  alignment: string | null;
+  sex: string | null;
+  height: string | null;
+  weight: string | null;
+  age: string | null;
+  skin: string | null;
+  eyes: string | null;
+  hair: string | null;
+  portraitUrl: string | null;
+  personalityTraits: string | null;
+  ideals: string | null;
+  bonds: string | null;
+  flaws: string | null;
+  appearance: string | null;
 }
 
 export interface Character extends CharacterSummary {
@@ -302,6 +317,21 @@ export interface PatchCharacterPayload {
   skillProficiencies?: string[];
   savingThrowProficiencies?: string[];
   spellSlotsUsed?: number[];
+  // Description / personality
+  alignment?: string | null;
+  sex?: string | null;
+  height?: string | null;
+  weight?: string | null;
+  age?: string | null;
+  skin?: string | null;
+  eyes?: string | null;
+  hair?: string | null;
+  portraitUrl?: string | null;
+  personalityTraits?: string | null;
+  ideals?: string | null;
+  bonds?: string | null;
+  flaws?: string | null;
+  appearance?: string | null;
 }
 
 // ---------- D&D 5e Abilities (Caractéristiques) ----------

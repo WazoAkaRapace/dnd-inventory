@@ -55,6 +55,21 @@ CREATE TABLE IF NOT EXISTS characters (
   skill_proficiencies         TEXT NOT NULL DEFAULT '[]',  -- JSON array of skill keys
   saving_throw_proficiencies  TEXT NOT NULL DEFAULT '[]',  -- JSON array of ability keys
   spell_slots_used            TEXT NOT NULL DEFAULT '[0,0,0,0,0,0,0,0,0]',  -- JSON: used per level 1-9
+  -- Description / personality
+  alignment           TEXT,   -- "Loyal Bon"
+  sex                 TEXT,   -- "M" / "F"
+  height              TEXT,   -- "1,80 m" (freeform, metric)
+  weight              TEXT,   -- "80 kg" (freeform, metric)
+  age                 TEXT,   -- "125 ans"
+  skin                TEXT,
+  eyes                TEXT,
+  hair                TEXT,
+  portrait_url        TEXT,   -- base64 data URL
+  personality_traits  TEXT,
+  ideals              TEXT,
+  bonds               TEXT,
+  flaws               TEXT,
+  appearance          TEXT,
   notes       TEXT,
   copper      INTEGER NOT NULL DEFAULT 0,
   silver      INTEGER NOT NULL DEFAULT 0,
