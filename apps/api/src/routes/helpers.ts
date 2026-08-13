@@ -143,6 +143,7 @@ export function mapCharacterSummary(row: any): CharacterSummary {
     bonds: row.bonds ?? null,
     flaws: row.flaws ?? null,
     appearance: row.appearance ?? null,
+    armorClassOverride: row.armor_class_override ?? null,
   };
 }
 

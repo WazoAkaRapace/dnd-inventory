@@ -263,6 +263,7 @@ export interface CharacterSummary {
   bonds: string | null;
   flaws: string | null;
   appearance: string | null;
+  armorClassOverride: number | null;
 }
 
 export interface Character extends CharacterSummary {
@@ -332,6 +333,7 @@ export interface PatchCharacterPayload {
   bonds?: string | null;
   flaws?: string | null;
   appearance?: string | null;
+  armorClassOverride?: number | null;
 }
 
 // ---------- D&D 5e Abilities (Caractéristiques) ----------
@@ -569,6 +571,83 @@ export function spellSaveDC(castingMod: number, profBonus: number): number {
 /** Passive perception: 10 + WIS mod + proficiency bonus (if proficient). */
 export function passivePerception(wisMod: number, profBonus: number, proficient: boolean): number {
   return 10 + wisMod + (proficient ? profBonus : 0);
+}
+
+// ---------- Armor Class (CA) computation ----------
+
+export interface ArmorClassResult {
+  ac: number;
+  /** Human-readable source, e.g. "Cuirasse · DEX +2" or "Sans armure · 10 + DEX" */
+  source: string;
+  /** Whether a shield is equipped */
+  hasShield: boolean;
+}
+
+/**
+ * Compute Armor Class from equipped armor items + DEX modifier.
+ * Armor type detection by strMin and acBase:
+ *   - Heavy (strMin != null): acBase, no DEX
+ *   - Medium (acBase 12-15, strMin null): acBase + min(DEX, 2)
+ *   - Light (acBase <= 12, strMin null): acBase + DEX
+ */
+export function computeAC(
+  entries: Array<{ item: { category: string; acBase: number | null; strMin: number | null; nameFr: string | null; name: string }; equipped: boolean }>,
+  dexMod: number,
+): ArmorClassResult {
+  // Find equipped armor (non-shield) and shield
+  let armor: { acBase: number; strMin: number | null; name: string } | null = null;
+  let hasShield = false;
+
+  for (const entry of entries) {
+    if (!entry.equipped) continue;
+    if (entry.item.category !== 'armor') continue;
+    if (entry.item.acBase === null || entry.item.acBase === 0) continue;
+    const name = (entry.item.nameFr ?? entry.item.name).toLowerCase();
+    // Shield gives +2 and is tracked separately
+    if (name.includes('bouclier') || name.includes('shield')) {
+      hasShield = true;
+      continue;
+    }
+    // First equipped armor piece wins
+    if (!armor) {
+      armor = {
+        acBase: entry.item.acBase,
+        strMin: entry.item.strMin,
+        name: entry.item.nameFr ?? entry.item.name,
+      };
+    }
+  }
+
+  let ac: number;
+  let source: string;
+
+  if (!armor) {
+    // Unarmored: 10 + DEX
+    ac = 10 + dexMod;
+    source = `Sans armure · 10 ${formatModifier(dexMod)}`;
+  } else {
+    const isHeavy = armor.strMin !== null;
+    const isMedium = !isHeavy && armor.acBase >= 12 && armor.acBase <= 15;
+    // Light: acBase + full DEX; Medium: acBase + min(DEX, 2); Heavy: acBase only
+    if (isHeavy) {
+      ac = armor.acBase;
+      source = `${armor.name} · ${armor.acBase}`;
+    } else if (isMedium) {
+      const dexBonus = Math.min(dexMod, 2);
+      ac = armor.acBase + dexBonus;
+      source = `${armor.name} · ${armor.acBase} ${formatModifier(dexBonus)}`;
+    } else {
+      ac = armor.acBase + dexMod;
+      source = `${armor.name} · ${armor.acBase} ${formatModifier(dexMod)}`;
+    }
+  }
+
+  if (hasShield) {
+    ac += 2;
+    source += ' · Bouclier +2';
+  }
+
+  return { ac, source, hasShield };
 }
 
 // ---------- Spells (SRD catalog) ----------
