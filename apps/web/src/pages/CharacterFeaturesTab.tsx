@@ -43,6 +43,7 @@ export default function CharacterFeaturesTab({ character, charId, partyId, onSav
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<FeatureCategory>('class');
   const [description, setDescription] = useState('');
+  const [counterMax, setCounterMax] = useState('');
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -72,6 +73,7 @@ export default function CharacterFeaturesTab({ character, charId, partyId, onSav
     setTitle('');
     setCategory('class');
     setDescription('');
+    setCounterMax('');
     setShowTemplateHelp(false);
     setShowModal(true);
   };
@@ -81,6 +83,7 @@ export default function CharacterFeaturesTab({ character, charId, partyId, onSav
     setTitle(feature.title);
     setCategory(feature.category);
     setDescription(feature.description ?? '');
+    setCounterMax(feature.counterMax ? String(feature.counterMax) : '');
     setShowTemplateHelp(false);
     setShowModal(true);
   };
@@ -90,6 +93,8 @@ export default function CharacterFeaturesTab({ character, charId, partyId, onSav
       onError('Le titre est requis');
       return;
     }
+    const cm = counterMax.trim() ? Math.max(0, Number(counterMax)) : null;
+    const cmVal = (cm !== null && cm > 0) ? cm : null;
     setSaving(true);
     try {
       if (editing) {
@@ -97,12 +102,14 @@ export default function CharacterFeaturesTab({ character, charId, partyId, onSav
           title: title.trim(),
           category,
           description: description.trim() || null,
+          counterMax: cmVal,
         });
       } else {
         await api.post(`/api/characters/${charId}/features`, {
           title: title.trim(),
           category,
           description: description.trim() || undefined,
+          counterMax: cmVal ?? undefined,
         });
       }
       setShowModal(false);
@@ -112,6 +119,19 @@ export default function CharacterFeaturesTab({ character, charId, partyId, onSav
       onError('Erreur lors de la sauvegarde');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const adjustCounter = async (feature: CharacterFeature, delta: number) => {
+    const max = feature.counterMax ?? 0;
+    const current = feature.counterCurrent ?? max;
+    const next = Math.max(0, Math.min(max, current + delta));
+    if (next === current) return;
+    try {
+      await api.patch(`/api/character-features/${feature.id}`, { counterCurrent: next });
+      await load();
+    } catch {
+      onError('Erreur de mise à jour');
     }
   };
 
@@ -194,6 +214,35 @@ export default function CharacterFeaturesTab({ character, charId, partyId, onSav
                       {rendered && (
                         <p className="text-sm text-ink-600 whitespace-pre-line">{rendered}</p>
                       )}
+
+                      {/* Charge counter widget */}
+                      {feature.counterMax && feature.counterMax > 0 && (() => {
+                        const max = feature.counterMax;
+                        const current = feature.counterCurrent ?? max;
+                        const pct = Math.round((current / max) * 100);
+                        const barColor = current === 0 ? 'bg-red-500' : pct <= 50 ? 'bg-amber-500' : 'bg-green-500';
+                        return (
+                          <div className="flex items-center gap-2 bg-parchment-50 rounded-lg p-2">
+                            <button
+                              onClick={() => adjustCounter(feature, -1)}
+                              disabled={current <= 0}
+                              className="w-7 h-7 rounded-md bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center shrink-0"
+                              aria-label="Diminuer"
+                            >−</button>
+                            <span className="text-sm font-bold text-ink-800 tabular-nums">{current}<span className="text-ink-400 font-normal"> / {max}</span></span>
+                            <button
+                              onClick={() => adjustCounter(feature, 1)}
+                              disabled={current >= max}
+                              className="w-7 h-7 rounded-md bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center shrink-0"
+                              aria-label="Augmenter"
+                            >+</button>
+                            <div className="flex-1 h-2 bg-parchment-200 rounded-full overflow-hidden">
+                              <div className={`h-full ${barColor} transition-all rounded-full`} style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       <span className={`inline-block self-start text-[10px] px-2 py-0.5 rounded-full border ${CATEGORY_COLORS[feature.category]}`}>
                         {FEATURE_CATEGORY_LABELS_FR[feature.category]}
                       </span>
@@ -264,6 +313,23 @@ export default function CharacterFeaturesTab({ character, charId, partyId, onSav
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Une fois par jour lors d'un repos court, récupérez {{level}} emplacements de sort. DD de sort : {{save_dc}}."
             />
+          </label>
+
+          {/* Charge counter (optional) */}
+          <label className="block">
+            <span className="label">Compteur de charges (optionnel)</span>
+            <input
+              type="number"
+              min={0}
+              className="input"
+              value={counterMax}
+              onChange={(e) => setCounterMax(e.target.value)}
+              placeholder="Laisser vide pour aucun compteur"
+            />
+            <p className="text-xs text-ink-400 mt-1">
+              Pour les points de Ki, utilisations de rage, pool de soins, etc.
+              {counterMax && Number(counterMax) > 0 ? ' Le compteur démarre au maximum.' : ''}
+            </p>
           </label>
 
           {/* Live preview */}

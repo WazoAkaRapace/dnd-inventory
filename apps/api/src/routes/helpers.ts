@@ -283,6 +283,8 @@ export function mapFeature(row: any): CharacterFeature {
     title: row.title,
     category: row.category,
     description: row.description,
+    counterMax: row.counter_max ?? null,
+    counterCurrent: row.counter_current ?? null,
     sortOrder: row.sort_order,
     createdAt: row.created_at,
   };
