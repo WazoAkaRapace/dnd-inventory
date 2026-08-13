@@ -612,6 +612,13 @@ export default function CharacterInventoryPage() {
         <div className="card p-4 sm:p-5">
           <div className="flex items-center justify-between gap-3">
             <h1 className="font-display text-xl sm:text-2xl font-bold truncate flex items-center gap-2">
+              {character.portraitUrl && (
+                <img
+                  src={character.portraitUrl}
+                  alt={character.name}
+                  className="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover border-2 border-parchment-300 shrink-0"
+                />
+              )}
               {editingName ? (
                 <input
                   type="text"
