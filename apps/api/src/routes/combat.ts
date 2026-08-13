@@ -341,13 +341,24 @@ export async function combatRoutes(app: FastifyInstance) {
       // Parse CON modifier for HP rolls (hit dice + CON mod per die)
       const conMod = abilityModifier(abilities.con ?? 10);
 
+      // Check if there's already a group of this monster type in this encounter.
+      // If so, new combatants join the existing group (same initiative).
+      const existingGroup = db.prepare(`
+        SELECT group_id, initiative, sort_order FROM combatants
+        WHERE encounter_id = ? AND monster_slug = ? AND group_id IS NOT NULL
+        LIMIT 1
+      `).get(enc.id, monster.slug) as any;
+
+      const groupId = existingGroup?.group_id ?? Date.now();
+      const sortOrder = existingGroup?.sort_order ?? groupId;
+      const sharedInitiative = existingGroup?.initiative ?? null;
+
       // Create N independent combatants sharing a group_id.
       // Each rolls its own HP from the hit dice formula for variety.
-      const sortOrder = Date.now();
-      const groupId = sortOrder;
+      // If joining an existing group, inherit its initiative.
       const insertStmt = db.prepare(`
-        INSERT INTO combatants (encounter_id, type, monster_slug, name, count, group_id, initiative_bonus, armor_class, hit_points, max_hit_points, sort_order)
-        VALUES (?, 'monster', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO combatants (encounter_id, type, monster_slug, name, count, group_id, initiative, initiative_bonus, armor_class, hit_points, max_hit_points, sort_order)
+        VALUES (?, 'monster', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       const createdIds: number[] = [];
       const tx = db.transaction(() => {
@@ -359,6 +370,7 @@ export async function combatRoutes(app: FastifyInstance) {
             name,
             count,
             groupId,
+            sharedInitiative,
             dexMod,
             monster.armor_class ?? 10,
             hp,
