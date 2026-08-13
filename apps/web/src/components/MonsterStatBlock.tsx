@@ -224,26 +224,7 @@ function ActionSection({ title, actions }: { title: string; actions: MonsterActi
       </h3>
       <div className="space-y-2">
         {actions.map((action, idx) => (
-          <div key={idx} className="text-sm">
-            <div className="flex items-start gap-2 flex-wrap">
-              <span className="font-semibold italic">{action.name}.</span>
-              {/* Attack bonus badge */}
-              {action.attackBonus != null && (
-                <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-red-100 text-red-700 shrink-0">
-                  +{action.attackBonus}
-                </span>
-              )}
-              {/* Damage badge */}
-              {action.damageDice && (
-                <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-orange-100 text-orange-700 shrink-0">
-                  {action.damageDice}{action.damageType ? ` ${action.damageType}` : ''}
-                </span>
-              )}
-            </div>
-            {action.desc && (
-              <p className="text-ink-600 mt-0.5">{action.desc}</p>
-            )}
-          </div>
+          <ActionEntry key={idx} action={action} />
         ))}
       </div>
     </div>
@@ -259,4 +240,116 @@ function formatSpeed(monster: Monster): string {
     parts.push(label ? `${label} ${num} m` : `${num} m`);
   }
   return parts.length > 0 ? parts.join(', ') : '—';
+}
+
+// ---------- Dice rolling ----------
+
+/** Roll a single d20 + bonus for an attack roll */
+function rollAttack(bonus: number): { roll: number; natural: number; total: number } {
+  const natural = Math.floor(Math.random() * 20) + 1;
+  const total = natural + bonus;
+  return { roll: total, natural, total };
+}
+
+/** Roll a dice formula like "2d6+5" → { total, rolls } */
+function rollDamage(formula: string): { total: number; rolls: number[] } {
+  const match = formula.match(/^(\d+)d(\d+)(?:([+-]\d+))?$/);
+  if (!match) return { total: 0, rolls: [] };
+  const numDice = parseInt(match[1], 10);
+  const dieSize = parseInt(match[2], 10);
+  const flatBonus = match[3] ? parseInt(match[3], 10) : 0;
+  const rolls: number[] = [];
+  let total = flatBonus;
+  for (let i = 0; i < numDice; i++) {
+    const r = Math.floor(Math.random() * dieSize) + 1;
+    rolls.push(r);
+    total += r;
+  }
+  return { total, rolls };
+}
+
+// ---------- Action entry with interactive dice ----------
+
+function ActionEntry({ action }: { action: MonsterAction }) {
+  const [attackResult, setAttackResult] = useState<{ roll: number; natural: number; total: number } | null>(null);
+  const [damageResult, setDamageResult] = useState<{ total: number; rolls: number[] } | null>(null);
+
+  const handleAttack = () => {
+    if (action.attackBonus == null) return;
+    setAttackResult(rollAttack(action.attackBonus));
+    setDamageResult(null); // clear previous damage
+  };
+
+  const handleDamage = () => {
+    if (!action.damageDice) return;
+    setDamageResult(rollDamage(action.damageDice));
+  };
+
+  const isCrit = attackResult?.natural === 20;
+  const isFumble = attackResult?.natural === 1;
+
+  return (
+    <div className="text-sm">
+      <div className="flex items-start gap-2 flex-wrap">
+        <span className="font-semibold italic">{action.name}.</span>
+        {/* Attack bonus — clickable to roll */}
+        {action.attackBonus != null && (
+          <button
+            onClick={handleAttack}
+            className="px-1.5 py-0.5 rounded text-xs font-mono bg-red-100 text-red-700 shrink-0 hover:bg-red-200 active:scale-95 transition-all cursor-pointer"
+            title="Cliquer pour lancer le jet d'attaque (d20)"
+          >
+            🎲 +{action.attackBonus}
+          </button>
+        )}
+        {/* Damage dice — clickable to roll */}
+        {action.damageDice && (
+          <button
+            onClick={handleDamage}
+            className="px-1.5 py-0.5 rounded text-xs font-mono bg-orange-100 text-orange-700 shrink-0 hover:bg-orange-200 active:scale-95 transition-all cursor-pointer"
+            title="Cliquer pour lancer les dégâts"
+          >
+            🎲 {action.damageDice}{action.damageType ? ` ${action.damageType}` : ''}
+          </button>
+        )}
+      </div>
+
+      {/* Roll results */}
+      {(attackResult || damageResult) && (
+        <div className="mt-1 flex flex-wrap gap-2 items-center">
+          {/* Attack result */}
+          {attackResult && (
+            <span className={`px-2 py-1 rounded-lg text-sm font-bold font-mono ${
+              isCrit ? 'bg-green-200 text-green-800'
+              : isFumble ? 'bg-red-200 text-red-800'
+              : 'bg-red-50 text-red-700'
+            }`}>
+              {isCrit && '🎯 Critique ! '}
+              {isFumble && '💥 Échec ! '}
+              {attackResult.total} à l'attaque
+              <span className="text-xs font-normal ml-1 opacity-70">(d20: {attackResult.natural})</span>
+            </span>
+          )}
+          {/* Damage result */}
+          {damageResult && (
+            <span className="px-2 py-1 rounded-lg text-sm font-bold font-mono bg-orange-200 text-orange-800">
+              {damageResult.total} dégâts{action.damageType ? ` ${action.damageType}` : ''}
+              <span className="text-xs font-normal ml-1 opacity-70">({damageResult.rolls.join('+')})</span>
+            </span>
+          )}
+          {/* Clear button */}
+          <button
+            onClick={() => { setAttackResult(null); setDamageResult(null); }}
+            className="text-xs text-ink-400 hover:text-ink-700"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {action.desc && (
+        <p className="text-ink-600 mt-0.5">{action.desc}</p>
+      )}
+    </div>
+  );
 }
