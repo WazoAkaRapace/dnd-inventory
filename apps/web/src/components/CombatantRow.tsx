@@ -122,17 +122,17 @@ export default function CombatantRow({
         combatant.type === 'player' ? 'bg-blue-50/60' : 'bg-red-50/40'
       }`}
     >
-      {/* Initiative badge — tiny, upper-left corner (when already rolled) */}
-      {showInitBadge && (
-        <span className="absolute top-1 left-2 text-xs font-mono font-bold text-ink-400 z-10">
-          {combatant.initiative}
-        </span>
-      )}
-
-      <div className="flex items-center gap-3">
-        {/* Initiative input — only when not yet rolled (takes full column) */}
+      {/* Row 1: Name + initiative + status badges */}
+      <div className="flex items-center gap-2">
+        {/* Initiative badge — tiny (when already rolled) */}
+        {showInitBadge && (
+          <span className="text-xs font-mono font-bold text-ink-400 shrink-0 w-6 text-center">
+            {combatant.initiative}
+          </span>
+        )}
+        {/* Initiative input — only when not yet rolled */}
         {needsInitRoll && (
-          <div className="flex flex-col items-center justify-center w-12 shrink-0">
+          <div className="flex items-center gap-1 shrink-0">
             <input
               type="number"
               value={initInput}
@@ -140,13 +140,13 @@ export default function CombatantRow({
               onBlur={handleInitSubmit}
               onKeyDown={(e) => e.key === 'Enter' && handleInitSubmit()}
               placeholder="—"
-              className="input w-10 h-10 text-center p-0 text-sm font-bold"
+              className="input w-12 h-8 text-center p-0 text-sm font-bold"
               title="Saisir l'initiative"
             />
             {isGM && (
               <button
                 onClick={() => onSetInitiative(combatant.id, rollD20(combatant.initiativeBonus))}
-                className="text-xs text-blood-600 hover:text-blood-700 mt-1"
+                className="text-xs text-blood-600 hover:text-blood-700"
                 title="Lancer l'initiative (d20 + DEX)"
               >
                 🎲
@@ -155,60 +155,58 @@ export default function CombatantRow({
           </div>
         )}
 
-        {/* Name + status badges */}
-        <div className={`flex-1 min-w-0 ${showInitBadge ? 'ml-4' : ''}`}>
-          <div className="flex items-center gap-2">
-            <span className="font-display font-semibold truncate">
-              {label ?? combatant.name}
-            </span>
-            {combatant.defeated && <span className="text-lg shrink-0">💀</span>}
-            {isCurrent && !combatant.defeated && (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-blood-600 text-parchment-50 animate-pulse shrink-0">
-                ◀ Tour
-              </span>
-            )}
-          </div>
-          {/* Conditions */}
-          {combatant.conditions.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {combatant.conditions.map((c) => (
-                <span
-                  key={c.name}
-                  className="px-1.5 py-0.5 rounded text-xs bg-orange-100 text-orange-700"
-                  title={c.duration == null ? "Jusqu'à dissipation" : `${c.duration} tour(s) restant(s)`}
-                >
-                  {c.name}
-                  {c.duration != null && <span className="ml-1 font-mono">{c.duration}t</span>}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
+        <span className="font-display font-semibold truncate flex-1 min-w-0">
+          {label ?? combatant.name}
+        </span>
+        {combatant.defeated && <span className="text-lg shrink-0">💀</span>}
+        {isCurrent && !combatant.defeated && (
+          <span className="text-xs px-1.5 py-0.5 rounded bg-blood-600 text-parchment-50 animate-pulse shrink-0">
+            ◀ Tour
+          </span>
+        )}
+      </div>
 
-        {/* AC + HP (hidden for combatants the viewer doesn't own — null from API) */}
-        <div className="flex items-center gap-2 shrink-0">
-          {combatant.armorClass !== null && (
-            <div className="flex flex-col items-center">
-              <span className="text-xs text-ink-400">CA</span>
-              <span className="px-2 py-0.5 rounded bg-ink-100 text-ink-700 font-mono font-semibold text-sm">
-                {combatant.armorClass}
+      {/* Conditions (if any) */}
+      {combatant.conditions.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1.5">
+          {combatant.conditions.map((c) => (
+            <span
+              key={c.name}
+              className="px-1.5 py-0.5 rounded text-xs bg-orange-100 text-orange-700"
+              title={c.duration == null ? "Jusqu'à dissipation" : `${c.duration} tour(s) restant(s)`}
+            >
+              {c.name}
+              {c.duration != null && <span className="ml-1 font-mono">{c.duration}t</span>}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Row 2: Stats + actions */}
+      <div className="flex items-center gap-2 mt-2">
+        {/* AC + HP */}
+        {combatant.armorClass !== null && (
+          <div className="flex items-center gap-1 shrink-0">
+            <span className="text-xs text-ink-400">CA</span>
+            <span className="px-1.5 py-0.5 rounded bg-ink-100 text-ink-700 font-mono font-semibold text-sm">
+              {combatant.armorClass}
+            </span>
+          </div>
+        )}
+        {combatant.hitPoints !== null && combatant.maxHitPoints !== null && (
+          <div className="flex items-center gap-1 shrink-0">
+            <span className="text-xs text-ink-400">PV</span>
+            <div className="w-20 h-5 rounded-full bg-parchment-200 overflow-hidden relative">
+              <div className={`h-full ${hpColor} transition-all`} style={{ width: `${hpPct}%` }} />
+              <span className="absolute inset-0 flex items-center justify-center text-xs font-mono font-semibold">
+                {combatant.hitPoints}/{combatant.maxHitPoints}
               </span>
             </div>
-          )}
-          {combatant.hitPoints !== null && combatant.maxHitPoints !== null && (
-            <div className="flex flex-col items-center min-w-[80px]">
-              <span className="text-xs text-ink-400">PV</span>
-              <div className="flex items-center gap-1">
-                <div className="w-16 h-5 rounded-full bg-parchment-200 overflow-hidden relative">
-                  <div className={`h-full ${hpColor} transition-all`} style={{ width: `${hpPct}%` }} />
-                  <span className="absolute inset-0 flex items-center justify-center text-xs font-mono font-semibold">
-                    {combatant.hitPoints}/{combatant.maxHitPoints}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* Spacer pushes actions to the right */}
+        <div className="flex-1" />
 
         {/* Actions (GM) */}
         {isGM && (
