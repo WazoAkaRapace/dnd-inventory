@@ -22,7 +22,7 @@ export async function itemRoutes(app: FastifyInstance) {
     const userId = requireUser(req, reply);
     if (userId === null) return;
 
-    const { search, category, rarity, limit, offset, source } = req.query as any || {};
+    const { search, category, rarity, limit, offset, source, partyId: partyIdFilter } = req.query as any || {};
     const lim = Math.min(parseInt(limit || '50', 10) || 50, 200);
     const off = Math.max(parseInt(offset || '0', 10) || 0, 0);
 
@@ -30,15 +30,22 @@ export async function itemRoutes(app: FastifyInstance) {
     const where: string[] = [];
     const params: any[] = [];
 
-    // Show global SRD items + custom items from the user's parties
-    const userPartyIds = (db.prepare('SELECT party_id FROM party_members WHERE user_id = ?').all(userId) as any[])
-      .map((r) => r.party_id);
-    if (userPartyIds.length > 0) {
-      const placeholders = userPartyIds.map(() => '?').join(',');
-      where.push(`(party_id IS NULL OR party_id IN (${placeholders}))`);
-      params.push(...userPartyIds);
+    // If filtering by a specific party (e.g. GM dashboard custom items),
+    // return only that party's items — no SRD items.
+    if (partyIdFilter) {
+      where.push('party_id = ?');
+      params.push(Number(partyIdFilter));
     } else {
-      where.push('(party_id IS NULL)');
+      // Default: show global SRD items + custom items from the user's parties
+      const userPartyIds = (db.prepare('SELECT party_id FROM party_members WHERE user_id = ?').all(userId) as any[])
+        .map((r) => r.party_id);
+      if (userPartyIds.length > 0) {
+        const placeholders = userPartyIds.map(() => '?').join(',');
+        where.push(`(party_id IS NULL OR party_id IN (${placeholders}))`);
+        params.push(...userPartyIds);
+      } else {
+        where.push('(party_id IS NULL)');
+      }
     }
 
     if (search) {

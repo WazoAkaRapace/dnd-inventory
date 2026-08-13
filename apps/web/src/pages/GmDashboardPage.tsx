@@ -229,10 +229,8 @@ function CustomItemsTab({ partyId, onAdd, showAdd }: { partyId: string; onAdd: (
 
   const loadCustomItems = useCallback(async () => {
     try {
-      const res = await api.get('/api/items', { params: { source: 'custom', limit: 200 } });
-      // Filter to only this party's custom items
-      const partyItems = (res.data.items || []).filter((i: any) => i.partyId === Number(partyId));
-      setCustomItems(partyItems);
+      const res = await api.get('/api/items', { params: { partyId, limit: 200 } });
+      setCustomItems(res.data.items || []);
     } catch {
       setCustomItems([]);
     } finally {
