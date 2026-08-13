@@ -660,7 +660,7 @@ export default function CharacterInventoryPage() {
       </Modal>
 
       {/* ---------- Tab navigation ---------- */}
-      <div className="sticky top-14 z-20 -mx-4 px-4 sm:mx-0 sm:px-0">
+      <div className="-mx-4 px-4 sm:mx-0 sm:px-0">
         <div className="flex items-center gap-1 bg-parchment-100 rounded-xl p-1 overflow-x-auto no-scrollbar">
           {([
             { key: 'inventory', label: 'Inventaire', icon: '🎒' },
