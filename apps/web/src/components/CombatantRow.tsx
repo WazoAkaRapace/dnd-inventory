@@ -107,35 +107,43 @@ export default function CombatantRow({
     }
   };
 
+  // Initiative states:
+  // - null + can act → big input + dice button (takes space)
+  // - null + can't act → nothing
+  // - rolled → tiny badge in upper-left corner (reclaims space)
+  const needsInitRoll = combatant.initiative === null && !hideInitiative && (isGM || canSetInitiative);
+  const showInitBadge = combatant.initiative !== null && !hideInitiative;
+
   return (
     <div
-      className={`card p-3 transition-all ${
+      className={`card p-3 transition-all relative ${
         isCurrent ? 'ring-2 ring-blood-500 shadow-lg' : ''
       } ${combatant.defeated ? 'opacity-50 grayscale' : ''} ${
         combatant.type === 'player' ? 'bg-blue-50/60' : 'bg-red-50/40'
       }`}
     >
+      {/* Initiative badge — tiny, upper-left corner (when already rolled) */}
+      {showInitBadge && (
+        <span className="absolute top-1 left-2 text-xs font-mono font-bold text-ink-400 z-10">
+          {combatant.initiative}
+        </span>
+      )}
+
       <div className="flex items-center gap-3">
-        {/* Initiative (hidden when shown in group header) */}
-        {!hideInitiative && (
+        {/* Initiative input — only when not yet rolled (takes full column) */}
+        {needsInitRoll && (
           <div className="flex flex-col items-center justify-center w-12 shrink-0">
-            {combatant.initiative === null && (isGM || canSetInitiative) ? (
-              <input
-                type="number"
-                value={initInput}
-                onChange={(e) => setInitInput(e.target.value)}
-                onBlur={handleInitSubmit}
-                onKeyDown={(e) => e.key === 'Enter' && handleInitSubmit()}
-                placeholder="—"
-                className="input w-10 h-10 text-center p-0 text-sm font-bold"
-                title="Saisir l'initiative"
-              />
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-ink-900 text-parchment-50 flex items-center justify-center font-bold text-sm">
-                {combatant.initiative ?? '—'}
-              </div>
-            )}
-            {isGM && combatant.initiative === null && (
+            <input
+              type="number"
+              value={initInput}
+              onChange={(e) => setInitInput(e.target.value)}
+              onBlur={handleInitSubmit}
+              onKeyDown={(e) => e.key === 'Enter' && handleInitSubmit()}
+              placeholder="—"
+              className="input w-10 h-10 text-center p-0 text-sm font-bold"
+              title="Saisir l'initiative"
+            />
+            {isGM && (
               <button
                 onClick={() => onSetInitiative(combatant.id, rollD20(combatant.initiativeBonus))}
                 className="text-xs text-blood-600 hover:text-blood-700 mt-1"
@@ -148,7 +156,7 @@ export default function CombatantRow({
         )}
 
         {/* Name + status badges */}
-        <div className="flex-1 min-w-0">
+        <div className={`flex-1 min-w-0 ${showInitBadge ? 'ml-4' : ''}`}>
           <div className="flex items-center gap-2">
             <span className="font-display font-semibold truncate">
               {label ?? combatant.name}
