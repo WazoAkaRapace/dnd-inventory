@@ -48,6 +48,7 @@ export interface Item {
   stealthDisadvantage: boolean;
   properties: string[]; // weapon properties: light, finesse, two-handed...
   survivalTags: string[]; // ["food"] / ["water"] / ["food","water"] / []
+  aliases: string[];      // alternative search names: ["bricoleur","outils de bricoleur"]
   imagePath: string | null;
 }
 
