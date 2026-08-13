@@ -1361,6 +1361,11 @@ function InventoryRow({
                     {item.description && (
                       <p className="text-sm text-ink-700 whitespace-pre-line">{item.description}</p>
                     )}
+                    {item.aliases && item.aliases.length > 0 && (
+                      <p className="text-xs text-ink-400">
+                        Aussi connu sous : {item.aliases.join(', ')}
+                      </p>
+                    )}
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-500">
                       {item.damageDice && (
                         <span>⚔ Dégâts : {item.damageDice}{item.damageType ? ` (${item.damageType})` : ''}</span>
@@ -1514,6 +1519,11 @@ function CatalogSearch({
                     <CostBadge qty={item.costQty} unit={item.costUnit} />
                     <CategoryBadge category={item.category} />
                   </div>
+                  {item.aliases && item.aliases.length > 0 && (
+                    <p className="text-[11px] text-ink-400 mt-0.5">
+                      Aussi : {item.aliases.join(', ')}
+                    </p>
+                  )}
                 </div>
                 <button
                   onClick={() => onAdd(item)}
