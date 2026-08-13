@@ -142,15 +142,14 @@ export default function CombatantRow({
       } ${combatant.defeated ? 'opacity-50 grayscale' : ''} ${cardClass}`}
       style={cardBg}
     >
-      {/* Row 1: Name + initiative + status badges */}
+      {/* ═══ Zone 1: Identity + card management ═══ */}
       <div className="flex items-center gap-2">
-        {/* Initiative badge — tiny (when already rolled) */}
+        {/* Initiative */}
         {showInitBadge && (
           <span className="text-xs font-mono font-bold text-ink-400 shrink-0 w-6 text-center">
             {combatant.initiative}
           </span>
         )}
-        {/* Initiative input — only when not yet rolled */}
         {needsInitRoll && (
           <div className="flex items-center gap-1 shrink-0">
             <input
@@ -175,9 +174,34 @@ export default function CombatantRow({
           </div>
         )}
 
+        {/* Name — takes all remaining space */}
         <span className="font-display font-semibold truncate flex-1 min-w-0">
           {label ?? combatant.name}
         </span>
+
+        {/* Card management (tiny icons, far right) */}
+        {isGM && (
+          <div className="flex items-center gap-0.5 shrink-0">
+            <button
+              onClick={() => setShowColorPicker(!showColorPicker)}
+              className="text-ink-400 hover:text-blood-600 p-1 text-sm"
+              title="Couleur"
+            >
+              🎨
+            </button>
+            {onDelete && (
+              <button
+                onClick={() => onDelete(combatant.id)}
+                className="text-ink-400 hover:text-red-600 p-1 text-sm"
+                title="Retirer"
+              >
+                🗑
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Status badges */}
         {combatant.defeated && <span className="text-lg shrink-0">💀</span>}
         {isCurrent && !combatant.defeated && (
           <span className="text-xs px-1.5 py-0.5 rounded bg-blood-600 text-parchment-50 animate-pulse shrink-0">
@@ -186,7 +210,7 @@ export default function CombatantRow({
         )}
       </div>
 
-      {/* Conditions (if any) */}
+      {/* Conditions */}
       {combatant.conditions.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-1.5">
           {combatant.conditions.map((c) => (
@@ -202,21 +226,20 @@ export default function CombatantRow({
         </div>
       )}
 
-      {/* Row 2: Stats + actions */}
-      <div className="flex items-center gap-2 mt-2">
-        {/* AC + HP */}
+      {/* ═══ Zone 2: Stats ═══ */}
+      <div className="flex items-center gap-3 mt-2">
         {combatant.armorClass !== null && (
           <div className="flex items-center gap-1 shrink-0">
-            <span className="text-xs text-ink-400">CA</span>
+            <span className="text-xs text-ink-400">🛡</span>
             <span className="px-1.5 py-0.5 rounded bg-ink-100 text-ink-700 font-mono font-semibold text-sm">
               {combatant.armorClass}
             </span>
           </div>
         )}
         {combatant.hitPoints !== null && combatant.maxHitPoints !== null && (
-          <div className="flex items-center gap-1 shrink-0">
-            <span className="text-xs text-ink-400">PV</span>
-            <div className="w-20 h-5 rounded-full bg-parchment-200 overflow-hidden relative">
+          <div className="flex items-center gap-1 flex-1 min-w-0">
+            <span className="text-xs text-ink-400 shrink-0">❤</span>
+            <div className="flex-1 h-5 rounded-full bg-parchment-200 overflow-hidden relative">
               <div className={`h-full ${hpColor} transition-all`} style={{ width: `${hpPct}%` }} />
               <span className="absolute inset-0 flex items-center justify-center text-xs font-mono font-semibold">
                 {combatant.hitPoints}/{combatant.maxHitPoints}
@@ -224,57 +247,38 @@ export default function CombatantRow({
             </div>
           </div>
         )}
-
-        {/* Spacer pushes actions to the right */}
-        <div className="flex-1" />
-
-        {/* Actions (GM) */}
-        {isGM && (
-          <div className="flex items-center gap-1 shrink-0">
-            {combatant.monsterSlug && (
-              <button
-                onClick={() => setShowStatBlock(true)}
-                className="btn-secondary text-xs px-2 py-1"
-                title="Stat block"
-              >
-                📜
-              </button>
-            )}
-            <button
-              onClick={() => setShowColorPicker(!showColorPicker)}
-              className="btn-secondary text-xs px-2 py-1"
-              title="Couleur de la carte"
-            >
-              🎨
-            </button>
-            <button
-              onClick={() => setShowActions(!showActions)}
-              className="btn-secondary text-xs px-2 py-1"
-              title="Dégâts / soins / PV"
-            >
-              ⚔
-            </button>
-            {!combatant.defeated && (
-              <button
-                onClick={() => setShowConditions(true)}
-                className="btn-secondary text-xs px-2 py-1"
-                title="Conditions"
-              >
-                ✎
-              </button>
-            )}
-            {onDelete && (
-              <button
-                onClick={() => onDelete(combatant.id)}
-                className="text-ink-400 hover:text-red-600 text-sm p-1"
-                title="Retirer"
-              >
-                🗑
-              </button>
-            )}
-          </div>
-        )}
       </div>
+
+      {/* ═══ Zone 3: Quick combat actions (GM only) ═══ */}
+      {isGM && (
+        <div className="grid grid-cols-3 gap-2 mt-2">
+          {combatant.monsterSlug && (
+            <button
+              onClick={() => setShowStatBlock(true)}
+              className="btn-secondary text-xs py-2 flex items-center justify-center gap-1"
+              title="Stat block"
+            >
+              📜 <span className="hidden sm:inline">Stats</span>
+            </button>
+          )}
+          <button
+            onClick={() => setShowActions(!showActions)}
+            className="btn-secondary text-xs py-2 flex items-center justify-center gap-1"
+            title="Dégâts / soins / PV"
+          >
+            ⚔ <span className="hidden sm:inline">Dégâts</span>
+          </button>
+          {!combatant.defeated && (
+            <button
+              onClick={() => setShowConditions(true)}
+              className="btn-secondary text-xs py-2 flex items-center justify-center gap-1"
+              title="Conditions"
+            >
+              ✎ <span className="hidden sm:inline">Cond.</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Damage/heal bottom sheet (portal to body to escape card's backdrop-filter stacking context) */}
       {showActions && isGM && createPortal(
