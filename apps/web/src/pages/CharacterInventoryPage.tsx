@@ -2278,57 +2278,51 @@ function DeathSaveTracker({ character, charId, markLocalMutation, onSaved, onErr
         {isStable && <span className="text-xs font-bold text-green-600">STABLE</span>}
       </div>
       <div className="flex items-center justify-between gap-4">
-        {/* Successes */}
+        {/* Successes — tap a circle to toggle that position */}
         <div className="flex items-center gap-2">
-          <span className="text-xs text-green-600 font-medium">Succès</span>
-          <button
-            onClick={() => updateSaves('successes', successes - 1)}
-            disabled={successes <= 0}
-            className="w-6 h-6 rounded bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm flex items-center justify-center"
-            aria-label="Retirer un succès"
-          >−</button>
-          <div className="flex items-center gap-1">
-            {[0, 1, 2].map((i) => (
-              <button
-                key={i}
-                onClick={() => updateSaves('successes', i + 1 === successes ? i : i + 1)}
-                className={`w-6 h-6 rounded-full border-2 transition-colors ${
-                  i < successes
-                    ? 'bg-green-500 border-green-500'
-                    : 'bg-white border-parchment-300 hover:border-green-400'
-                }`}
-                aria-label={`Succès ${i + 1}`}
-              >
-                {i < successes && <span className="text-white text-xs">✓</span>}
-              </button>
-            ))}
+          <span className="text-xs text-green-600 font-medium w-12">Succès</span>
+          <div className="flex items-center gap-1.5">
+            {[0, 1, 2].map((i) => {
+              const filled = i < successes;
+              return (
+                <button
+                  key={i}
+                  onClick={() => updateSaves('successes', filled ? i : i + 1)}
+                  className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${
+                    filled
+                      ? 'bg-green-500 border-green-500 text-white'
+                      : 'bg-white border-green-300 text-green-300 hover:border-green-500 hover:scale-110'
+                  }`}
+                  aria-label={`Succès ${i + 1}: ${filled ? 'coché' : 'vide'}`}
+                >
+                  ✓
+                </button>
+              );
+            })}
           </div>
         </div>
-        {/* Failures */}
+        {/* Failures — tap a circle to toggle that position */}
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1">
-            {[0, 1, 2].map((i) => (
-              <button
-                key={i}
-                onClick={() => updateSaves('failures', i + 1 === failures ? i : i + 1)}
-                className={`w-6 h-6 rounded-full border-2 transition-colors ${
-                  i < failures
-                    ? 'bg-red-500 border-red-500'
-                    : 'bg-white border-parchment-300 hover:border-red-400'
-                }`}
-                aria-label={`Échec ${i + 1}`}
-              >
-                {i < failures && <span className="text-white text-xs">✗</span>}
-              </button>
-            ))}
+          <div className="flex items-center gap-1.5">
+            {[0, 1, 2].map((i) => {
+              const filled = i < failures;
+              return (
+                <button
+                  key={i}
+                  onClick={() => updateSaves('failures', filled ? i : i + 1)}
+                  className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${
+                    filled
+                      ? 'bg-red-500 border-red-500 text-white'
+                      : 'bg-white border-red-300 text-red-300 hover:border-red-500 hover:scale-110'
+                  }`}
+                  aria-label={`Échec ${i + 1}: ${filled ? 'coché' : 'vide'}`}
+                >
+                  ✗
+                </button>
+              );
+            })}
           </div>
-          <button
-            onClick={() => updateSaves('failures', failures + 1)}
-            disabled={failures >= 3}
-            className="w-6 h-6 rounded bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm flex items-center justify-center"
-            aria-label="Ajouter un échec"
-          >+</button>
-          <span className="text-xs text-red-600 font-medium">Échecs</span>
+          <span className="text-xs text-red-600 font-medium w-12 text-right">Échecs</span>
         </div>
       </div>
     </div>
