@@ -8,7 +8,7 @@
  * Only renders on the player's own character sheet page.
  * The GM uses the full CombatPage route.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../auth';
@@ -33,6 +33,7 @@ export default function CombatWidget() {
   const [combats, setCombats] = useState<ActiveCombat[]>([]);
   const [collapsed, setCollapsed] = useState(true); // minimized by default
   const [initInput, setInitInput] = useState('');
+  const loadSeq = useRef(0);
 
   // Only show on a character sheet route
   const charMatch = location.pathname.match(/^\/party\/(\d+)\/character\/(\d+)/);
@@ -41,6 +42,10 @@ export default function CombatWidget() {
 
   const loadCombats = useCallback(async () => {
     if (!user) return;
+    // Race guard: rapid sync events + the 30s poll can overlap; only the
+    // latest run may commit its result, otherwise a stale (pre-add) response
+    // could overwrite a fresh one and hide the widget.
+    const seq = ++loadSeq.current;
     try {
       // Fetch all parties the user belongs to
       const partiesRes = await api.get('/api/parties');
@@ -90,9 +95,9 @@ export default function CombatWidget() {
       // Only keep combats where the player is actually a combatant
       const myCombats = activeCombats.filter((c) => c.myCombatant !== null);
 
-      setCombats(myCombats);
+      if (seq === loadSeq.current) setCombats(myCombats);
     } catch {
-      setCombats([]);
+      if (seq === loadSeq.current) setCombats([]);
     }
   }, [user]);
 
@@ -132,7 +137,11 @@ export default function CombatWidget() {
   if (!user || !isCharacterSheet || !isMyCharacter || combats.length === 0) return null;
 
   // Priority: my turn > needs initiative > active combat
-  const myTurn = combats.find((c) => c.myCombatant && c.currentCombatant?.id === c.myCombatant.id);
+  // Nobody's turn is active while the encounter is still in setup.
+  const myTurn = combats.find(
+    (c) => c.encounter.status === 'active' &&
+      c.myCombatant && c.currentCombatant?.id === c.myCombatant.id,
+  );
   const needsInit = combats.find((c) => c.myCombatant?.initiative === null);
   const combat = myTurn ?? needsInit ?? combats[0];
   const isMyTurn = !!myTurn;
