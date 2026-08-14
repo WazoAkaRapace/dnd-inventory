@@ -443,11 +443,6 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                                 <span className={`px-2 py-1 rounded-md text-[10px] font-medium ${SCHOOL_COLORS[spell.school] ?? 'bg-parchment-200'}`}>
                                   {SPELL_SCHOOL_LABELS_FR[spell.school as SpellSchool] ?? spell.school}
                                 </span>
-                                {spell.concentration && (
-                                  <span className="px-2 py-1 rounded-md bg-indigo-100 text-indigo-800 text-[10px] font-semibold border border-indigo-300">
-                                    🌀 Concentration
-                                  </span>
-                                )}
                                 {spell.ritual && (
                                   <span className="px-2 py-1 rounded-md bg-purple-100 text-purple-800 text-[10px] font-semibold border border-purple-300">
                                     ⚗ Rituel
@@ -463,9 +458,13 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                                     📡 {spell.rangeText}
                                   </span>
                                 )}
-                                {spell.duration && (
-                                  <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full truncate">
-                                    ⏳ {spell.duration}
+                                {(spell.duration || spell.concentration) && (
+                                  <span className={`px-2 py-1 rounded-md text-[10px] font-semibold max-w-full truncate ${
+                                    spell.concentration
+                                      ? 'bg-indigo-100 text-indigo-800 border border-indigo-300'
+                                      : 'bg-parchment-100 border border-parchment-200 text-ink-600 font-medium'
+                                  }`}>
+                                    {spell.concentration ? '🌀' : '⏳'} {spell.duration ?? 'Concentration'}
                                   </span>
                                 )}
                                 <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full truncate">
@@ -793,11 +792,6 @@ function SpellCatalog({
                         <span className={`px-2 py-1 rounded-md text-[10px] font-medium ${SCHOOL_COLORS[spell.school] ?? 'bg-parchment-200'}`}>
                           {SPELL_SCHOOL_LABELS_FR[spell.school as SpellSchool] ?? spell.school}
                         </span>
-                        {spell.concentration && (
-                          <span className="px-2 py-1 rounded-md bg-indigo-100 text-indigo-800 text-[10px] font-semibold border border-indigo-300">
-                            🌀 Concentration
-                          </span>
-                        )}
                         {spell.ritual && (
                           <span className="px-2 py-1 rounded-md bg-purple-100 text-purple-800 text-[10px] font-semibold border border-purple-300">
                             ⚗ Rituel
@@ -813,9 +807,13 @@ function SpellCatalog({
                             📡 {spell.rangeText}
                           </span>
                         )}
-                        {spell.duration && (
-                          <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full truncate">
-                            ⏳ {spell.duration}
+                        {(spell.duration || spell.concentration) && (
+                          <span className={`px-2 py-1 rounded-md text-[10px] font-semibold max-w-full truncate ${
+                            spell.concentration
+                              ? 'bg-indigo-100 text-indigo-800 border border-indigo-300'
+                              : 'bg-parchment-100 border border-parchment-200 text-ink-600 font-medium'
+                          }`}>
+                            {spell.concentration ? '🌀' : '⏳'} {spell.duration ?? 'Concentration'}
                           </span>
                         )}
                         <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full truncate">
