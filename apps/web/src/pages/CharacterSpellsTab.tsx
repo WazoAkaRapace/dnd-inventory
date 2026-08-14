@@ -449,17 +449,17 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                                   </span>
                                 )}
                                 {spell.castingTime && (
-                                  <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full truncate">
+                                  <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full text-left">
                                     ⏱ {spell.castingTime}
                                   </span>
                                 )}
                                 {spell.rangeText && (
-                                  <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full truncate">
+                                  <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full text-left">
                                     📡 {spell.rangeText}
                                   </span>
                                 )}
                                 {(spell.duration || spell.concentration) && (
-                                  <span className={`px-2 py-1 rounded-md text-[10px] font-semibold max-w-full truncate ${
+                                  <span className={`px-2 py-1 rounded-md text-[10px] font-semibold max-w-full text-left ${
                                     spell.concentration
                                       ? 'bg-indigo-100 text-indigo-800 border border-indigo-300'
                                       : 'bg-parchment-100 border border-parchment-200 text-ink-600 font-medium'
@@ -467,7 +467,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                                     {spell.concentration ? '🌀' : '⏳'} {spell.duration ?? 'Concentration'}
                                   </span>
                                 )}
-                                <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full truncate">
+                                <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full text-left">
                                   📝 {spell.components.join(', ') || '—'}
                                 </span>
                               </div>
@@ -798,17 +798,17 @@ function SpellCatalog({
                           </span>
                         )}
                         {spell.castingTime && (
-                          <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full truncate">
+                          <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full text-left">
                             ⏱ {spell.castingTime}
                           </span>
                         )}
                         {spell.rangeText && (
-                          <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full truncate">
+                          <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full text-left">
                             📡 {spell.rangeText}
                           </span>
                         )}
                         {(spell.duration || spell.concentration) && (
-                          <span className={`px-2 py-1 rounded-md text-[10px] font-semibold max-w-full truncate ${
+                          <span className={`px-2 py-1 rounded-md text-[10px] font-semibold max-w-full text-left ${
                             spell.concentration
                               ? 'bg-indigo-100 text-indigo-800 border border-indigo-300'
                               : 'bg-parchment-100 border border-parchment-200 text-ink-600 font-medium'
@@ -816,7 +816,7 @@ function SpellCatalog({
                             {spell.concentration ? '🌀' : '⏳'} {spell.duration ?? 'Concentration'}
                           </span>
                         )}
-                        <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full truncate">
+                        <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full text-left">
                           📝 {spell.components.join(', ') || '—'}
                         </span>
                       </div>
