@@ -4,7 +4,7 @@
     "name": "Friends",
     "nameFr": "Amis",
     "level": 0,
-    "school": "enchantement",
+    "school": "enchantment",
     "castingTime": "1 action",
     "rangeText": "personnelle",
     "components": [
@@ -290,7 +290,7 @@
     "name": "Create bonfire",
     "nameFr": "Embrasement",
     "level": 0,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "18 mètres",
     "components": [
@@ -320,7 +320,7 @@
     "name": "Sword burst",
     "nameFr": "Éruption de lames",
     "level": 0,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "personnelle (rayon de 1,50 mètre)",
     "components": [
@@ -544,7 +544,7 @@
     "name": "Toll the dead",
     "nameFr": "Glas",
     "level": 0,
-    "school": "n",
+    "school": "necromancy",
     "castingTime": "1 action",
     "rangeText": "18 mètres",
     "components": [
@@ -631,7 +631,7 @@
     "name": "Infestation",
     "nameFr": "Infestation",
     "level": 0,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "9 mètres",
     "components": [
@@ -921,7 +921,7 @@
     "name": "Mind sliver",
     "nameFr": "Piqûre mentale",
     "level": 0,
-    "school": "enchantement",
+    "school": "enchantment",
     "castingTime": "1 action",
     "rangeText": "18 mètres",
     "components": [
@@ -1464,7 +1464,7 @@
     "name": "Silvery barbs",
     "nameFr": "Barbes argentées",
     "level": 1,
-    "school": "enchantement",
+    "school": "enchantment",
     "castingTime": "1 réaction, que vous prenez lorsqu'une créature que vous pouvez voir à 18 m ou moins de vous réussit un jet d'attaque, de caractéristique ou de sauvegarde",
     "rangeText": "18 mètres",
     "components": [
@@ -1888,7 +1888,7 @@
     "name": "Ice knife",
     "nameFr": "Couteau de glace",
     "level": 1,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "18 mètres",
     "components": [
@@ -2095,7 +2095,7 @@
     "name": "Compelled duel",
     "nameFr": "Duel forcé",
     "level": 1,
-    "school": "enchantement",
+    "school": "enchantment",
     "castingTime": "1 action bonus",
     "rangeText": "9 mètres",
     "components": [
@@ -2342,7 +2342,7 @@
     "name": "Ensnaring strike",
     "nameFr": "Frappe piégeuse",
     "level": 1,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action bonus",
     "rangeText": "personnelle",
     "components": [
@@ -2368,7 +2368,7 @@
     "name": "Cause fear",
     "nameFr": "Frayeur",
     "level": 1,
-    "school": "n",
+    "school": "necromancy",
     "castingTime": "1 action",
     "rangeText": "18 mètres",
     "components": [
@@ -2454,7 +2454,7 @@
     "name": "Hail of thorns",
     "nameFr": "Grêle d'épines",
     "level": 1,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action bonus",
     "rangeText": "personnelle",
     "components": [
@@ -2677,7 +2677,7 @@
     "name": "Hex",
     "nameFr": "Maléfice",
     "level": 1,
-    "school": "enchantement",
+    "school": "enchantment",
     "castingTime": "1 action bonus",
     "rangeText": "27 mètres",
     "components": [
@@ -2788,7 +2788,7 @@
     "name": "Dissonant whispers",
     "nameFr": "Murmures dissonants",
     "level": 1,
-    "school": "enchantement",
+    "school": "enchantment",
     "castingTime": "1 action",
     "rangeText": "18 mètres",
     "components": [
@@ -2991,7 +2991,7 @@
     "name": "Ray of sickness",
     "nameFr": "Rayon empoisonné",
     "level": 1,
-    "school": "n",
+    "school": "necromancy",
     "castingTime": "1 action",
     "rangeText": "18 mètres",
     "components": [
@@ -3284,7 +3284,7 @@
     "name": "Arms of hadar",
     "nameFr": "Tentacules de Hadar",
     "level": 1,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "personnelle (rayon de 3 mètres)",
     "components": [
@@ -3826,7 +3826,7 @@
     "name": "Summon beast",
     "nameFr": "Convocation de bête",
     "level": 2,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "27 mètres",
     "components": [
@@ -3911,7 +3911,7 @@
     "name": "Crown of madness",
     "nameFr": "Couronne du dément",
     "level": 2,
-    "school": "enchantement",
+    "school": "enchantment",
     "castingTime": "1 action",
     "rangeText": "36 mètres",
     "components": [
@@ -4141,7 +4141,7 @@
     "name": "Healing spirit",
     "nameFr": "Esprit guérisseur",
     "level": 2,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action bonus",
     "rangeText": "18 mètres",
     "components": [
@@ -4312,7 +4312,7 @@
     "name": "Tasha s mind whip",
     "nameFr": "Fouet mental de Tasha",
     "level": 2,
-    "school": "enchantement",
+    "school": "enchantment",
     "castingTime": "1 action",
     "rangeText": "27 mètres",
     "components": [
@@ -4813,7 +4813,7 @@
     "name": "Cloud of daggers",
     "nameFr": "Nuée de dagues",
     "level": 2,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "18 mètres",
     "components": [
@@ -5451,7 +5451,7 @@
     "name": "Dust devil",
     "nameFr": "Tourbillon de poussière",
     "level": 2,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "18 mètres",
     "components": [
@@ -6054,7 +6054,7 @@
     "name": "Summon lesser demons",
     "nameFr": "Convocation de démons mineurs",
     "level": 3,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "18 mètres",
     "components": [
@@ -6083,7 +6083,7 @@
     "name": "Summon fey",
     "nameFr": "Convocation de fée",
     "level": 3,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "27 mètres",
     "components": [
@@ -6114,7 +6114,7 @@
     "name": "Summon undead",
     "nameFr": "Convocation de mort-vivant",
     "level": 3,
-    "school": "n",
+    "school": "necromancy",
     "castingTime": "1 action",
     "rangeText": "27 mètres",
     "components": [
@@ -6143,7 +6143,7 @@
     "name": "Summon shadowspawn",
     "nameFr": "Convocation de rejeton d'ombre",
     "level": 3,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "27 mètres",
     "components": [
@@ -6353,7 +6353,7 @@
     "name": "Enemies abound",
     "nameFr": "Ennemis à foison",
     "level": 3,
-    "school": "enchantement",
+    "school": "enchantment",
     "castingTime": "1 action",
     "rangeText": "36 mètres",
     "components": [
@@ -6586,7 +6586,7 @@
     "name": "Thunder step",
     "nameFr": "Foulée tonitruante",
     "level": 3,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "27 mètres",
     "components": [
@@ -6759,7 +6759,7 @@
     "name": "Conjure barrage",
     "nameFr": "Invocation de projectiles",
     "level": 3,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "personnelle (cône de 18 mètres)",
     "components": [
@@ -6990,7 +6990,7 @@
     "name": "Feign death",
     "nameFr": "Mort simulée",
     "level": 3,
-    "school": "n",
+    "school": "necromancy",
     "castingTime": "1 action",
     "rangeText": "contact",
     "components": [
@@ -7285,7 +7285,7 @@
     "name": "Tidal wave",
     "nameFr": "Raz-de-marée",
     "level": 3,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "36 mètres",
     "components": [
@@ -7402,7 +7402,7 @@
     "name": "Catnap",
     "nameFr": "Sieste",
     "level": 3,
-    "school": "enchantement",
+    "school": "enchantment",
     "castingTime": "1 action",
     "rangeText": "9 mètres",
     "components": [
@@ -7489,7 +7489,7 @@
     "name": "Life transference",
     "nameFr": "Transfert de vie",
     "level": 3,
-    "school": "n",
+    "school": "necromancy",
     "castingTime": "1 action",
     "rangeText": "9 mètres",
     "components": [
@@ -7517,7 +7517,7 @@
     "name": "Spirit shroud",
     "nameFr": "Voile spirituel",
     "level": 3,
-    "school": "n",
+    "school": "necromancy",
     "castingTime": "1 action bonus",
     "rangeText": "personnelle",
     "components": [
@@ -7577,7 +7577,7 @@
     "name": "Hunger of hadar",
     "nameFr": "Voracité de Hadar",
     "level": 3,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "45 mètres",
     "components": [
@@ -7605,7 +7605,7 @@
     "name": "Find greater steed",
     "nameFr": "Appel de destrier supérieur",
     "level": 4,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "10 minutes",
     "rangeText": "9 mètres",
     "components": [
@@ -7771,7 +7771,7 @@
     "name": "Charm monster",
     "nameFr": "Charme-monstre",
     "level": 4,
-    "school": "enchantement",
+    "school": "enchantment",
     "castingTime": "1 action",
     "rangeText": "9 mètres",
     "components": [
@@ -7972,7 +7972,7 @@
     "name": "Summon aberration",
     "nameFr": "Convocation d'aberration",
     "level": 4,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "27 mètres",
     "components": [
@@ -8001,7 +8001,7 @@
     "name": "Summon construct",
     "nameFr": "Convocation d'artificiel",
     "level": 4,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "27 mètres",
     "components": [
@@ -8029,7 +8029,7 @@
     "name": "Summon elemental",
     "nameFr": "Convocation d'élémentaire",
     "level": 4,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "27 mètres",
     "components": [
@@ -8059,7 +8059,7 @@
     "name": "Summon greater demon",
     "nameFr": "Convocation de démon majeur",
     "level": 4,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "18 mètres",
     "components": [
@@ -8426,7 +8426,7 @@
     "name": "Invocation d ombres",
     "nameFr": "Invocation d'ombres",
     "level": 4,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 minute",
     "rangeText": "18 m",
     "components": [
@@ -8453,7 +8453,7 @@
     "name": "Raulothim s psychic lance",
     "nameFr": "Lance d'arçon psychique de Raulothim",
     "level": 4,
-    "school": "enchantement",
+    "school": "enchantment",
     "castingTime": "1 action",
     "rangeText": "36 mètres",
     "components": [
@@ -8482,7 +8482,7 @@
     "name": "Grasping vine",
     "nameFr": "Liane avide",
     "level": 4,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action bonus",
     "rangeText": "9 mètres",
     "components": [
@@ -8664,7 +8664,7 @@
     "name": "Shadow of moil",
     "nameFr": "Ombre d'égarement",
     "level": 4,
-    "school": "n",
+    "school": "necromancy",
     "castingTime": "1 action",
     "rangeText": "personnelle",
     "components": [
@@ -8867,7 +8867,7 @@
     "name": "Watery sphere",
     "nameFr": "Sphère aqueuse",
     "level": 4,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "27 mètres",
     "components": [
@@ -9186,7 +9186,7 @@
     "name": "Infernal calling",
     "nameFr": "Assignation infernale",
     "level": 5,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 minute",
     "rangeText": "27 mètres",
     "components": [
@@ -9609,7 +9609,7 @@
     "name": "Summon draconic spirit",
     "nameFr": "Convocation d'esprit draconique",
     "level": 5,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "18 mètres",
     "components": [
@@ -9639,7 +9639,7 @@
     "name": "Summon celestial",
     "nameFr": "Convocation de céleste",
     "level": 5,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "27 mètres",
     "components": [
@@ -9724,7 +9724,7 @@
     "name": "Danse macabre",
     "nameFr": "Danse macabre",
     "level": 5,
-    "school": "n",
+    "school": "necromancy",
     "castingTime": "1 action",
     "rangeText": "18 mètres",
     "components": [
@@ -9752,7 +9752,7 @@
     "name": "Negative energy flood",
     "nameFr": "Déluge d'énergie négative",
     "level": 5,
-    "school": "n",
+    "school": "necromancy",
     "castingTime": "1 action",
     "rangeText": "18 mètres",
     "components": [
@@ -9865,7 +9865,7 @@
     "name": "Enervation",
     "nameFr": "Énervation",
     "level": 5,
-    "school": "n",
+    "school": "necromancy",
     "castingTime": "1 action",
     "rangeText": "18 mètres",
     "components": [
@@ -9953,7 +9953,7 @@
     "name": "Far step",
     "nameFr": "Foulée dimensionnelle",
     "level": 5,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action bonus",
     "rangeText": "personnelle",
     "components": [
@@ -9981,7 +9981,7 @@
     "name": "Steel wind strike",
     "nameFr": "Frappe du vent d'acier",
     "level": 5,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "9 mètres",
     "components": [
@@ -10124,7 +10124,7 @@
     "name": "Conjure volley",
     "nameFr": "Invocation de volée",
     "level": 5,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "45 mètres",
     "components": [
@@ -10438,7 +10438,7 @@
     "name": "Synaptic static",
     "nameFr": "Perturbations synaptiques",
     "level": 5,
-    "school": "enchantement",
+    "school": "enchantment",
     "castingTime": "1 action",
     "rangeText": "36 mètres",
     "components": [
@@ -10899,7 +10899,7 @@
     "name": "Soul cage",
     "nameFr": "Cage des âmes",
     "level": 6,
-    "school": "n",
+    "school": "necromancy",
     "castingTime": "1 réaction, que vous prenez lorsqu'un humanoïde que vous pouvez voir à 18 m ou moins de vous meurt",
     "rangeText": "18 mètres",
     "components": [
@@ -11014,7 +11014,7 @@
     "name": "Summon fiend",
     "nameFr": "Convocation de fiélon",
     "level": 6,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "27 mètres",
     "components": [
@@ -11215,7 +11215,7 @@
     "name": "Scatter",
     "nameFr": "Dispersion",
     "level": 6,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "9 mètres",
     "components": [
@@ -11610,7 +11610,7 @@
     "name": "Arcane gate",
     "nameFr": "Portail magique",
     "level": 6,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action",
     "rangeText": "150 mètres",
     "components": [
@@ -12486,7 +12486,7 @@
     "name": "Power word pain",
     "nameFr": "Mot de pouvoir douloureux",
     "level": 7,
-    "school": "enchantement",
+    "school": "enchantment",
     "castingTime": "1 action",
     "rangeText": "18 mètres",
     "components": [
@@ -12684,7 +12684,7 @@
     "name": "Dream of the blue veil",
     "nameFr": "Songe du voile bleu",
     "level": 7,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "10 minutes",
     "rangeText": "6 mètres",
     "components": [
@@ -12802,7 +12802,7 @@
     "name": "Temple of the gods",
     "nameFr": "Temple des dieux",
     "level": 7,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 heure",
     "rangeText": "36 mètres",
     "components": [
@@ -13259,7 +13259,7 @@
     "name": "Abi dalzim s horrid wilting",
     "nameFr": "Flétrissure épouvantable d'Abi-Dalzim",
     "level": 8,
-    "school": "n",
+    "school": "necromancy",
     "castingTime": "1 action",
     "rangeText": "45 mètres",
     "components": [
@@ -13315,7 +13315,7 @@
     "name": "Mighty fortress",
     "nameFr": "Forteresse majestueuse",
     "level": 8,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 minute",
     "rangeText": "1,5 km",
     "components": [
@@ -13486,7 +13486,7 @@
     "name": "Tsunami",
     "nameFr": "Tsunami",
     "level": 8,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 minute",
     "rangeText": "champ de vision",
     "components": [
@@ -13652,7 +13652,7 @@
     "name": "Psychic scream",
     "nameFr": "Hurlement psychique",
     "level": 9,
-    "school": "enchantement",
+    "school": "enchantment",
     "castingTime": "1 action",
     "rangeText": "27 mètres",
     "components": [
@@ -13709,7 +13709,7 @@
     "name": "Blade of disaster",
     "nameFr": "Lame du désastre",
     "level": 9,
-    "school": "invocation",
+    "school": "conjuration",
     "castingTime": "1 action bonus",
     "rangeText": "18 mètres",
     "components": [
