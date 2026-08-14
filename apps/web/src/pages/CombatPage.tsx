@@ -481,7 +481,7 @@ function CombatantList({
                         <input
                           type="number"
                           placeholder="Init"
-                          className="input w-14 h-7 text-center p-0 text-xs"
+                          className="input input-compact h-7 text-xs"
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                               const v = parseInt((e.target as HTMLInputElement).value, 10);

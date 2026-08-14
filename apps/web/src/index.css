@@ -57,6 +57,14 @@ input[type='number'] {
   -moz-appearance: textfield;
 }
 
+/* Compact input for inline use (initiative, small numbers) — overrides .input w-full */
+.input-compact {
+  width: 3rem !important;
+  padding-left: 0.25rem !important;
+  padding-right: 0.25rem !important;
+  text-align: center;
+}
+
 /* Smooth scrolling for inventory lists */
 .scroll-smooth-touch {
   -webkit-overflow-scrolling: touch;

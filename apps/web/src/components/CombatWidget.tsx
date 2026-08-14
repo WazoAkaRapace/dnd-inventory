@@ -235,7 +235,7 @@ export default function CombatWidget() {
                 value={initInput}
                 onChange={(e) => setInitInput(e.target.value)}
                 placeholder="—"
-                className="input w-16 text-center text-sm py-1"
+                className="input input-compact text-sm py-1"
                 autoFocus
               />
               <button

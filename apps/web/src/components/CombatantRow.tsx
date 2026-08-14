@@ -170,7 +170,7 @@ export default function CombatantRow({
               onBlur={handleInitSubmit}
               onKeyDown={(e) => e.key === 'Enter' && handleInitSubmit()}
               placeholder="—"
-              className="input w-12 h-8 text-center p-0 text-sm font-bold"
+              className="input input-compact h-8 text-sm font-bold"
               title="Saisir l'initiative"
             />
             {isGM && (
