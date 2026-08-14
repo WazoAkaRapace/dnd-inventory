@@ -619,9 +619,14 @@ export default function CharacterInventoryPage() {
                   {character.name}
                 </button>
               )}
+              {character.concentrating && (
+                <span className="shrink-0 text-base" title="Concentration en cours" aria-label="En concentration">
+                  🎯
+                </span>
+              )}
               <button
                 onClick={() => setShowCarryModal(true)}
-                className="text-ink-400 hover:text-blood-600 transition-colors"
+                className="ml-auto shrink-0 text-ink-400 hover:text-blood-600 transition-colors"
                 aria-label="Portage"
                 title="Portage"
               >
