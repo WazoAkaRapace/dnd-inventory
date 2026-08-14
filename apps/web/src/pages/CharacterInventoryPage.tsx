@@ -31,7 +31,7 @@ import NpcPage from './NpcPage';
 import CharacterNotesTab from './CharacterNotesTab';
 import ConcentrationAlert from '../components/ConcentrationAlert';
 
-type CharacterTab = 'inventory' | 'stats' | 'spells' | 'skills' | 'features' | 'description' | 'npcs' | 'notes';
+type CharacterTab = 'inventory' | 'survival' | 'stats' | 'spells' | 'skills' | 'features' | 'description' | 'npcs' | 'notes';
 import {
   LoadingSpinner,
   ErrorMsg,
@@ -690,6 +690,7 @@ export default function CharacterInventoryPage() {
         <div className="flex items-center gap-1 bg-parchment-100 rounded-xl p-1 overflow-x-auto no-scrollbar">
           {([
             { key: 'inventory', label: 'Inventaire', icon: '🎒' },
+            { key: 'survival', label: 'Survie', icon: '🩸' },
             { key: 'stats', label: 'Caractéristiques', icon: '⚔️' },
             { key: 'skills', label: 'Compétences', icon: '🎯' },
             { key: 'spells', label: 'Sorts', icon: '✨' },
@@ -716,6 +717,16 @@ export default function CharacterInventoryPage() {
       </div>
 
       {/* ---------- Non-inventory tabs (rendered when selected) ---------- */}
+      {activeTab === 'survival' && (
+        <SurvivalPanel
+          character={character}
+          charId={Number(charId)}
+          entries={entries}
+          markLocalMutation={markLocalMutation}
+          onSaved={refreshInventory}
+          onError={(msg) => pushToast(msg, 'error')}
+        />
+      )}
       {activeTab === 'stats' && (
         <CharacterStatsTab
           character={character}
@@ -774,16 +785,6 @@ export default function CharacterInventoryPage() {
       {/* ---------- Inventory tab content ---------- */}
       {activeTab === 'inventory' && (
         <>
-      {/* ---------- Survival panel: exhaustion, conditions, deprivation ---------- */}
-      <SurvivalPanel
-        character={character}
-        charId={Number(charId)}
-        entries={entries}
-        markLocalMutation={markLocalMutation}
-        onSaved={refreshInventory}
-        onError={(msg) => pushToast(msg, 'error')}
-      />
-
       {/* ---------- Storage location tabs ---------- */}
       <div className="-mx-4 px-4 sm:mx-0 sm:px-0">
         <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
@@ -1942,14 +1943,6 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
   const [foodDays, setFoodDays] = useState(character.foodDays);
   const [waterDays, setWaterDays] = useState(character.waterDays);
   const [concCheck, setConcCheck] = useState<ConcentrationCheck | null>(null);
-  const [survivalCollapsed, setSurvivalCollapsed] = useState(() => {
-    try { const v = localStorage.getItem('survivalCollapsed'); return v === null ? true : v === '1'; } catch { return true; }
-  });
-  const toggleSurvival = () => {
-    const next = !survivalCollapsed;
-    setSurvivalCollapsed(next);
-    try { localStorage.setItem('survivalCollapsed', next ? '1' : '0'); } catch { /* ignore */ }
-  };
 
   // Count available food/water from tagged inventory items
   // Water: skip items marked 'empty' in notes
@@ -2039,26 +2032,13 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
 
   return (
     <section className="card p-4 sm:p-5 space-y-4">
-      <button
-        type="button"
-        onClick={toggleSurvival}
-        className="w-full flex items-center justify-between -my-1 group"
-        aria-expanded={!survivalCollapsed}
-        aria-controls="survival-panel-content"
-      >
-        <h2 className="font-display text-lg font-semibold flex items-center gap-2">
-          <span aria-hidden="true">🩸</span> Survie
-        </h2>
-        <span className={`text-xs text-ink-400 group-hover:text-ink-600 transition-colors chevron ${survivalCollapsed ? 'is-closed' : 'is-open'}`}>
-          ▼
-        </span>
-      </button>
+      <h2 className="font-display text-lg font-semibold flex items-center gap-2">
+        <span aria-hidden="true">🩸</span> Survie
+      </h2>
 
-      <div className={`expand-grid ${survivalCollapsed ? 'is-collapsed' : ''}`}>
-        <div className="expand-inner">
-          <div id="survival-panel-content" className="space-y-4 pt-1">
-      {/* Exhaustion tracker */}
-      {/* HP tracker */}
+      <div className="space-y-4">
+          {/* Exhaustion tracker */}
+          {/* HP tracker */}
       <HpTracker
         character={character}
         charId={charId}
@@ -2238,8 +2218,6 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
           )}
         </div>
       </div>
-          </div>
-        </div>
       </div>
     </section>
   );
