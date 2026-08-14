@@ -14,11 +14,61 @@ import {
   MONSTER_SIZE_LABELS_FR,
 } from '@dnd-inventory/shared';
 import type { Monster, MonsterAction } from '@dnd-inventory/shared';
+import SpellDetailSheet from './SpellDetailSheet';
 
 interface Props {
   open: boolean;
   slug: string | null;
   onClose: () => void;
+}
+
+/** Light spell row from GET /api/spells/light */
+interface SpellLight {
+  id: number;
+  nameFr: string;
+  level: number;
+}
+
+/** Normalize a name for matching: lowercase, no accents, no spaces.
+ *  Space-insensitive so OCR splits like "déguise ment" still match "déguisement". */
+function normalizeSpellName(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, '');
+}
+
+/**
+ * Extract spell names mentioned in a spellcasting description and match them
+ * against the catalog. Returns the catalog entries (deduped, in text order).
+ */
+function matchSpellsInText(desc: string, catalog: SpellLight[]): SpellLight[] {
+  // Remove level/slot markers so spell lists split cleanly
+  const cleaned = desc
+    .replace(/\d+e?r?\s*niveau\s*\([^)]*\)/gi, ';')
+    .replace(/tours?\s+de\s+magie\s*\([^)]*\)/gi, ';')
+    .replace(/\d+\s*emplacements?/gi, ';');
+
+  const byName = new Map<string, SpellLight>();
+  for (const s of catalog) byName.set(normalizeSpellName(s.nameFr), s);
+
+  const found: SpellLight[] = [];
+  const seen = new Set<number>();
+  // Join line breaks into spaces first: OCR splits names like "déguise\nment",
+  // and matching is space-insensitive so they still match "déguisement".
+  const flat = cleaned.replace(/\n/g, ' ');
+  // Split on list separators: commas, semicolons, colons, periods, parens
+  for (const raw of flat.split(/[,;:.()]/)) {
+    const name = raw.replace(/\*/g, '').trim();
+    if (!name || name.length < 3) continue;
+    const hit = byName.get(normalizeSpellName(name));
+    if (hit && !seen.has(hit.id)) {
+      seen.add(hit.id);
+      found.push(hit);
+    }
+  }
+  return found;
 }
 
 // French ability key → short label + capitalized save prefix
@@ -54,6 +104,24 @@ export default function MonsterStatBlock({ open, slug, onClose }: Props) {
       .finally(() => setLoading(false));
   }, [open, slug]);
 
+  // Detect spellcasting entries (Incantation / Incantation innée)
+  const hasSpellcasting = !!monster && [
+    ...monster.traits,
+    ...monster.actions,
+    ...monster.legendaryActions,
+  ].some((a) => /incantation/i.test(a.name));
+
+  // Fetch the light spell catalog once when the monster has spellcasting
+  const [spellCatalog, setSpellCatalog] = useState<SpellLight[]>([]);
+  const [openSpellId, setOpenSpellId] = useState<number | null>(null);
+  useEffect(() => {
+    if (!open || !hasSpellcasting || spellCatalog.length > 0) return;
+    api
+      .get('/api/spells/light')
+      .then((res) => setSpellCatalog(res.data.spells || []))
+      .catch(() => {});
+  }, [open, hasSpellcasting, spellCatalog.length]);
+
   if (!open) return null;
 
   return createPortal(
@@ -78,15 +146,36 @@ export default function MonsterStatBlock({ open, slug, onClose }: Props) {
         <div className="overflow-y-auto p-4 flex-1">
           {loading && <p className="text-sm text-ink-400 text-center py-8">Chargement du stat block…</p>}
           {!loading && !monster && <p className="text-sm text-ink-400 text-center py-8">Monstre introuvable.</p>}
-          {monster && <StatBlockBody monster={monster} />}
+          {monster && (
+            <StatBlockBody
+              monster={monster}
+              spellCatalog={spellCatalog}
+              onOpenSpell={setOpenSpellId}
+            />
+          )}
         </div>
       </div>
+
+      {/* Spell detail sheet (stacks above the stat block) */}
+      <SpellDetailSheet
+        open={openSpellId !== null}
+        spellId={openSpellId}
+        onClose={() => setOpenSpellId(null)}
+      />
     </div>,
     document.body,
   );
 }
 
-function StatBlockBody({ monster }: { monster: Monster }) {
+function StatBlockBody({
+  monster,
+  spellCatalog,
+  onOpenSpell,
+}: {
+  monster: Monster;
+  spellCatalog: SpellLight[];
+  onOpenSpell: (id: number) => void;
+}) {
   const sizeLabel = MONSTER_SIZE_LABELS_FR[monster.size] ?? monster.size;
   const typeLine = [monster.type, monster.subtype && `(${monster.subtype})`, sizeLabel && `de taille ${sizeLabel}`]
     .filter(Boolean)
@@ -200,23 +289,33 @@ function StatBlockBody({ monster }: { monster: Monster }) {
 
       {/* Traits */}
       {monster.traits.length > 0 && (
-        <ActionSection title="Capacités" actions={monster.traits} />
+        <ActionSection title="Capacités" actions={monster.traits} spellCatalog={spellCatalog} onOpenSpell={onOpenSpell} />
       )}
 
       {/* Actions */}
       {monster.actions.length > 0 && (
-        <ActionSection title="Actions" actions={monster.actions} />
+        <ActionSection title="Actions" actions={monster.actions} spellCatalog={spellCatalog} onOpenSpell={onOpenSpell} />
       )}
 
       {/* Legendary actions */}
       {monster.legendaryActions.length > 0 && (
-        <ActionSection title="Actions légendaires" actions={monster.legendaryActions} />
+        <ActionSection title="Actions légendaires" actions={monster.legendaryActions} spellCatalog={spellCatalog} onOpenSpell={onOpenSpell} />
       )}
     </div>
   );
 }
 
-function ActionSection({ title, actions }: { title: string; actions: MonsterAction[] }) {
+function ActionSection({
+  title,
+  actions,
+  spellCatalog,
+  onOpenSpell,
+}: {
+  title: string;
+  actions: MonsterAction[];
+  spellCatalog: SpellLight[];
+  onOpenSpell: (id: number) => void;
+}) {
   return (
     <div>
       <h3 className="font-display font-semibold text-blood-700 border-b border-blood-200 pb-1 mb-2 text-sm">
@@ -224,7 +323,7 @@ function ActionSection({ title, actions }: { title: string; actions: MonsterActi
       </h3>
       <div className="space-y-2">
         {actions.map((action, idx) => (
-          <ActionEntry key={idx} action={action} />
+          <ActionEntry key={idx} action={action} spellCatalog={spellCatalog} onOpenSpell={onOpenSpell} />
         ))}
       </div>
     </div>
@@ -269,11 +368,25 @@ function rollDamage(formula: string, crit = false): { total: number; rolls: numb
   return { total, rolls };
 }
 
-// ---------- Action entry with interactive dice ----------
+// ---------- Action entry with interactive dice + spell links ----------
 
-function ActionEntry({ action }: { action: MonsterAction }) {
+function ActionEntry({
+  action,
+  spellCatalog,
+  onOpenSpell,
+}: {
+  action: MonsterAction;
+  spellCatalog: SpellLight[];
+  onOpenSpell: (id: number) => void;
+}) {
   const [attackResult, setAttackResult] = useState<{ roll: number; natural: number; total: number } | null>(null);
   const [damageResult, setDamageResult] = useState<{ total: number; rolls: number[] } | null>(null);
+
+  // Spellcasting entry: match the spell names mentioned in the description
+  const isSpellcasting = /incantation/i.test(action.name);
+  const knownSpells = isSpellcasting && spellCatalog.length > 0 && action.desc
+    ? matchSpellsInText(action.desc, spellCatalog)
+    : [];
 
   const handleAttack = () => {
     if (action.attackBonus == null) return;
@@ -359,6 +472,22 @@ function ActionEntry({ action }: { action: MonsterAction }) {
 
       {action.desc && (
         <p className="text-ink-600 mt-0.5">{action.desc}</p>
+      )}
+
+      {/* Clickable spell chips for spellcasting entries */}
+      {knownSpells.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1.5">
+          {knownSpells.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => onOpenSpell(s.id)}
+              className="px-2 py-0.5 rounded-full text-xs bg-indigo-100 text-indigo-700 hover:bg-indigo-200 active:scale-95 transition-all"
+              title={`Voir le sort : ${s.nameFr}`}
+            >
+              ✨ {s.nameFr}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );

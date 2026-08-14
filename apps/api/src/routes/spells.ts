@@ -87,6 +87,21 @@ export async function spellRoutes(app: FastifyInstance) {
     },
   );
 
+  // ---------- Light catalog: id + French name + level for all spells ----------
+  // Used for matching spell names in monster spellcasting entries. Small payload.
+  app.get('/spells/light', async (req: FastifyRequest, reply: FastifyReply) => {
+    const userId = requireUser(req, reply);
+    if (userId === null) return;
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT id, name_fr, level FROM spells WHERE name_fr IS NOT NULL
+      ORDER BY level ASC, name_fr COLLATE NOCASE ASC
+    `).all();
+    return reply.send({
+      spells: rows.map((r: any) => ({ id: r.id, nameFr: r.name_fr, level: r.level })),
+    });
+  });
+
   // ---------- Get single spell ----------
   app.get(
     '/spells/:id',
