@@ -585,8 +585,8 @@ export default function CharacterInventoryPage() {
 
   return (
     <div className="space-y-4">
-      {/* Sticky character header + encumbrance — offset below nav on mobile */}
-      <div className="sticky top-14 z-20 -mx-4 px-4 pt-2 pb-3 bg-parchment-50/95 backdrop-blur sm:static sm:top-0 sm:mx-0 sm:px-0 sm:bg-transparent sm:backdrop-blur-none sm:z-auto">
+      {/* Character header + encumbrance */}
+      <div>
         <div className="card p-4 sm:p-5">
           <div className="flex items-center justify-between gap-3">
             <h1 className="font-display text-xl sm:text-2xl font-bold truncate flex items-center gap-2">
