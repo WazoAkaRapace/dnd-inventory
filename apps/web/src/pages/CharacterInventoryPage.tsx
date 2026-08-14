@@ -2377,18 +2377,19 @@ function HpTracker({ character, charId, markLocalMutation, onSaved, onError, onC
   onError: (msg: string) => void;
   onConcentrationCheck: (check: ConcentrationCheck) => void;
 }) {
-  const [maxHp, setMaxHp] = useState(character.maxHp);
-  const [currentHp, setCurrentHp] = useState(character.currentHp);
-  const [tempHp, setTempHp] = useState(character.tempHp);
+  // Fields may be '' while the user is editing (input cleared).
+  const [maxHp, setMaxHp] = useState<number | ''>(character.maxHp);
+  const [currentHp, setCurrentHp] = useState<number | ''>(character.currentHp);
+  const [tempHp, setTempHp] = useState<number | ''>(character.tempHp);
 
   useEffect(() => { setMaxHp(character.maxHp); }, [character.maxHp]);
   useEffect(() => { setCurrentHp(character.currentHp); }, [character.currentHp]);
   useEffect(() => { setTempHp(character.tempHp); }, [character.tempHp]);
 
-  const patch = async (field: string, value: number, setter: (n: number) => void) => {
+  const patchFields = async (fields: Record<string, number>) => {
     markLocalMutation();
     try {
-      const res = await api.patch(`/api/characters/${charId}`, { [field]: value });
+      const res = await api.patch(`/api/characters/${charId}`, fields);
       // Losing HP while concentrating requires a CON save — surface it immediately.
       if (res?.data?.concentrationCheck) onConcentrationCheck(res.data.concentrationCheck);
       await onSaved();
@@ -2397,8 +2398,47 @@ function HpTracker({ character, charId, markLocalMutation, onSaved, onError, onC
     }
   };
 
-  const hpColor = currentHp <= 0 ? 'text-red-600' : currentHp <= maxHp * 0.3 ? 'text-red-500' : currentHp <= maxHp * 0.5 ? 'text-orange-500' : 'text-green-600';
-  const hpPct = maxHp > 0 ? Math.min(100, (currentHp / maxHp) * 100) : 0;
+  // +/− steppers: update the display instantly but debounce the PATCH by 1s.
+  // A burst of clicks then produces a single before→after delta server-side,
+  // so the concentration check (if any) fires once with the full damage.
+  const pendingPatch = useRef<Record<string, number>>({});
+  const patchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const schedulePatch = (field: string, value: number) => {
+    pendingPatch.current[field] = value;
+    if (patchTimer.current) clearTimeout(patchTimer.current);
+    patchTimer.current = setTimeout(() => {
+      patchTimer.current = null;
+      const fields = pendingPatch.current;
+      pendingPatch.current = {};
+      patchFields(fields);
+    }, 1000);
+  };
+
+  // Commit an input on blur: empty (or invalid) → 0 (1 for max HP),
+  // and supersede any pending debounced update for that field.
+  const commit = (field: 'currentHp' | 'maxHp' | 'tempHp', raw: number | '', setter: (n: number) => void) => {
+    const min = field === 'maxHp' ? 1 : 0;
+    const n = typeof raw === 'number' && Number.isFinite(raw) ? Math.max(min, raw) : min;
+    setter(n);
+    delete pendingPatch.current[field];
+    if (n !== character[field]) patchFields({ [field]: n });
+  };
+
+  // Don't lose a pending debounced change if the user navigates away.
+  useEffect(() => () => {
+    if (patchTimer.current) clearTimeout(patchTimer.current);
+    const fields = pendingPatch.current;
+    if (Object.keys(fields).length > 0) {
+      api.patch(`/api/characters/${charId}`, fields).catch(() => {});
+    }
+  }, [charId]);
+
+  const curNum = currentHp === '' ? 0 : currentHp;
+  const maxNum = typeof maxHp === 'number' && maxHp > 0 ? maxHp : character.maxHp;
+  const tempNum = tempHp === '' ? 0 : tempHp;
+  const hpColor = curNum <= 0 ? 'text-red-600' : curNum <= maxNum * 0.3 ? 'text-red-500' : curNum <= maxNum * 0.5 ? 'text-orange-500' : 'text-green-600';
+  const hpPct = maxNum > 0 ? Math.min(100, (curNum / maxNum) * 100) : 0;
 
   return (
     <div className="flex items-center gap-3 flex-wrap">
@@ -2407,7 +2447,7 @@ function HpTracker({ character, charId, markLocalMutation, onSaved, onError, onC
       {/* Current HP */}
       <div className="flex items-center gap-1">
         <button
-          onClick={() => { const n = Math.max(0, currentHp - 1); setCurrentHp(n); patch('currentHp', n, setCurrentHp); }}
+          onClick={() => { const n = Math.max(0, curNum - 1); setCurrentHp(n); schedulePatch('currentHp', n); }}
           className="w-7 h-7 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 text-sm font-medium flex items-center justify-center"
           aria-label="Blesser"
         >−</button>
@@ -2415,12 +2455,12 @@ function HpTracker({ character, charId, markLocalMutation, onSaved, onError, onC
           type="number"
           className={`w-14 text-center text-sm font-bold bg-white border border-parchment-300 rounded-md py-1 focus:outline-none focus:border-blood-500 ${hpColor}`}
           value={currentHp}
-          onChange={(e) => setCurrentHp(Number(e.target.value) || 0)}
-          onBlur={() => { if (Number(currentHp) !== character.currentHp) patch('currentHp', currentHp, setCurrentHp); }}
+          onChange={(e) => setCurrentHp(e.target.value === '' ? '' : Number(e.target.value) || 0)}
+          onBlur={() => commit('currentHp', currentHp, setCurrentHp)}
           aria-label="Points de vie actuels"
         />
         <button
-          onClick={() => { const n = Math.min(maxHp, currentHp + 1); setCurrentHp(n); patch('currentHp', n, setCurrentHp); }}
+          onClick={() => { const n = Math.min(maxNum, curNum + 1); setCurrentHp(n); schedulePatch('currentHp', n); }}
           className="w-7 h-7 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 text-sm font-medium flex items-center justify-center"
           aria-label="Soigner"
         >+</button>
@@ -2434,8 +2474,8 @@ function HpTracker({ character, charId, markLocalMutation, onSaved, onError, onC
           type="number"
           className="w-14 text-center text-sm font-semibold bg-white border border-parchment-300 rounded-md py-1 focus:outline-none focus:border-blood-500"
           value={maxHp}
-          onChange={(e) => setMaxHp(Number(e.target.value) || 1)}
-          onBlur={() => { if (Number(maxHp) !== character.maxHp) { const n = Math.max(1, maxHp); setMaxHp(n); patch('maxHp', n, setMaxHp); } }}
+          onChange={(e) => setMaxHp(e.target.value === '' ? '' : Number(e.target.value) || 0)}
+          onBlur={() => commit('maxHp', maxHp, setMaxHp)}
           aria-label="Points de vie maximum"
         />
       </label>
@@ -2444,36 +2484,36 @@ function HpTracker({ character, charId, markLocalMutation, onSaved, onError, onC
       <label className="flex items-center gap-1">
         <span className="text-xs text-ink-400">PV temp</span>
         <button
-          onClick={() => { const n = Math.max(0, tempHp - 1); setTempHp(n); patch('tempHp', n, setTempHp); }}
-          disabled={tempHp <= 0}
+          onClick={() => { const n = Math.max(0, tempNum - 1); setTempHp(n); schedulePatch('tempHp', n); }}
+          disabled={tempNum <= 0}
           className="w-6 h-6 rounded bg-blue-100 hover:bg-blue-200 disabled:opacity-30 text-blue-700 text-xs flex items-center justify-center"
           aria-label="Retirer 1 PV temp"
         >−</button>
         <input
           type="number"
-          className={`w-12 text-center text-sm font-medium bg-white border border-parchment-300 rounded-md py-1 focus:outline-none focus:border-blood-500 ${tempHp > 0 ? 'text-blue-700' : 'text-ink-400'}`}
+          className={`w-12 text-center text-sm font-medium bg-white border border-parchment-300 rounded-md py-1 focus:outline-none focus:border-blood-500 ${tempNum > 0 ? 'text-blue-700' : 'text-ink-400'}`}
           value={tempHp}
           min={0}
-          onChange={(e) => setTempHp(Math.max(0, Number(e.target.value) || 0))}
-          onBlur={() => { if (Number(tempHp) !== character.tempHp) patch('tempHp', Math.max(0, tempHp), setTempHp); }}
+          onChange={(e) => setTempHp(e.target.value === '' ? '' : Math.max(0, Number(e.target.value) || 0))}
+          onBlur={() => commit('tempHp', tempHp, setTempHp)}
           aria-label="Points de vie temporaires"
         />
         <button
-          onClick={() => { const n = tempHp + 1; setTempHp(n); patch('tempHp', n, setTempHp); }}
+          onClick={() => { const n = tempNum + 1; setTempHp(n); schedulePatch('tempHp', n); }}
           className="w-6 h-6 rounded bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs flex items-center justify-center"
           aria-label="Ajouter 1 PV temp"
         >+</button>
       </label>
-      {tempHp > 0 && (
+      {tempNum > 0 && (
         <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
-          +{tempHp}
+          +{tempNum}
         </span>
       )}
 
       {/* HP bar */}
       <div className="flex-1 min-w-[80px] h-2 bg-parchment-200 rounded-full overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all ${currentHp <= 0 ? 'bg-red-700' : currentHp <= maxHp * 0.3 ? 'bg-red-500' : currentHp <= maxHp * 0.5 ? 'bg-orange-400' : 'bg-green-500'}`}
+          className={`h-full rounded-full transition-all ${curNum <= 0 ? 'bg-red-700' : curNum <= maxNum * 0.3 ? 'bg-red-500' : curNum <= maxNum * 0.5 ? 'bg-orange-400' : 'bg-green-500'}`}
           style={{ width: `${hpPct}%` }}
         />
       </div>
