@@ -216,6 +216,34 @@ export async function characterRoutes(app: FastifyInstance) {
       vals.push(char.id);
       db.prepare(`UPDATE characters SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
 
+      // --- HP sync: mirror PV/PV max changes to this character's combatants
+      // in non-ended encounters, so the combat tracker shows the same HP
+      // (and defeated state) as the sheet.
+      if (body.currentHp !== undefined || body.maxHp !== undefined) {
+        const combatantRows = db.prepare(`
+          SELECT c.id FROM combatants c
+          JOIN encounters e ON e.id = c.encounter_id
+          WHERE c.character_id = ? AND c.type = 'player' AND e.status != 'ended'
+        `).all(char.id) as any[];
+        for (const cr of combatantRows) {
+          const setsC: string[] = [];
+          const valsC: any[] = [];
+          if (body.currentHp !== undefined) {
+            setsC.push('hit_points = ?');
+            valsC.push(Math.max(0, body.currentHp));
+            // Mirror the defeated state the tracker derives from HP
+            setsC.push('defeated = ?');
+            valsC.push(body.currentHp <= 0 ? 1 : 0);
+          }
+          if (body.maxHp !== undefined) { setsC.push('max_hit_points = ?'); valsC.push(Math.max(1, body.maxHp)); }
+          valsC.push(cr.id);
+          db.prepare(`UPDATE combatants SET ${setsC.join(', ')} WHERE id = ?`).run(...valsC);
+        }
+        if (combatantRows.length > 0) {
+          bus.emitChange({ type: 'combat:change', partyId: char.party_id, action: 'hp', actorUserId: userId });
+        }
+      }
+
       const row = db.prepare(`
         SELECT c.*, u.display_name AS owner_name
         FROM characters c JOIN users u ON u.id = c.owner_id

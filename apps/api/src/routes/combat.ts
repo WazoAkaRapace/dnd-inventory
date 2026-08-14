@@ -579,6 +579,24 @@ export async function combatRoutes(app: FastifyInstance) {
 
       const row = db.prepare('SELECT * FROM combatants WHERE id = ?').get(combatant.id);
 
+      // --- HP sync: the tracker is the player's sheet HP — mirror PV/PV max
+      // changes back to the character so both views stay identical.
+      if (
+        combatant.type === 'player' &&
+        combatant.character_id &&
+        (body.hitPoints !== undefined || body.maxHitPoints !== undefined)
+      ) {
+        const setsC: string[] = [];
+        const valsC: any[] = [];
+        if (body.hitPoints !== undefined) { setsC.push('current_hp = ?'); valsC.push(Math.max(0, body.hitPoints)); }
+        if (body.maxHitPoints !== undefined) { setsC.push('max_hp = ?'); valsC.push(Math.max(1, body.maxHitPoints)); }
+        if (setsC.length > 0) {
+          valsC.push(combatant.character_id);
+          db.prepare(`UPDATE characters SET ${setsC.join(', ')} WHERE id = ?`).run(...valsC);
+          bus.emitChange({ type: 'character:change', partyId: enc.party_id, characterId: combatant.character_id, action: 'hp', actorUserId: userId });
+        }
+      }
+
       // --- Concentration: an incapacitating condition applied by the GM
       // (Inconscient, Paralysé, …) breaks the player's concentration.
       let concentrationBroken: string | undefined;
