@@ -16,8 +16,8 @@ export default function CastSpellSheet({ spell, slots, slotsUsed, concentrating,
   slotsUsed: number[];
   concentrating: boolean;
   onClose: () => void;
-  /** Called with the chosen slot level (0 = cantrip, no slot). */
-  onCast: (level: number) => Promise<void> | void;
+  /** Called with the chosen slot level (0 = cantrip, no slot) and whether it's a ritual cast (no slot either). */
+  onCast: (level: number, ritual?: boolean) => Promise<void> | void;
 }) {
   const isCantrip = spell.level === 0;
   const canUpcast = !!(spell.higherLevelFr || spell.higherLevel);
@@ -38,10 +38,10 @@ export default function CastSpellSheet({ spell, slots, slotsUsed, concentrating,
 
   const concConflict = spell.concentration && concentrating;
 
-  const cast = async () => {
+  const cast = async (level: number, ritual = false) => {
     setCasting(true);
     try {
-      await onCast(chosen);
+      await onCast(level, ritual);
     } finally {
       setCasting(false);
     }
@@ -130,7 +130,7 @@ export default function CastSpellSheet({ spell, slots, slotsUsed, concentrating,
         )}
 
         <button
-          onClick={cast}
+          onClick={() => cast(chosen)}
           disabled={casting || chosen < 0}
           className="btn-primary w-full mt-4 py-2.5 disabled:opacity-40"
         >
@@ -142,6 +142,17 @@ export default function CastSpellSheet({ spell, slots, slotsUsed, concentrating,
                 ? '🪄 Lancer le tour de magie'
                 : `🪄 Lancer au niveau ${chosen > 0 ? chosen : '—'}`}
         </button>
+
+        {/* Ritual cast: no slot consumed, +10 minutes */}
+        {spell.ritual && (
+          <button
+            onClick={() => cast(spell.level, true)}
+            disabled={casting}
+            className="w-full mt-2 py-2.5 rounded-lg bg-purple-100 text-purple-800 border border-purple-300 hover:bg-purple-200 font-medium text-sm disabled:opacity-40 transition-colors"
+          >
+            ⚗ Rituel (10 minutes) <span className="font-normal text-purple-500">— sans emplacement</span>
+          </button>
+        )}
       </div>
     </div>,
     document.body,

@@ -217,14 +217,14 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
   };
 
   /**
-   * Cast a spell at the chosen level: consume one slot of that level and,
-   * for concentration spells, take over the concentration flag (breaking
-   * any spell already being concentrated on).
+   * Cast a spell at the chosen level: consume one slot of that level (unless
+   * cast as a ritual — no slot, +10 min) and, for concentration spells, take
+   * over the concentration flag (breaking any spell already concentrated on).
    */
-  const castSpell = async (level: number) => {
+  const castSpell = async (level: number, ritual = false) => {
     if (!castingSpell) return;
     const fields: Record<string, unknown> = {};
-    if (level > 0) {
+    if (level > 0 && !ritual) {
       const used = [...slotsUsed];
       if (used[level - 1] >= (slots[level - 1] ?? 0)) return;
       used[level - 1] = used[level - 1] + 1;
@@ -396,8 +396,16 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                                 <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${SCHOOL_COLORS[spell.school] ?? 'bg-parchment-200'}`}>
                                   {SPELL_SCHOOL_LABELS_FR[spell.school as SpellSchool] ?? spell.school}
                                 </span>
-                                {spell.concentration && <span title="Concentration">🎯</span>}
-                                {spell.ritual && <span title="Rituel">⚗</span>}
+                                {spell.concentration && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
+                                    🎯 Concentration
+                                  </span>
+                                )}
+                                {spell.ritual && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700 border border-purple-200">
+                                    ⚗ Rituel
+                                  </span>
+                                )}
                                 <span className="truncate">{spell.castingTime}</span>
                               </span>
                             </button>
@@ -419,6 +427,20 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                           </div>
                           {isExpanded && (
                             <div className="px-3 pb-3 pt-1 border-t border-parchment-200 text-xs text-ink-600 space-y-1.5">
+                              {(spell.concentration || spell.ritual) && (
+                                <div className="flex flex-wrap gap-1.5 pt-1">
+                                  {spell.concentration && (
+                                    <span className="px-2 py-1 rounded-md bg-indigo-100 text-indigo-800 text-[11px] font-semibold border border-indigo-300">
+                                      🎯 Nécessite de la concentration
+                                    </span>
+                                  )}
+                                  {spell.ritual && (
+                                    <span className="px-2 py-1 rounded-md bg-purple-100 text-purple-800 text-[11px] font-semibold border border-purple-300">
+                                      ⚗ Peut être lancé en rituel (+10 min)
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                               {spell.descriptionFr ?? spell.description}
                               {spell.higherLevelFr && (
                                 <p className="text-ink-400 italic"><strong>Aux niveaux supérieurs :</strong> {spell.higherLevelFr}</p>
@@ -720,8 +742,16 @@ function SpellCatalog({
                           {SPELL_SCHOOL_LABELS_FR[spell.school as SpellSchool] ?? spell.school}
                         </span>
                         <span>{spell.level === 0 ? 'Tour' : `Niv. ${spell.level}`}</span>
-                        {spell.concentration && <span>🎯</span>}
-                        {spell.ritual && <span>⚗</span>}
+                        {spell.concentration && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
+                            🎯 Concentration
+                          </span>
+                        )}
+                        {spell.ritual && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700 border border-purple-200">
+                            ⚗ Rituel
+                          </span>
+                        )}
                       </span>
                     </button>
                     <button
@@ -734,6 +764,20 @@ function SpellCatalog({
                   </div>
                   {isExpanded && (
                     <div className="px-3 pb-3 pt-1 border-t border-parchment-200 text-xs text-ink-600 space-y-1.5">
+                      {(spell.concentration || spell.ritual) && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {spell.concentration && (
+                            <span className="px-2 py-1 rounded-md bg-indigo-100 text-indigo-800 text-[11px] font-semibold border border-indigo-300">
+                              🎯 Nécessite de la concentration
+                            </span>
+                          )}
+                          {spell.ritual && (
+                            <span className="px-2 py-1 rounded-md bg-purple-100 text-purple-800 text-[11px] font-semibold border border-purple-300">
+                              ⚗ Peut être lancé en rituel (+10 min)
+                            </span>
+                          )}
+                        </div>
+                      )}
                       <p>{spell.descriptionFr ?? spell.description}</p>
                       <SpellStatBadges
                         spell={spell}
