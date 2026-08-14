@@ -1350,8 +1350,11 @@ function InventoryRow({
                       const stats = computeWeaponStats(item, character);
                       if (!stats) return null;
                       const abilityLabel = stats.ability === 'dexterity' ? 'DEX' : 'FOR';
-                      const breakdown = `d20 ${formatModifier(stats.attackBonus - (stats.proficient ? proficiencyBonus(character.level ?? 1) : 0) - stats.magicBonus)} (${abilityLabel})`
-                        + (stats.proficient ? ` + ${proficiencyBonus(character.level ?? 1)} (maîtrise)` : '')
+                      const archery = character.fightingStyle === 'archery' && stats.ranged ? 2 : 0;
+                      const profBonus = proficiencyBonus(character.level ?? 1);
+                      const breakdown = `d20 ${formatModifier(stats.attackBonus - (stats.proficient ? profBonus : 0) - stats.magicBonus - archery)} (${abilityLabel})`
+                        + (stats.proficient ? ` + ${profBonus} (maîtrise)` : '')
+                        + (archery > 0 ? ` + ${archery} (archerie)` : '')
                         + (stats.magicBonus > 0 ? ` + ${stats.magicBonus} (magique)` : '');
                       return (
                         <div className="flex flex-wrap items-center gap-1.5">

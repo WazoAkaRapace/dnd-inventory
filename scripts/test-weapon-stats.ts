@@ -131,6 +131,20 @@ check('Druide: gourdin qualifié',
 check('Liste explicite martial only → épée longue qualifiée, gourdin non',
   effectiveWeaponProficiencies(mkChar({ weaponProficiencies: ['martial'] })), { simple: false, martial: true, specific: [] });
 
+// --- Fighting styles ---
+const rodeur5 = mkChar({ dexterity: 16, level: 5, characterClass: 'Rôdeur', fightingStyle: 'archery' });
+s = computeWeaponStats(arcLong, rodeur5);
+check('Rôdeur Archérie → +2 att. arc long (3 DEX + 3 maîtrise + 2)', s && { ab: s.attackBonus }, { ab: 8 });
+s = computeWeaponStats(mkWeapon({}), rodeur5);
+check('Archérie sans effet en mêlée (FOR 10 → 0 + 3 maîtrise)', s && s.attackBonus, 3);
+
+const duelliste = mkChar({ strength: 16, level: 5, characterClass: 'Guerrier', fightingStyle: 'dueling' });
+const epeeLongue = mkWeapon({ name: 'Longsword', nameFr: 'Épée longue', damageDice: '1d8', damageType: 'Slashing', properties: ['versatile'] });
+s = computeWeaponStats(epeeLongue, duelliste);
+check('Duel → +2 dégâts une main, pas à deux mains', s && { dmg: s.damageStr, v: s.versatileDamageStr }, { dmg: '1d8+5', v: '1d10+3' });
+s = computeWeaponStats(mkWeapon({}), duelliste);
+check('Duel sans effet arme à deux mains', s && s.damageStr, '2d6+3');
+
 // --- resolveMagicWeaponBase direct ---
 check('Bonus depuis nom « Arme +3 »', resolveMagicWeaponBase(arme2).magicBonus, 2);
 check('Marteau de lancer nain → Warhammer', resolveMagicWeaponBase(mkWeapon({

@@ -22,6 +22,9 @@ import {
   effectiveWeaponProficiencies,
   classWeaponProficiencies,
   MUNDANE_WEAPONS,
+  FIGHTING_STYLE_LABELS_FR,
+  FIGHTING_STYLE_CLASSES,
+  type FightingStyle,
 } from '@dnd-inventory/shared';
 
 interface Props {
@@ -140,7 +143,7 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
   const spellDC = isSpellcaster ? spellSaveDC(castingMod, profBonus) : 0;
 
   // Armor Class — computed from equipped armor, or manual override
-  const acResult = computeAC(entries, dexMod);
+  const acResult = computeAC(entries, dexMod, character.fightingStyle === 'defense');
   const acOverride = character.armorClassOverride;
   const effectiveAC = acOverride ?? acResult.ac;
   const [acDraft, setAcDraft] = useState('');
@@ -420,6 +423,25 @@ function WeaponMasteryCard({ character, patchCharacter }: {
             </span>
           ))}
         </div>
+      )}
+      {(FIGHTING_STYLE_CLASSES as readonly string[]).includes(character.characterClass ?? '') && (
+        <label className="flex items-center justify-between gap-3">
+          <span className="text-sm font-medium text-ink-700">Style de combat</span>
+          <select
+            className="input py-1.5 text-sm w-auto max-w-[60%]"
+            value={character.fightingStyle ?? ''}
+            onChange={(e) => patchCharacter(
+              { fightingStyle: e.target.value === '' ? null : e.target.value },
+              'Erreur de mise à jour',
+            )}
+            aria-label="Style de combat"
+          >
+            <option value="">—</option>
+            {Object.entries(FIGHTING_STYLE_LABELS_FR).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </label>
       )}
       <p className="text-xs text-ink-400">
         {isCustom

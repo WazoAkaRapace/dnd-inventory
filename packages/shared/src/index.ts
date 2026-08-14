@@ -261,6 +261,7 @@ export interface CharacterSummary {
   skillProficiencies: string[];        // skill keys: ["acrobatics","arcanes",...]
   savingThrowProficiencies: string[];  // ability keys: ["strength","constitution"]
   weaponProficiencies: string[] | null; // tokens 'simple'/'martial' + EN weapon names; null = class default
+  fightingStyle: FightingStyle | null;  // SRD fighting style (Guerrier/Paladin/Rôdeur)
   spellSlotsUsed: number[];            // 9 entries, used per spell level 1-9
   // Description / personality
   alignment: string | null;
@@ -347,6 +348,7 @@ export interface PatchCharacterPayload {
   skillProficiencies?: string[];
   savingThrowProficiencies?: string[];
   weaponProficiencies?: string[] | null;
+  fightingStyle?: FightingStyle | null;
   spellSlotsUsed?: number[];
   // Description / personality
   alignment?: string | null;
@@ -677,10 +679,12 @@ export interface ArmorClassResult {
  *   - Heavy (strMin != null): acBase, no DEX
  *   - Medium (acBase 12-15, strMin null): acBase + min(DEX, 2)
  *   - Light (acBase <= 12, strMin null): acBase + DEX
+ * defenseStyle: +1 CA from the Défense fighting style (wearing armor).
  */
 export function computeAC(
   entries: Array<{ item: { category: string; acBase: number | null; strMin: number | null; nameFr: string | null; name: string }; equipped: boolean }>,
   dexMod: number,
+  defenseStyle = false,
 ): ArmorClassResult {
   // Find equipped armor (non-shield) and shield
   let armor: { acBase: number; strMin: number | null; name: string } | null = null;
@@ -735,8 +739,29 @@ export function computeAC(
     source += ' · Bouclier +2';
   }
 
+  // Défense fighting style: +1 while wearing armor
+  if (defenseStyle && armor) {
+    ac += 1;
+    source += ' · Défense +1';
+  }
+
   return { ac, source, hasShield };
 }
+
+// ---------- Fighting styles (SRD) ----------
+
+export type FightingStyle = 'archery' | 'defense' | 'dueling' | 'great-weapon' | 'two-weapon';
+
+export const FIGHTING_STYLE_LABELS_FR: Record<FightingStyle, string> = {
+  archery: 'Archérie (+2 att. à distance)',
+  defense: 'Défense (+1 CA)',
+  dueling: 'Duel (+2 dégâts arme à une main)',
+  'great-weapon': 'Armes à deux mains',
+  'two-weapon': 'Combat à deux armes',
+};
+
+/** Classes that can pick a fighting style (SRD). */
+export const FIGHTING_STYLE_CLASSES: readonly string[] = ['Guerrier', 'Paladin', 'Rôdeur'];
 
 // ---------- Weapon attack & damage computation (SRD combat rules) ----------
 
@@ -1040,7 +1065,10 @@ function formatDiceWithMod(dice: string, mod: number): string | null {
  */
 export function computeWeaponStats(
   item: Pick<Item, 'category' | 'name' | 'nameFr' | 'description' | 'properties' | 'damageDice' | 'damageType'>,
-  character: Pick<Character, 'strength' | 'dexterity' | 'level' | 'characterClass'> & { weaponProficiencies?: string[] | null },
+  character: Pick<Character, 'strength' | 'dexterity' | 'level' | 'characterClass'> & {
+    weaponProficiencies?: string[] | null;
+    fightingStyle?: FightingStyle | null;
+  },
 ): WeaponAttackStats | null {
   if (item.category !== 'weapon') return null;
 
@@ -1088,9 +1116,16 @@ export function computeWeaponStats(
   const proficient =
     (prof.martial && !simple) || (prof.simple && simple) || prof.specific.includes(nameEn);
 
-  const attackBonus = abilityMod + (proficient ? proficiencyBonus(character.level ?? 1) : 0) + magicBonus;
+  const attackBonus = abilityMod
+    + (proficient ? proficiencyBonus(character.level ?? 1) : 0)
+    + magicBonus
+    // Fighting style: Archery — +2 to attack rolls with ranged weapons
+    + (character.fightingStyle === 'archery' && ranged ? 2 : 0);
 
-  const damageStr = dice ? formatDiceWithMod(dice, abilityMod + magicBonus) : null;
+  // Fighting style: Dueling — +2 damage with a one-handed melee weapon
+  // (the SRD "no other weapon" condition can't be checked per-item)
+  const dueling = character.fightingStyle === 'dueling' && !ranged && !props.includes('two-handed');
+  const damageStr = dice ? formatDiceWithMod(dice, abilityMod + magicBonus + (dueling ? 2 : 0)) : null;
   const twoHanded = base?.twoHandedDice ?? MUNDANE_WEAPONS.find((m) => m.nameEn === nameEn)?.twoHandedDice;
   const versatileDamageStr = twoHanded && dice ? formatDiceWithMod(twoHanded, abilityMod + magicBonus) : null;
 

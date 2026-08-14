@@ -431,6 +431,7 @@ export async function combatRoutes(app: FastifyInstance) {
           equipped: !!r.equipped,
         })),
         dexMod,
+        char.fighting_style === 'defense',
       );
       const ac = char.armor_class_override ?? acResult.ac;
 

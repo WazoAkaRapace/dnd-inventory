@@ -158,7 +158,7 @@ function CharactersTab({ characters, partyId, onReload }: { characters: Characte
         const prof = proficiencyBonus(level);
         const hasPerception = c.skillProficiencies?.includes('perception') ?? false;
         const pp = passivePerception(wisMod, prof, hasPerception);
-        const acResult = inv ? computeAC(entries, dexMod) : null;
+        const acResult = inv ? computeAC(entries, dexMod, c.fightingStyle === 'defense') : null;
         const effectiveAC = c.armorClassOverride ?? acResult?.ac ?? 10 + dexMod;
         const enc = inv?.encumbrance;
         const weightPct = enc ? Math.min(100, Math.round(enc.pct)) : 0;

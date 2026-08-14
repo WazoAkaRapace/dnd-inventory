@@ -123,7 +123,7 @@ export async function characterRoutes(app: FastifyInstance) {
         // Character sheet
         'level', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma',
         'characterClass', 'race', 'background', 'speed',
-        'skillProficiencies', 'savingThrowProficiencies', 'weaponProficiencies', 'spellSlotsUsed',
+        'skillProficiencies', 'savingThrowProficiencies', 'weaponProficiencies', 'fightingStyle', 'spellSlotsUsed',
         // Description / personality
         'alignment', 'sex', 'height', 'weight', 'age', 'skin', 'eyes', 'hair',
         'portraitUrl', 'personalityTraits', 'ideals', 'bonds', 'flaws', 'appearance',
@@ -143,6 +143,7 @@ export async function characterRoutes(app: FastifyInstance) {
         skillProficiencies: 'skill_proficiencies',
         savingThrowProficiencies: 'saving_throw_proficiencies',
         weaponProficiencies: 'weapon_proficiencies',
+        fightingStyle: 'fighting_style',
         spellSlotsUsed: 'spell_slots_used',
         portraitUrl: 'portrait_url',
         personalityTraits: 'personality_traits',
