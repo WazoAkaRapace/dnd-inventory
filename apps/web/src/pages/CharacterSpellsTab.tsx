@@ -242,11 +242,14 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
     setCastingSpell(null);
   };
 
-  // Group known spells by level
+  // Group known spells by level — prepared spells first, then alphabetical
   const spellsByLevel = [0,1,2,3,4,5,6,7,8,9].map((lvl) => ({
     level: lvl,
     spells: charSpells.filter((cs) => cs.spell.level === lvl)
-      .sort((a, b) => (a.spell.nameFr ?? a.spell.name).localeCompare(b.spell.nameFr ?? b.spell.name)),
+      .sort((a, b) =>
+        Number(b.prepared) - Number(a.prepared) ||
+        (a.spell.nameFr ?? a.spell.name).localeCompare(b.spell.nameFr ?? b.spell.name, 'fr'),
+      ),
   })).filter((g) => g.spells.length > 0);
 
   if (!isCaster && charSpells.length === 0) {
