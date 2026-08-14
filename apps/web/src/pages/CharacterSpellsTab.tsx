@@ -337,9 +337,9 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
       )}
 
       {/* Two-column layout on desktop: known spells (left) + catalog (right) */}
-      <div className="grid lg:grid-cols-[3fr_2fr] gap-4 items-start">
+      <div className="grid lg:grid-cols-[3fr_2fr] gap-4 items-start min-w-0">
         {/* Known spells */}
-        <section className="card p-4 sm:p-5 space-y-3">
+        <section className="card p-4 sm:p-5 space-y-3 min-w-0">
           <div className="flex items-center justify-between">
             <h2 className="font-display text-lg font-semibold flex items-center gap-2">
               Sorts connus <span className="text-ink-400 text-sm font-normal">({charSpells.length})</span>
@@ -395,21 +395,21 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                               aria-expanded={isExpanded}
                             >
                               <span className="font-medium text-sm text-ink-800 block truncate">{name}</span>
-                              <span className="flex items-center gap-1.5 text-xs text-ink-400">
-                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${SCHOOL_COLORS[spell.school] ?? 'bg-parchment-200'}`}>
+                              <span className="flex items-center gap-1.5 text-xs text-ink-400 min-w-0">
+                                <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium ${SCHOOL_COLORS[spell.school] ?? 'bg-parchment-200'}`}>
                                   {SPELL_SCHOOL_LABELS_FR[spell.school as SpellSchool] ?? spell.school}
                                 </span>
                                 {spell.concentration && (
-                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
+                                  <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
                                     🎯 Concentration
                                   </span>
                                 )}
                                 {spell.ritual && (
-                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700 border border-purple-200">
+                                  <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700 border border-purple-200">
                                     ⚗ Rituel
                                   </span>
                                 )}
-                                <span className="truncate">{spell.castingTime}</span>
+                                <span className="truncate min-w-0">{spell.castingTime}</span>
                               </span>
                             </button>
                             <button
