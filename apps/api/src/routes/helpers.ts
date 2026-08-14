@@ -148,6 +148,7 @@ export function mapCharacterSummary(row: any): CharacterSummary {
     deathSaveSuccesses: row.death_save_successes ?? 0,
     deathSaveFailures: row.death_save_failures ?? 0,
     inspiration: !!row.inspiration,
+    concentrating: !!row.concentrating,
   };
 }
 

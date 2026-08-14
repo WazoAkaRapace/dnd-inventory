@@ -11,7 +11,11 @@ import {
   mapCharacter,
   mapCharacterSummary,
 } from './helpers.ts';
-import type { CreateCharacterPayload, PatchCharacterPayload } from '@dnd-inventory/shared';
+import type {
+  CreateCharacterPayload,
+  PatchCharacterPayload,
+  ConcentrationCheck,
+} from '@dnd-inventory/shared';
 
 export async function characterRoutes(app: FastifyInstance) {
   // ---------- Create character in a party ----------
@@ -123,7 +127,7 @@ export async function characterRoutes(app: FastifyInstance) {
         'alignment', 'sex', 'height', 'weight', 'age', 'skin', 'eyes', 'hair',
         'portraitUrl', 'personalityTraits', 'ideals', 'bonds', 'flaws', 'appearance',
         'armorClassOverride',
-        'deathSaveSuccesses', 'deathSaveFailures', 'inspiration',
+        'deathSaveSuccesses', 'deathSaveFailures', 'inspiration', 'concentrating',
       ];
       const sets: string[] = [];
       const vals: any[] = [];
@@ -165,6 +169,28 @@ export async function characterRoutes(app: FastifyInstance) {
         }
       }
       if (sets.length === 0) return reply.code(400).send({ error: 'no fields to update' });
+
+      // --- Concentration: a CON save (DC 10 or half damage, highest) is
+      // required when HP drops while concentrating on a spell.
+      let concentrationCheck: ConcentrationCheck | null = null;
+      if (body.currentHp !== undefined) {
+        const concentratingAfter = body.concentrating !== undefined ? !!body.concentrating : !!char.concentrating;
+        const damage = (char.current_hp ?? 0) - body.currentHp;
+        if (concentratingAfter && damage > 0 && body.currentHp > 0) {
+          concentrationCheck = {
+            characterId: char.id,
+            characterName: char.name,
+            damage,
+            dc: Math.max(10, Math.floor(damage / 2)),
+            ownerId: char.owner_id,
+          };
+        }
+        // At 0 HP the character is unconscious → concentration ends automatically.
+        if (concentratingAfter && body.currentHp <= 0 && !sets.some((s) => s.startsWith('concentrating'))) {
+          sets.push('concentrating = 0'); // literal — no ? placeholder, no val needed
+        }
+      }
+
       vals.push(char.id);
       db.prepare(`UPDATE characters SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
 
@@ -176,8 +202,18 @@ export async function characterRoutes(app: FastifyInstance) {
       // Detect if this was a coin change vs stat change for the event action
       const coinKeys = ['copper', 'silver', 'electrum', 'gold', 'platinum'];
       const isCoinChange = Object.keys(body).some((k) => coinKeys.includes(k));
-      bus.emitChange({ type: 'character:change', partyId: char.party_id, characterId: char.id, action: isCoinChange ? 'coins' : 'stats', actorUserId: userId });
-      return reply.send({ character: mapCharacter(row) });
+      bus.emitChange({
+        type: 'character:change',
+        partyId: char.party_id,
+        characterId: char.id,
+        action: isCoinChange ? 'coins' : 'stats',
+        actorUserId: userId,
+        ...(concentrationCheck ? { concentration: concentrationCheck } : {}),
+      });
+      return reply.send({
+        character: mapCharacter(row),
+        ...(concentrationCheck ? { concentrationCheck } : {}),
+      });
     },
   );
 

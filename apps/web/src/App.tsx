@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
+import { useState } from 'react';
 import { useAuth } from './auth';
-import { useSync } from './sync';
+import { useSync, useSyncEvent } from './sync';
 import { HeaderProvider, useHeaderState } from './headerContext';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -11,6 +12,8 @@ import GmDashboardPage from './pages/GmDashboardPage';
 import NpcPage from './pages/NpcPage';
 import CombatPage from './pages/CombatPage';
 import CombatWidget from './components/CombatWidget';
+import ConcentrationAlert from './components/ConcentrationAlert';
+import type { ConcentrationCheck } from '@dnd-inventory/shared';
 
 function SyncIndicator() {
   const { status } = useSync();
@@ -114,6 +117,22 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * Shows a concentration banner when a sync event reports that one of the
+ * current user's characters took damage while concentrating (e.g. the GM
+ * lowered their HP from the combat tracker).
+ */
+function ConcentrationWatcher() {
+  const { user } = useAuth();
+  const [check, setCheck] = useState<ConcentrationCheck | null>(null);
+  useSyncEvent((event) => {
+    const c = event.concentration;
+    if (c && user && c.ownerId === user.id) setCheck(c);
+  }, [user?.id]);
+  if (!check) return null;
+  return <ConcentrationAlert check={check} onDone={() => setCheck(null)} />;
+}
+
 export default function App() {
   return (
     <HeaderProvider>
@@ -132,6 +151,7 @@ export default function App() {
         </Routes>
       </main>
       <CombatWidget />
+      <ConcentrationWatcher />
     </HeaderProvider>
   );
 }

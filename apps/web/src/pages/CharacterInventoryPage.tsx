@@ -14,6 +14,7 @@ import type {
   StorageLocation,
   StorageType,
   LocationWeight,
+  ConcentrationCheck,
 } from '@dnd-inventory/shared';
 import {
   CATEGORY_LABELS_FR,
@@ -28,6 +29,7 @@ import CharacterFeaturesTab from './CharacterFeaturesTab';
 import CharacterDescriptionTab from './CharacterDescriptionTab';
 import NpcPage from './NpcPage';
 import CharacterNotesTab from './CharacterNotesTab';
+import ConcentrationAlert from '../components/ConcentrationAlert';
 
 type CharacterTab = 'inventory' | 'stats' | 'spells' | 'skills' | 'features' | 'description' | 'npcs' | 'notes';
 import {
@@ -1974,6 +1976,7 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
   const [conditions, setConditions] = useState<string[]>(character.conditions);
   const [foodDays, setFoodDays] = useState(character.foodDays);
   const [waterDays, setWaterDays] = useState(character.waterDays);
+  const [concCheck, setConcCheck] = useState<ConcentrationCheck | null>(null);
   const [survivalCollapsed, setSurvivalCollapsed] = useState(() => {
     try { const v = localStorage.getItem('survivalCollapsed'); return v === null ? true : v === '1'; } catch { return true; }
   });
@@ -2091,10 +2094,24 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
           <div id="survival-panel-content" className="space-y-4 pt-1">
       {/* Exhaustion tracker */}
       {/* HP tracker */}
-      <HpTracker character={character} charId={charId} markLocalMutation={markLocalMutation} onSaved={onSaved} onError={onError} />
+      <HpTracker
+        character={character}
+        charId={charId}
+        markLocalMutation={markLocalMutation}
+        onSaved={onSaved}
+        onError={onError}
+        onConcentrationCheck={setConcCheck}
+      />
+      {concCheck && (
+        <ConcentrationAlert
+          check={concCheck}
+          onDone={() => setConcCheck(null)}
+          onBreak={() => patchCharacter({ concentrating: false }, 'Erreur de mise à jour')}
+        />
+      )}
 
-      {/* Inspiration toggle */}
-      <div className="flex items-center gap-2">
+      {/* Inspiration + Concentration toggles */}
+      <div className="flex items-center gap-2 flex-wrap">
         <button
           onClick={async () => {
             markLocalMutation();
@@ -2113,6 +2130,19 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
         >
           <span className="text-base">{character.inspiration ? '✨' : '✧'}</span>
           Inspiration
+        </button>
+        <button
+          onClick={() => patchCharacter({ concentrating: !character.concentrating }, 'Erreur de mise à jour')}
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${
+            character.concentrating
+              ? 'bg-indigo-100 text-indigo-700 border-indigo-400'
+              : 'bg-parchment-100 text-ink-400 border-parchment-300 hover:border-indigo-400'
+          }`}
+          aria-pressed={character.concentrating}
+          title="Tu concentres un sort. Si tu subis des dégâts : jet de sauvegarde de Constitution DD 10 ou ½ dégâts (le plus élevé) pour le maintenir."
+        >
+          <span className="text-base">{character.concentrating ? '🌀' : '◌'}</span>
+          Concentration
         </button>
       </div>
 
@@ -2339,12 +2369,13 @@ function DeathSaveTracker({ character, charId, markLocalMutation, onSaved, onErr
   );
 }
 
-function HpTracker({ character, charId, markLocalMutation, onSaved, onError }: {
+function HpTracker({ character, charId, markLocalMutation, onSaved, onError, onConcentrationCheck }: {
   character: Character;
   charId: number;
   markLocalMutation: () => void;
   onSaved: () => Promise<void>;
   onError: (msg: string) => void;
+  onConcentrationCheck: (check: ConcentrationCheck) => void;
 }) {
   const [maxHp, setMaxHp] = useState(character.maxHp);
   const [currentHp, setCurrentHp] = useState(character.currentHp);
@@ -2357,7 +2388,9 @@ function HpTracker({ character, charId, markLocalMutation, onSaved, onError }: {
   const patch = async (field: string, value: number, setter: (n: number) => void) => {
     markLocalMutation();
     try {
-      await api.patch(`/api/characters/${charId}`, { [field]: value });
+      const res = await api.patch(`/api/characters/${charId}`, { [field]: value });
+      // Losing HP while concentrating requires a CON save — surface it immediately.
+      if (res?.data?.concentrationCheck) onConcentrationCheck(res.data.concentrationCheck);
       await onSaved();
     } catch (err: any) {
       onError(err.response?.data?.error || 'Erreur');

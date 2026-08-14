@@ -9,6 +9,7 @@
  * in-process EventEmitter is sufficient — no Redis needed.
  */
 import { EventEmitter } from 'node:events';
+import type { ConcentrationCheck } from '@dnd-inventory/shared';
 
 export interface SyncEvent {
   type: 'inventory:change' | 'character:change' | 'party:change' | 'combat:change';
@@ -18,6 +19,8 @@ export interface SyncEvent {
   action?: 'add' | 'remove' | 'transfer' | 'adjust' | 'coins' | 'stats' | 'custom-item' | 'join' | 'initiative' | 'turn' | 'hp' | 'condition';
   itemName?: string;
   actorUserId?: number;
+  /** Concentration save required — pushed to the character's owner (damage taken while concentrating). */
+  concentration?: ConcentrationCheck;
 }
 
 class SyncBus extends EventEmitter {

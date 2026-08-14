@@ -16,6 +16,7 @@ import { abilityModifier, computeAC } from '@dnd-inventory/shared';
 import type {
   Combatant,
   CombatantCondition,
+  ConcentrationCheck,
   Encounter,
   EncounterDetail,
   EncounterSummary,
@@ -544,8 +545,42 @@ export async function combatRoutes(app: FastifyInstance) {
       vals.push(combatant.id);
       db.prepare(`UPDATE combatants SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
 
+      // --- Concentration: if the GM damaged a player who is concentrating on
+      // a spell, that player must roll a CON save (DC 10 or half damage).
+      let concentration: ConcentrationCheck | undefined;
+      if (
+        body.hitPoints !== undefined &&
+        combatant.type === 'player' &&
+        combatant.character_id
+      ) {
+        const ch = db.prepare('SELECT id, name, owner_id, concentrating FROM characters WHERE id = ?')
+          .get(combatant.character_id) as any;
+        if (ch?.concentrating) {
+          const damage = (combatant.hit_points ?? 0) - Math.max(0, body.hitPoints);
+          if (damage > 0 && body.hitPoints > 0) {
+            concentration = {
+              characterId: ch.id,
+              characterName: ch.name,
+              damage,
+              dc: Math.max(10, Math.floor(damage / 2)),
+              ownerId: ch.owner_id,
+            };
+          } else if (body.hitPoints <= 0) {
+            // Unconscious → concentration ends automatically on the sheet too.
+            db.prepare('UPDATE characters SET concentrating = 0 WHERE id = ?').run(ch.id);
+            bus.emitChange({ type: 'character:change', partyId: enc.party_id, characterId: ch.id, action: 'stats', actorUserId: userId });
+          }
+        }
+      }
+
       const row = db.prepare('SELECT * FROM combatants WHERE id = ?').get(combatant.id);
-      bus.emitChange({ type: 'combat:change', partyId: enc.party_id, action: 'hp', actorUserId: userId });
+      bus.emitChange({
+        type: 'combat:change',
+        partyId: enc.party_id,
+        action: 'hp',
+        actorUserId: userId,
+        ...(concentration ? { concentration } : {}),
+      });
       return reply.send({ combatant: mapCombatant(row) });
     },
   );

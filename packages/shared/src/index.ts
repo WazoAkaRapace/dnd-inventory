@@ -268,6 +268,18 @@ export interface CharacterSummary {
   deathSaveSuccesses: number;  // 0-3
   deathSaveFailures: number;   // 0-3
   inspiration: boolean;
+  concentrating: boolean;      // player is concentrating on a spell
+}
+
+/** A Constitution save required to maintain concentration after taking damage. */
+export interface ConcentrationCheck {
+  characterId: number;
+  characterName: string;
+  damage: number;
+  /** DC = max(10, floor(damage / 2)) */
+  dc: number;
+  /** Set in sync events: the user whose character must roll the save. */
+  ownerId?: number;
 }
 
 export interface Character extends CharacterSummary {
@@ -341,6 +353,7 @@ export interface PatchCharacterPayload {
   deathSaveSuccesses?: number;
   deathSaveFailures?: number;
   inspiration?: boolean;
+  concentrating?: boolean;
 }
 
 // ---------- D&D 5e Abilities (Caractéristiques) ----------

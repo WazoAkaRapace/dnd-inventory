@@ -11,6 +11,14 @@ export interface SyncEvent {
   action?: string;
   itemName?: string;
   actorUserId?: number;
+  /** Concentration save required — only relevant to the character's owner. */
+  concentration?: {
+    characterId: number;
+    characterName: string;
+    damage: number;
+    dc: number;
+    ownerId?: number;
+  };
 }
 
 type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
@@ -81,6 +89,13 @@ export function SyncProvider({ user, children }: { user: User | null; children: 
     ws.onmessage = (e) => {
       try {
         const event = JSON.parse(e.data) as SyncEvent;
+        // Concentration alerts are one-shot and must not be coalesced away
+        // by the debounce below (a follow-up character:change would replace
+        // them before the timer fires).
+        if (event.concentration) {
+          dispatchToHandlers(event);
+          return;
+        }
         // Debounce: store the latest event and schedule a dispatch.
         // If another event arrives before the timer fires, the earlier one
         // is replaced — only one refetch happens per 300ms window.
