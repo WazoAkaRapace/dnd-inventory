@@ -11,7 +11,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
-import { requireUser, isPartyMember, isPartyGM, getUserId } from './helpers.ts';
+import { requireUser, isPartyMember, isPartyGM, getUserId, mirrorConditionsToCharacter } from './helpers.ts';
 import { abilityModifier, computeAC, CONCENTRATION_BREAKING_CONDITIONS_FR } from '@dnd-inventory/shared';
 import type {
   Combatant,
@@ -597,6 +597,20 @@ export async function combatRoutes(app: FastifyInstance) {
         }
       }
 
+      // --- Condition sync: tracker condition changes mirror to the sheet
+      // (names only — durations stay a combat-tracker detail).
+      if (body.conditions !== undefined && combatant.type === 'player' && combatant.character_id) {
+        const prevNames = parseConditions(combatant.conditions).map((c) => c.name);
+        const nextNames = body.conditions.map((c) => c.name);
+        mirrorConditionsToCharacter(
+          enc.party_id,
+          combatant.character_id,
+          nextNames.filter((n) => !prevNames.includes(n)),
+          prevNames.filter((n) => !nextNames.includes(n)),
+          userId,
+        );
+      }
+
       // --- Concentration: an incapacitating condition applied by the GM
       // (Inconscient, Paralysé, …) breaks the player's concentration.
       let concentrationBroken: string | undefined;
@@ -697,10 +711,11 @@ export async function combatRoutes(app: FastifyInstance) {
         for (const c of sameTurn) {
           if (c.conditions.length === 0) continue;
           let changed = false;
+          const expired: string[] = [];
           const updated = c.conditions
             .map((cond) => {
               if (cond.duration === null) return cond; // until dispelled
-              if (cond.duration <= 1) { changed = true; return null; } // expired
+              if (cond.duration <= 1) { changed = true; expired.push(cond.name); return null; } // expired
               changed = true;
               return { ...cond, duration: cond.duration - 1 };
             })
@@ -708,6 +723,10 @@ export async function combatRoutes(app: FastifyInstance) {
           if (changed) {
             db.prepare('UPDATE combatants SET conditions = ? WHERE id = ?')
               .run(JSON.stringify(updated), c.id);
+            // Expired conditions leave the character sheet too
+            if (expired.length > 0 && c.type === 'player' && c.characterId) {
+              mirrorConditionsToCharacter(enc.party_id, c.characterId, [], expired, userId);
+            }
           }
         }
       }

@@ -3,6 +3,7 @@
  */
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
+import { bus } from '../sync/bus.ts';
 import type {
   Item,
   CharacterSummary,
@@ -297,4 +298,95 @@ export function mapFeature(row: any): CharacterFeature {
     sortOrder: row.sort_order,
     createdAt: row.created_at,
   };
+}
+
+// ---------- Condition sync between character sheet and combat tracker ----------
+
+/** Parse a characters.conditions column (string[] of French names). */
+function parseCharConditions(raw: any): string[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw as string[];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Parse a combatants.conditions column ({name, duration}[]). */
+function parseCombatantConditions(raw: any): Array<{ name: string; duration: number | null }> {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw as any;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Sheet → tracker: apply condition name changes (added/removed) to a
+ * character's combatants in non-ended encounters. Sheet-added conditions
+ * carry no duration (until removed); tracker-only conditions with durations
+ * are preserved. Emits combat:change.
+ */
+export function mirrorConditionsToCombatants(
+  partyId: number,
+  charId: number,
+  added: string[],
+  removed: string[],
+  actorUserId: number,
+): void {
+  if (added.length === 0 && removed.length === 0) return;
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT c.id, c.conditions FROM combatants c
+    JOIN encounters e ON e.id = c.encounter_id
+    WHERE c.character_id = ? AND c.type = 'player' AND e.status != 'ended'
+  `).all(charId) as any[];
+  let changed = false;
+  for (const row of rows) {
+    let conds = parseCombatantConditions(row.conditions);
+    conds = conds.filter((c) => !removed.includes(c.name));
+    for (const name of added) {
+      if (!conds.some((c) => c.name === name)) conds.push({ name, duration: null });
+    }
+    const next = JSON.stringify(conds);
+    if (next !== row.conditions) {
+      db.prepare('UPDATE combatants SET conditions = ? WHERE id = ?').run(next, row.id);
+      changed = true;
+    }
+  }
+  if (changed) {
+    bus.emitChange({ type: 'combat:change', partyId, action: 'condition', actorUserId });
+  }
+}
+
+/**
+ * Tracker → sheet: apply condition name changes to the character sheet
+ * (plain name list, no durations). Emits character:change.
+ */
+export function mirrorConditionsToCharacter(
+  partyId: number,
+  characterId: number,
+  added: string[],
+  removed: string[],
+  actorUserId: number,
+): void {
+  if (added.length === 0 && removed.length === 0) return;
+  const db = getDb();
+  const ch = db.prepare('SELECT conditions FROM characters WHERE id = ?').get(characterId) as any;
+  if (!ch) return;
+  let list = parseCharConditions(ch.conditions);
+  list = list.filter((n) => !removed.includes(n));
+  for (const name of added) {
+    if (!list.includes(name)) list.push(name);
+  }
+  const next = JSON.stringify(list);
+  if (next !== ch.conditions) {
+    db.prepare('UPDATE characters SET conditions = ? WHERE id = ?').run(next, characterId);
+    bus.emitChange({ type: 'character:change', partyId, characterId, action: 'condition', actorUserId });
+  }
 }

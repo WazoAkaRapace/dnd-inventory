@@ -10,6 +10,7 @@ import {
   isPartyGM,
   mapCharacter,
   mapCharacterSummary,
+  mirrorConditionsToCombatants,
 } from './helpers.ts';
 import { CONCENTRATION_BREAKING_CONDITIONS_FR } from '@dnd-inventory/shared';
 import type {
@@ -242,6 +243,24 @@ export async function characterRoutes(app: FastifyInstance) {
         if (combatantRows.length > 0) {
           bus.emitChange({ type: 'combat:change', partyId: char.party_id, action: 'hp', actorUserId: userId });
         }
+      }
+
+      // --- Condition sync: sheet condition changes mirror to the combat
+      // tracker (diff vs the previous list, durations left untouched).
+      if (body.conditions !== undefined) {
+        try {
+          const prev: string[] = char.conditions
+            ? (typeof char.conditions === 'string' ? JSON.parse(char.conditions) : char.conditions)
+            : [];
+          const nextList: string[] = body.conditions;
+          mirrorConditionsToCombatants(
+            char.party_id,
+            char.id,
+            nextList.filter((c) => !prev.includes(c)),
+            prev.filter((c) => !nextList.includes(c)),
+            userId,
+          );
+        } catch { /* mirror is best-effort */ }
       }
 
       const row = db.prepare(`
