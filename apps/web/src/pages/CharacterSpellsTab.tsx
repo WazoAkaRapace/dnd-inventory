@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../api';
 import { BottomSheet } from '../components/ui';
+import CastSpellSheet from '../components/CastSpellSheet';
 import {
   type Character,
   type Spell,
@@ -64,6 +65,9 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
 
   // Expanded spell detail (by character_spell link id or catalog spell id)
   const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  // Casting: the spell currently in the cast sheet
+  const [castingSpell, setCastingSpell] = useState<Spell | null>(null);
 
   const classInfo = findClass(character.characterClass);
   const castingType: SpellcastingType = classInfo?.spellcasting ?? 'none';
@@ -210,6 +214,32 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
     } catch {
       onError('Erreur de mise à jour');
     }
+  };
+
+  /**
+   * Cast a spell at the chosen level: consume one slot of that level and,
+   * for concentration spells, take over the concentration flag (breaking
+   * any spell already being concentrated on).
+   */
+  const castSpell = async (level: number) => {
+    if (!castingSpell) return;
+    const fields: Record<string, unknown> = {};
+    if (level > 0) {
+      const used = [...slotsUsed];
+      if (used[level - 1] >= (slots[level - 1] ?? 0)) return;
+      used[level - 1] = used[level - 1] + 1;
+      fields.spellSlotsUsed = used;
+    }
+    if (castingSpell.concentration) fields.concentrating = true;
+    if (Object.keys(fields).length > 0) {
+      try {
+        await api.patch(`/api/characters/${charId}`, fields);
+        await onSaved();
+      } catch {
+        onError('Erreur lors du lancement');
+      }
+    }
+    setCastingSpell(null);
   };
 
   // Group known spells by level
@@ -372,6 +402,14 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                               </span>
                             </button>
                             <button
+                              onClick={() => setCastingSpell(spell)}
+                              className="text-sm shrink-0 px-1.5 py-1 rounded-md bg-parchment-100 hover:bg-gold-100 text-ink-500 hover:text-gold-600 border border-parchment-200 transition-colors"
+                              aria-label={`Lancer ${name}`}
+                              title="Lancer le sort"
+                            >
+                              🪄
+                            </button>
+                            <button
                               onClick={() => removeSpell(cs.id)}
                               className="text-ink-300 hover:text-red-500 text-sm shrink-0 px-1"
                               aria-label={`Oublier ${name}`}
@@ -424,6 +462,18 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
       <BottomSheet open={catalogOpen} onClose={() => setCatalogOpen(false)} title="Grimoire">
         <SpellCatalog {...catalogProps} />
       </BottomSheet>
+
+      {/* Cast sheet (portal — works above any stacking context) */}
+      {castingSpell && (
+        <CastSpellSheet
+          spell={castingSpell}
+          slots={slots}
+          slotsUsed={slotsUsed}
+          concentrating={!!character.concentrating}
+          onClose={() => setCastingSpell(null)}
+          onCast={castSpell}
+        />
+      )}
     </div>
   );
 }
