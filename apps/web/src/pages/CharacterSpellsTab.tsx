@@ -427,23 +427,6 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                           </div>
                           {isExpanded && (
                             <div className="px-3 pb-3 pt-1 border-t border-parchment-200 text-xs text-ink-600 space-y-1.5">
-                              <p className={`pt-1 inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${SCHOOL_COLORS[spell.school] ?? 'bg-parchment-200'}`}>
-                                {SPELL_SCHOOL_LABELS_FR[spell.school as SpellSchool] ?? spell.school}
-                              </p>
-                              {(spell.concentration || spell.ritual) && (
-                                <div className="flex flex-wrap gap-1.5 pt-1">
-                                  {spell.concentration && (
-                                    <span className="px-2 py-1 rounded-md bg-indigo-100 text-indigo-800 text-[11px] font-semibold border border-indigo-300">
-                                      🌀 Nécessite de la concentration
-                                    </span>
-                                  )}
-                                  {spell.ritual && (
-                                    <span className="px-2 py-1 rounded-md bg-purple-100 text-purple-800 text-[11px] font-semibold border border-purple-300">
-                                      ⚗ Peut être lancé en rituel (+10 min)
-                                    </span>
-                                  )}
-                                </div>
-                              )}
                               {spell.descriptionFr ?? spell.description}
                               {spell.higherLevelFr && (
                                 <p className="text-ink-400 italic"><strong>Aux niveaux supérieurs :</strong> {spell.higherLevelFr}</p>
@@ -455,13 +438,43 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                                 isCaster={isCaster}
                                 charLevel={level}
                               />
-                              <div className="flex flex-wrap gap-x-3 gap-y-0.5 pt-1 text-ink-400">
-                                <span>⏱ {spell.castingTime}</span>
-                                <span>📡 {spell.rangeText}</span>
-                                <span>⏳ {spell.duration}</span>
-                                <span>📝 {spell.components.join(', ')}</span>
-                                {spell.material && <span>💎 {spell.material}</span>}
+                              {/* All carac chips on one bottom line */}
+                              <div className="flex flex-wrap gap-1.5 pt-1">
+                                <span className={`px-2 py-1 rounded-md text-[10px] font-medium ${SCHOOL_COLORS[spell.school] ?? 'bg-parchment-200'}`}>
+                                  {SPELL_SCHOOL_LABELS_FR[spell.school as SpellSchool] ?? spell.school}
+                                </span>
+                                {spell.concentration && (
+                                  <span className="px-2 py-1 rounded-md bg-indigo-100 text-indigo-800 text-[10px] font-semibold border border-indigo-300">
+                                    🌀 Concentration
+                                  </span>
+                                )}
+                                {spell.ritual && (
+                                  <span className="px-2 py-1 rounded-md bg-purple-100 text-purple-800 text-[10px] font-semibold border border-purple-300">
+                                    ⚗ Rituel
+                                  </span>
+                                )}
+                                {spell.castingTime && (
+                                  <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full truncate">
+                                    ⏱ {spell.castingTime}
+                                  </span>
+                                )}
+                                {spell.rangeText && (
+                                  <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full truncate">
+                                    📡 {spell.rangeText}
+                                  </span>
+                                )}
+                                {spell.duration && (
+                                  <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full truncate">
+                                    ⏳ {spell.duration}
+                                  </span>
+                                )}
+                                <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full truncate">
+                                  📝 {spell.components.join(', ') || '—'}
+                                </span>
                               </div>
+                              {spell.material && (
+                                <p className="text-ink-400 truncate">💎 {spell.material}</p>
+                              )}
                             </div>
                           )}
                         </li>
@@ -764,24 +777,10 @@ function SpellCatalog({
                   </div>
                   {isExpanded && (
                     <div className="px-3 pb-3 pt-1 border-t border-parchment-200 text-xs text-ink-600 space-y-1.5">
-                      <p className={`pt-1 inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${SCHOOL_COLORS[spell.school] ?? 'bg-parchment-200'}`}>
-                        {SPELL_SCHOOL_LABELS_FR[spell.school as SpellSchool] ?? spell.school}
-                      </p>
-                      {(spell.concentration || spell.ritual) && (
-                        <div className="flex flex-wrap gap-1.5 pt-1">
-                          {spell.concentration && (
-                            <span className="px-2 py-1 rounded-md bg-indigo-100 text-indigo-800 text-[11px] font-semibold border border-indigo-300">
-                              🌀 Nécessite de la concentration
-                            </span>
-                          )}
-                          {spell.ritual && (
-                            <span className="px-2 py-1 rounded-md bg-purple-100 text-purple-800 text-[11px] font-semibold border border-purple-300">
-                              ⚗ Peut être lancé en rituel (+10 min)
-                            </span>
-                          )}
-                        </div>
-                      )}
                       <p>{spell.descriptionFr ?? spell.description}</p>
+                      {spell.higherLevelFr && (
+                        <p className="text-ink-400 italic"><strong>Aux niveaux supérieurs :</strong> {spell.higherLevelFr}</p>
+                      )}
                       <SpellStatBadges
                         spell={spell}
                         castingMod={castingMod}
@@ -789,11 +788,39 @@ function SpellCatalog({
                         isCaster={isCaster}
                         charLevel={charLevel}
                       />
-                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 pt-1 text-ink-400">
-                        <span>⏱ {spell.castingTime}</span>
-                        <span>📡 {spell.rangeText}</span>
-                        <span>⏳ {spell.duration}</span>
-                        <span>📝 {spell.components.join(', ')}</span>
+                      {/* All carac chips on one bottom line */}
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        <span className={`px-2 py-1 rounded-md text-[10px] font-medium ${SCHOOL_COLORS[spell.school] ?? 'bg-parchment-200'}`}>
+                          {SPELL_SCHOOL_LABELS_FR[spell.school as SpellSchool] ?? spell.school}
+                        </span>
+                        {spell.concentration && (
+                          <span className="px-2 py-1 rounded-md bg-indigo-100 text-indigo-800 text-[10px] font-semibold border border-indigo-300">
+                            🌀 Concentration
+                          </span>
+                        )}
+                        {spell.ritual && (
+                          <span className="px-2 py-1 rounded-md bg-purple-100 text-purple-800 text-[10px] font-semibold border border-purple-300">
+                            ⚗ Rituel
+                          </span>
+                        )}
+                        {spell.castingTime && (
+                          <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full truncate">
+                            ⏱ {spell.castingTime}
+                          </span>
+                        )}
+                        {spell.rangeText && (
+                          <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full truncate">
+                            📡 {spell.rangeText}
+                          </span>
+                        )}
+                        {spell.duration && (
+                          <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full truncate">
+                            ⏳ {spell.duration}
+                          </span>
+                        )}
+                        <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full truncate">
+                          📝 {spell.components.join(', ') || '—'}
+                        </span>
                       </div>
                       {spell.classes.length > 0 && (
                         <p className="text-ink-400">Classes : {spell.classes.join(', ')}</p>
