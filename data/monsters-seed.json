@@ -388,7 +388,8 @@
         "name": "Contact paralysant",
         "desc": "Attaque de sort au corps à corps : +8 pour\ntoucher, allonge 1,50 m, une créature. Touché: 10 (3d6) dégâts\nde froid. La cible doit réussir un jet de sauvegarde de Constitution\nDD 20, sans quoi elle est paralysée pendant 1 minute. La cible peut\nretenter le jet de sauvegarde à la fin de chacun de ses tours et met\nfin à l'effet dont elle est victime en cas de réussite.",
         "damageDice": "3d6",
-        "damageType": "de froid"
+        "damageType": "de froid",
+        "attackBonus": 8
       },
       {
         "name": "Bâton (bâton +3)",
@@ -3590,7 +3591,8 @@
       },
       {
         "name": "Souffle (Recharge 5–6)",
-        "desc": "Un arbre feuilledragon est capable d'utiliser ses feuilles afin de créer un souffle correspondant au dragon qu'il honore. Le souffle de la créature inflige 49 (14d6) dégâts, ou moitié moins aux cibles qui réussissent un jet de sauvegarde de Dextérité DD 15. Un arbre noir, cuivre ou vert crache une ligne de 18 mètres d'acide ; un arbre bleu ou bronze crache une ligne de 18 mètres de foudre ; un arbre airain, or ou rouge crache un cône de 9 mètres de feu ; et un arbre argent ou blanc crache un cône de 9 mètres de froid."
+        "desc": "Un arbre feuilledragon est capable d'utiliser ses feuilles afin de créer un souffle correspondant au dragon qu'il honore. Le souffle de la créature inflige 49 (14d6) dégâts, ou moitié moins aux cibles qui réussissent un jet de sauvegarde de Dextérité DD 15. Un arbre noir, cuivre ou vert crache une ligne de 18 mètres d'acide ; un arbre bleu ou bronze crache une ligne de 18 mètres de foudre ; un arbre airain, or ou rouge crache un cône de 9 mètres de feu ; et un arbre argent ou blanc crache un cône de 9 mètres de froid.",
+        "damageDice": "14d6"
       }
     ],
     "legendaryActions": [],
@@ -7968,7 +7970,8 @@
       },
       {
         "name": "Souffle de feu (Recharge 5-6)",
-        "desc": "Camazotz peut cracher un cône de feu impie de 9 mètres. Toute créature prise dans la zone d'effet subit 55 (10d10) dégâts, qui sont pour moitié de feu et pour moitié nécrotiques, ou moitié moins de dégâts si elle réussit un jet de sauvegarde de Dextérité DD 22."
+        "desc": "Camazotz peut cracher un cône de feu impie de 9 mètres. Toute créature prise dans la zone d'effet subit 55 (10d10) dégâts, qui sont pour moitié de feu et pour moitié nécrotiques, ou moitié moins de dégâts si elle réussit un jet de sauvegarde de Dextérité DD 22.",
+        "damageDice": "10d10"
       }
     ],
     "legendaryActions": [
@@ -9269,7 +9272,8 @@
         "name": "Épée à deux mains",
         "desc": "Attaque d'arme au corps à corps : +9 pour\ntoucher, allonge 1,50 m, une cible. Touché: 12 (2d6+5) dégâts\ntranchants, plus 7 (2d6) dégâts tranchants si le champion possède\nplus de la moitié de son total de points de vie.",
         "damageDice": "2d6+5",
-        "damageType": "tranchants"
+        "damageType": "tranchants",
+        "attackBonus": 9
       },
       {
         "name": "Arc court",
@@ -10093,7 +10097,8 @@
         "name": "Lance",
         "desc": "Attaque d'arme à distance ou au corps à corps : +4 pour\ntoucher, allonge 1,50 m ou portée 6/18 m, une cible. Touché: 5\n(1d6+2) dégâts perforants ou 6 (1d8+2) dégâts perforants si utili\nsée à deux pour faire une attaque au corps à corps.",
         "damageDice": "1d6+2",
-        "damageType": "perforants"
+        "damageType": "perforants",
+        "attackBonus": 4
       },
       {
         "name": "Spores (1/jour)",
@@ -38457,7 +38462,8 @@
         "name": "Dague",
         "desc": "Attaque d'arme à distance ou au corps à corps: +4 pour\ntoucher, allonge 1,50 m ou portée 6/18 m, une cible. Touché: 4\n(1d4+2) dégâts perforants et la cible doit réussir un jet de sauve\ngarde de Constitution DD 12 ou subir 5 (2d4) dégâts de poison.",
         "damageDice": "1d4+2",
-        "damageType": "de poison"
+        "damageType": "de poison",
+        "attackBonus": 4
       }
     ],
     "legendaryActions": [],
@@ -38540,7 +38546,8 @@
         "name": "Dague",
         "desc": "Attaque d'arme à distance ou au corps à corps: +5 pour\ntoucher, allonge 1,50 m ou portée 6/18 m, une cible. Touché:\n5 (1d4+3) dégâts perforants et la cible doit réussir un jet de sauve\ngarde de Constitution DD 12 ou subir 5 (2d4) dégâts de poison.",
         "damageDice": "1d4+3",
-        "damageType": "de poison"
+        "damageType": "de poison",
+        "attackBonus": 5
       },
       {
         "name": "Arc court",
@@ -38635,7 +38642,8 @@
         "name": "Dague",
         "desc": "Attaque d'arme à distance ou au corps à corps: +5 pour\ntoucher, allonge 1,50 m ou portée 6/18 m, une cible. Touché:\n5 (1d4+3) dégâts perforants et la cible doit réussir un jet de sauve\ngarde de Constitution DD 12 ou subir 5 (2d4) dégâts de poison.",
         "damageDice": "1d4+3",
-        "damageType": "de poison"
+        "damageType": "de poison",
+        "attackBonus": 5
       },
       {
         "name": "Arc court",
@@ -39445,7 +39453,8 @@
         "name": "Hachette",
         "desc": "Attaque d'arme à distance ou au corps à corps: +3 pour\ntoucher, allonge 1,50 m ou portée 6/18 m, une cible. Touché: 4\n(1d6+1) dégâts tranchants.",
         "damageDice": "1d6+1",
-        "damageType": "tranchants"
+        "damageType": "tranchants",
+        "attackBonus": 3
       }
     ],
     "legendaryActions": [],
@@ -44162,7 +44171,8 @@
         "name": "Dague",
         "desc": "Attaque d'arme à distance ou au corps à corps: +4 pour\ntoucher, allonge 1,50 m ou portée 6/18 m, une cible. Touché:\n4 (1 d4+2) dégâts perforants.",
         "damageDice": "1d4+2",
-        "damageType": "perforants"
+        "damageType": "perforants",
+        "attackBonus": 4
       }
     ],
     "legendaryActions": [],
@@ -44224,7 +44234,8 @@
         "name": "Dague",
         "desc": "Attaque d'arme à distance ou au corps à corps: +4 pour\ntoucher, allonge 1,50 m ou portée 6/18 m, une cible. Touché: 4\n(1d4+2) dégâts perforants.",
         "damageDice": "1d4+2",
-        "damageType": "perforants"
+        "damageType": "perforants",
+        "attackBonus": 4
       },
       {
         "name": "Fronde",
@@ -75799,7 +75810,8 @@
         "name": "Dague",
         "desc": "Attaque d'arme à distance ou au corps à corps: +3 pour\ntoucher, allonge 1,50 m ou portée 6/18 m, une cible. Touché:\n3 (1d4+1) dégâts perforants.",
         "damageDice": "1d4+1",
-        "damageType": "perforants"
+        "damageType": "perforants",
+        "attackBonus": 3
       }
     ],
     "legendaryActions": [],
@@ -78277,7 +78289,8 @@
         "name": "DGriffes destructrices",
         "desc": "Attaque d'arme au corps à corps: +3 pour\ntoucher, allonge 1,50 m, une cible. Touché: 8 (2d6+1) dégâts\ntranchants. Si la cible est une créature qui porte une armure, un\nbouclier ou un objet magique qui améliore la CA, elle doit faire un\njet de sauvegarde de Dextérité DD 11. Si elle le rate, l'un de ces ob\njets (sur elle ou en sa possession, à elle de choisir) se détériore par\nmagie et subit un malus permanent et cumulatif de -1 à la CA qu'il\noffre tandis que le zorbo gagne un bonus de +l à la CA jusqu'au\ndébut de son prochain tour. Une armure réduite à une CA de 10 ou\nun bouclier ou un objet magique réduit à une amélioration de CA de O est détruit. ,\n---e-:",
         "damageDice": "2d6+1",
-        "damageType": "tranchants"
+        "damageType": "tranchants",
+        "attackBonus": 3
       }
     ],
     "legendaryActions": [],
