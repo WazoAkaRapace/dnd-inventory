@@ -107,8 +107,6 @@ export default function CharacterInventoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Editable strength
-  const [strengthDraft, setStrengthDraft] = useState('10');
   // Editable capacity multiplier
   const [multDraft, setMultDraft] = useState('1');
   const [showMultHelp, setShowMultHelp] = useState(false);
@@ -201,9 +199,7 @@ export default function CharacterInventoryPage() {
         gold: res.data.character.gold,
         platinum: res.data.character.platinum,
       });
-      setStrengthDraft(String(res.data.character.strength));
-      setMultDraft(String(res.data.character.capacityMultiplier ?? 1));
-      // Default the active tab to the carried location
+      setMultDraft(String(res.data.character.capacityMultiplier ?? 1));      // Default the active tab to the carried location
       setActiveLocationId((prev) => {
         const stillExists = prev !== null && res.data.locations.some((l) => l.id === prev);
         if (stillExists) return prev;
@@ -500,26 +496,6 @@ export default function CharacterInventoryPage() {
     }
   }, [charId, coins, coinsDirty, pushToast, refreshInventory]);
 
-  // Commit strength change on blur
-  const commitStrength = async () => {
-    const parsed = Number(strengthDraft);
-    if (!Number.isFinite(parsed) || parsed < 1) {
-      setStrengthDraft(String(data?.character.strength || 10));
-      return;
-    }
-    const newStr = Math.floor(parsed);
-    if (newStr === data?.character.strength) return; // no change
-    markLocalMutation();
-    try {
-      await api.patch(`/api/characters/${charId}`, { strength: newStr });
-      await refreshInventory();
-      pushToast(`Force mise à jour : ${newStr}`);
-    } catch (err: any) {
-      pushToast(err.response?.data?.error || 'Erreur', 'error');
-      setStrengthDraft(String(data?.character.strength || 10));
-    }
-  };
-
   // Commit capacity multiplier change on blur
   const commitMult = async () => {
     const parsed = Number(multDraft);
@@ -646,8 +622,8 @@ export default function CharacterInventoryPage() {
               <button
                 onClick={() => setShowCarryModal(true)}
                 className="text-ink-400 hover:text-blood-600 transition-colors"
-                aria-label="Force et portage"
-                title="Force et portage"
+                aria-label="Portage"
+                title="Portage"
               >
                 <SettingsIcon className="w-5 h-5" />
               </button>
@@ -659,25 +635,9 @@ export default function CharacterInventoryPage() {
         </div>
       </div>
 
-      {/* ---------- Force & portage modal ---------- */}
-      <Modal open={showCarryModal} onClose={() => setShowCarryModal(false)} title="Force & portage">
+      {/* ---------- Portage modal ---------- */}
+      <Modal open={showCarryModal} onClose={() => setShowCarryModal(false)} title="Portage">
         <div className="space-y-4">
-          {/* Editable Strength */}
-          <label className="flex items-center justify-between gap-3">
-            <span className="text-sm font-medium text-ink-700">Force (FOR)</span>
-            <input
-              type="number"
-              min={1}
-              max={30}
-              className="w-20 text-center text-sm font-semibold bg-white border border-parchment-300 rounded-md py-1.5 focus:outline-none focus:border-blood-500"
-              value={strengthDraft}
-              onChange={(e) => setStrengthDraft(e.target.value)}
-              onBlur={commitStrength}
-              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-              aria-label="Force"
-            />
-          </label>
-
           {/* Editable capacity multiplier */}
           <div>
             <label className="flex items-center justify-between gap-3">
