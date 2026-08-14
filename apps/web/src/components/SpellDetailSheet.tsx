@@ -71,10 +71,10 @@ export default function SpellDetailSheet({ open, spellId, onClose }: Props) {
               {/* Badges */}
               <div className="flex flex-wrap gap-1.5 text-xs">
                 {spell.concentration && (
-                  <span className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">Concentration</span>
+                  <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200 font-semibold">🌀 Concentration</span>
                 )}
                 {spell.ritual && (
-                  <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">Rituel</span>
+                  <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200 font-medium">⚗ Rituel</span>
                 )}
               </div>
 
