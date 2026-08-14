@@ -56,10 +56,12 @@ export function SyncProvider({ user, children }: { user: User | null; children: 
   const reconnectDelay = useRef(1000);
   const handlersRef = useRef<Set<(event: SyncEvent) => void>>(new Set());
 
-  // Debounce: coalesce rapid sync events into a single handler dispatch.
-  // If multiple events arrive within 300ms (e.g. rapid edits by another user),
-  // only the last one is dispatched — preventing refetch storms.
-  const pendingEvent = useRef<SyncEvent | null>(null);
+  // Debounce: coalesce rapid sync events into a bounded number of handler
+  // dispatches. Events of the same kind (type + character + party) collapse
+  // to the latest, but DIFFERENT kinds are all preserved — e.g. an HP edit
+  // emits both character:change (sheet refresh) and combat:change (tracker
+  // refresh), and dropping either would leave one view stale.
+  const pendingEvents = useRef<SyncEvent[]>([]);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const dispatchToHandlers = useCallback((event: SyncEvent) => {
@@ -96,17 +98,24 @@ export function SyncProvider({ user, children }: { user: User | null; children: 
           dispatchToHandlers(event);
           return;
         }
-        // Debounce: store the latest event and schedule a dispatch.
-        // If another event arrives before the timer fires, the earlier one
-        // is replaced — only one refetch happens per 300ms window.
-        pendingEvent.current = event;
+        // Collapse same-kind events; keep different kinds side by side
+        const last = pendingEvents.current[pendingEvents.current.length - 1];
+        const sameKind = last
+          && last.type === event.type
+          && last.characterId === event.characterId
+          && last.toCharacterId === event.toCharacterId
+          && last.partyId === event.partyId;
+        if (sameKind) {
+          pendingEvents.current[pendingEvents.current.length - 1] = event;
+        } else {
+          pendingEvents.current.push(event);
+        }
         if (debounceTimer.current) return; // already scheduled, will pick up latest
         debounceTimer.current = setTimeout(() => {
           debounceTimer.current = null;
-          if (pendingEvent.current) {
-            dispatchToHandlers(pendingEvent.current);
-            pendingEvent.current = null;
-          }
+          const events = pendingEvents.current;
+          pendingEvents.current = [];
+          for (const ev of events) dispatchToHandlers(ev);
         }, 300);
       } catch {}
     };

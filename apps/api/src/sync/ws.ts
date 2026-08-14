@@ -77,10 +77,11 @@ export async function registerWsRoutes(app: FastifyInstance) {
       }
       // Echo suppression: don't send the event back to the user who triggered it.
       // They already have the optimistic result from their own API call.
-      // Exception: combat:change — a user can be GM in one tab and player in
-      // another (own character in the fight), and the player widget must see
-      // the combat they were just added to.
-      if (event.actorUserId && client.userId === event.actorUserId && event.type !== 'combat:change') continue;
+      // Exceptions: combat:change and character:change — a user can be GM in
+      // one tab and player in another (own character in the fight), and those
+      // views must stay in sync (initiative widget, HP mirroring).
+      const isEchoExempt = event.type === 'combat:change' || event.type === 'character:change';
+      if (event.actorUserId && client.userId === event.actorUserId && !isEchoExempt) continue;
       // Only push to clients who are members of the affected party
       if (client.partyIds.has(event.partyId)) {
         try {
