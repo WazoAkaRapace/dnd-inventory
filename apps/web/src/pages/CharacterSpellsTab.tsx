@@ -396,9 +396,6 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                             >
                               <span className="font-medium text-sm text-ink-800 block truncate">{name}</span>
                               <span className="flex items-center gap-1.5 text-xs text-ink-400 min-w-0">
-                                <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium ${SCHOOL_COLORS[spell.school] ?? 'bg-parchment-200'}`}>
-                                  {SPELL_SCHOOL_LABELS_FR[spell.school as SpellSchool] ?? spell.school}
-                                </span>
                                 {spell.concentration && (
                                   <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
                                     🌀 Concentration
@@ -430,6 +427,9 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                           </div>
                           {isExpanded && (
                             <div className="px-3 pb-3 pt-1 border-t border-parchment-200 text-xs text-ink-600 space-y-1.5">
+                              <p className={`pt-1 inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${SCHOOL_COLORS[spell.school] ?? 'bg-parchment-200'}`}>
+                                {SPELL_SCHOOL_LABELS_FR[spell.school as SpellSchool] ?? spell.school}
+                              </p>
                               {(spell.concentration || spell.ritual) && (
                                 <div className="flex flex-wrap gap-1.5 pt-1">
                                   {spell.concentration && (
@@ -740,18 +740,15 @@ function SpellCatalog({
                       aria-expanded={isExpanded}
                     >
                       <span className="font-medium text-sm text-ink-800 block truncate">{name}</span>
-                      <span className="flex items-center gap-1.5 text-xs text-ink-400">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${SCHOOL_COLORS[spell.school] ?? 'bg-parchment-200'}`}>
-                          {SPELL_SCHOOL_LABELS_FR[spell.school as SpellSchool] ?? spell.school}
-                        </span>
-                        <span>{spell.level === 0 ? 'Tour' : `Niv. ${spell.level}`}</span>
+                      <span className="flex items-center gap-1.5 text-xs text-ink-400 min-w-0">
+                        <span className="shrink-0">{spell.level === 0 ? 'Tour' : `Niv. ${spell.level}`}</span>
                         {spell.concentration && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
+                          <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
                             🌀 Concentration
                           </span>
                         )}
                         {spell.ritual && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700 border border-purple-200">
+                          <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700 border border-purple-200">
                             ⚗ Rituel
                           </span>
                         )}
@@ -767,6 +764,9 @@ function SpellCatalog({
                   </div>
                   {isExpanded && (
                     <div className="px-3 pb-3 pt-1 border-t border-parchment-200 text-xs text-ink-600 space-y-1.5">
+                      <p className={`pt-1 inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${SCHOOL_COLORS[spell.school] ?? 'bg-parchment-200'}`}>
+                        {SPELL_SCHOOL_LABELS_FR[spell.school as SpellSchool] ?? spell.school}
+                      </p>
                       {(spell.concentration || spell.ritual) && (
                         <div className="flex flex-wrap gap-1.5 pt-1">
                           {spell.concentration && (
