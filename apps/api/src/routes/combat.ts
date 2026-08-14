@@ -351,7 +351,10 @@ export async function combatRoutes(app: FastifyInstance) {
         LIMIT 1
       `).get(enc.id, monster.slug) as any;
 
-      const groupId = existingGroup?.group_id ?? Date.now();
+      // Unique group id — Date.now() alone can collide when two different
+      // monster types are added within the same millisecond, which would
+      // wrongly merge them into one group.
+      const groupId = existingGroup?.group_id ?? Date.now() * 1000 + Math.floor(Math.random() * 1000);
       const sortOrder = existingGroup?.sort_order ?? groupId;
       const sharedInitiative = existingGroup?.initiative ?? null;
 
@@ -648,6 +651,17 @@ export async function combatRoutes(app: FastifyInstance) {
 
       if (active.length === 0) {
         return reply.code(400).send({ error: 'Aucun combattant actif' });
+      }
+
+      // --- Starting the combat: setup → active, round 1, first combatant acts.
+      // No turn is ending yet, so no condition expiry and no advancing.
+      if (enc.status === 'setup') {
+        const firstIdx = Math.max(0, sorted.findIndex((c) => !c.defeated));
+        db.prepare('UPDATE encounters SET status = ?, round = 1, turn_index = ? WHERE id = ?')
+          .run('active', firstIdx, enc.id);
+        const started = db.prepare('SELECT * FROM encounters WHERE id = ?').get(enc.id);
+        bus.emitChange({ type: 'combat:change', partyId: enc.party_id, action: 'turn', actorUserId: userId });
+        return reply.send({ encounter: mapEncounter(started) });
       }
 
       // --- Condition expiry for ALL combatants whose turn is ending ---
