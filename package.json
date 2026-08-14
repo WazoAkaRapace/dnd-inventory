@@ -16,7 +16,8 @@
     "migrate": "tsx apps/api/src/db/migrate.ts",
     "seed": "tsx apps/api/src/db/seed.ts",
     "docker:up": "docker compose up --build",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "test-weapon-stats": "tsx scripts/test-weapon-stats.ts"
   },
   "devDependencies": {
     "concurrently": "^10.0.4",

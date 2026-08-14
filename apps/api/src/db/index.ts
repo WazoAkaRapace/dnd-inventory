@@ -105,6 +105,7 @@ const COLUMN_MIGRATIONS: Record<string, Array<{ name: string; ddl: string }>> = 
     { name: 'death_save_failures', ddl: 'INTEGER NOT NULL DEFAULT 0' },
     { name: 'inspiration', ddl: 'INTEGER NOT NULL DEFAULT 0' },
     { name: 'concentrating', ddl: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'weapon_proficiencies', ddl: 'TEXT' },
   ],
   items: [
     { name: 'survival_tags', ddl: "TEXT NOT NULL DEFAULT '[]'" },

@@ -123,7 +123,7 @@ export async function characterRoutes(app: FastifyInstance) {
         // Character sheet
         'level', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma',
         'characterClass', 'race', 'background', 'speed',
-        'skillProficiencies', 'savingThrowProficiencies', 'spellSlotsUsed',
+        'skillProficiencies', 'savingThrowProficiencies', 'weaponProficiencies', 'spellSlotsUsed',
         // Description / personality
         'alignment', 'sex', 'height', 'weight', 'age', 'skin', 'eyes', 'hair',
         'portraitUrl', 'personalityTraits', 'ideals', 'bonds', 'flaws', 'appearance',
@@ -142,6 +142,7 @@ export async function characterRoutes(app: FastifyInstance) {
         characterClass: 'character_class',
         skillProficiencies: 'skill_proficiencies',
         savingThrowProficiencies: 'saving_throw_proficiencies',
+        weaponProficiencies: 'weapon_proficiencies',
         spellSlotsUsed: 'spell_slots_used',
         portraitUrl: 'portrait_url',
         personalityTraits: 'personality_traits',
@@ -154,11 +155,17 @@ export async function characterRoutes(app: FastifyInstance) {
         'conditions',
         'skillProficiencies',
         'savingThrowProficiencies',
+        'weaponProficiencies',
         'spellSlotsUsed',
       ]);
       for (const key of allowed) {
         if (body[key] !== undefined) {
           const col = fieldMap[key as string] || key;
+          if (key === 'weaponProficiencies' && body[key] === null) {
+            // null = back to class default
+            sets.push('weapon_proficiencies = NULL'); // literal — no ? placeholder
+            continue;
+          }
           sets.push(`${col} = ?`);
           if (jsonFields.has(key as string)) {
             vals.push(JSON.stringify(body[key]));

@@ -128,6 +128,9 @@ export function mapCharacterSummary(row: any): CharacterSummary {
     speed: row.speed ?? 9,
     skillProficiencies: parseJsonArray(row.skill_proficiencies, []),
     savingThrowProficiencies: parseJsonArray(row.saving_throw_proficiencies, []),
+    weaponProficiencies: row.weapon_proficiencies
+      ? parseJsonArray(row.weapon_proficiencies, [])
+      : null,
     spellSlotsUsed: parseJsonArray(row.spell_slots_used, [0,0,0,0,0,0,0,0,0]),
     // Description / personality
     alignment: row.alignment ?? null,

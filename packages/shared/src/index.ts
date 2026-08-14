@@ -260,6 +260,7 @@ export interface CharacterSummary {
   speed: number;             // meters
   skillProficiencies: string[];        // skill keys: ["acrobatics","arcanes",...]
   savingThrowProficiencies: string[];  // ability keys: ["strength","constitution"]
+  weaponProficiencies: string[] | null; // tokens 'simple'/'martial' + EN weapon names; null = class default
   spellSlotsUsed: number[];            // 9 entries, used per spell level 1-9
   // Description / personality
   alignment: string | null;
@@ -345,6 +346,7 @@ export interface PatchCharacterPayload {
   speed?: number;
   skillProficiencies?: string[];
   savingThrowProficiencies?: string[];
+  weaponProficiencies?: string[] | null;
   spellSlotsUsed?: number[];
   // Description / personality
   alignment?: string | null;
@@ -735,6 +737,386 @@ export function computeAC(
 
   return { ac, source, hasShield };
 }
+
+// ---------- Weapon attack & damage computation (SRD combat rules) ----------
+
+/** French labels for SRD weapon properties. */
+export const WEAPON_PROPERTY_LABELS_FR: Record<string, string> = {
+  light: 'Légère',
+  finesse: 'Finesse',
+  thrown: 'Lancer',
+  'two-handed': 'À deux mains',
+  versatile: 'Polyvalente',
+  ammunition: 'Munitions',
+  loading: 'Rechargement',
+  heavy: 'Lourde',
+  reach: 'Allonge',
+  special: 'Spéciale',
+};
+
+/** French labels for damage types (keys match item damageType: capitalized English). */
+export const DAMAGE_TYPE_LABELS_FR: Record<string, string> = {
+  Bludgeoning: 'contondants',
+  Piercing: 'perforants',
+  Slashing: 'tranchants',
+  Fire: 'de feu',
+  Cold: 'de froid',
+  Lightning: 'de foudre',
+  Thunder: 'de tonnerre',
+  Acid: "d'acide",
+  Poison: 'de poison',
+  Necrotic: 'nécrotiques',
+  Radiant: 'radiants',
+  Force: 'de force',
+  Psychic: 'psychiques',
+};
+
+/** One SRD mundane weapon. nameEn/nameFr match the item catalog exactly. */
+export interface MundaneWeapon {
+  nameEn: string;
+  nameFr: string;
+  dice: string;
+  damageType: string;      // capitalized English, matches item.damageType
+  properties: string[];
+  simple: boolean;         // false = martial
+  /** Two-handed dice for versatile weapons. */
+  twoHandedDice?: string;
+}
+
+/** The 37 SRD mundane weapons (names as they appear in the item catalog). */
+export const MUNDANE_WEAPONS: MundaneWeapon[] = [
+  // Simple melee
+  { nameEn: 'Club', nameFr: 'Gourdin', dice: '1d4', damageType: 'Bludgeoning', properties: ['light'], simple: true },
+  { nameEn: 'Dagger', nameFr: 'Dague', dice: '1d4', damageType: 'Piercing', properties: ['finesse', 'light', 'thrown'], simple: true },
+  { nameEn: 'Greatclub', nameFr: 'Massue', dice: '1d8', damageType: 'Bludgeoning', properties: ['two-handed'], simple: true },
+  { nameEn: 'Handaxe', nameFr: 'Hachette', dice: '1d6', damageType: 'Slashing', properties: ['light', 'thrown'], simple: true },
+  { nameEn: 'Javelin', nameFr: 'Javeline', dice: '1d6', damageType: 'Piercing', properties: ['thrown'], simple: true },
+  { nameEn: 'Light hammer', nameFr: 'Marteau léger', dice: '1d4', damageType: 'Bludgeoning', properties: ['light', 'thrown'], simple: true },
+  { nameEn: 'Mace', nameFr: "Masse d'armes", dice: '1d6', damageType: 'Bludgeoning', properties: [], simple: true },
+  { nameEn: 'Quarterstaff', nameFr: 'Bâton', dice: '1d6', damageType: 'Bludgeoning', properties: ['versatile'], simple: true, twoHandedDice: '1d8' },
+  { nameEn: 'Sickle', nameFr: 'Serpe', dice: '1d4', damageType: 'Slashing', properties: ['light'], simple: true },
+  { nameEn: 'Spear', nameFr: 'Lance', dice: '1d6', damageType: 'Piercing', properties: ['thrown', 'versatile'], simple: true, twoHandedDice: '1d8' },
+  // Simple ranged
+  { nameEn: 'Crossbow, light', nameFr: 'Arbalète légère', dice: '1d8', damageType: 'Piercing', properties: ['ammunition', 'loading', 'two-handed'], simple: true },
+  { nameEn: 'Dart', nameFr: 'Fléchette', dice: '1d4', damageType: 'Piercing', properties: ['finesse', 'thrown'], simple: true },
+  { nameEn: 'Shortbow', nameFr: 'Arc court', dice: '1d6', damageType: 'Piercing', properties: ['ammunition', 'two-handed'], simple: true },
+  { nameEn: 'Sling', nameFr: 'Fronde', dice: '1d4', damageType: 'Bludgeoning', properties: ['ammunition'], simple: true },
+  // Martial melee
+  { nameEn: 'Battleaxe', nameFr: "Hache d'armes", dice: '1d8', damageType: 'Slashing', properties: ['versatile'], simple: false, twoHandedDice: '1d10' },
+  { nameEn: 'Flail', nameFr: 'Fléau', dice: '1d8', damageType: 'Bludgeoning', properties: [], simple: false },
+  { nameEn: 'Glaive', nameFr: 'Coutille', dice: '1d10', damageType: 'Slashing', properties: ['heavy', 'reach', 'two-handed'], simple: false },
+  { nameEn: 'Greataxe', nameFr: 'Hache à deux mains', dice: '1d12', damageType: 'Slashing', properties: ['heavy', 'two-handed'], simple: false },
+  { nameEn: 'Greatsword', nameFr: 'Épée à deux mains', dice: '2d6', damageType: 'Slashing', properties: ['heavy', 'two-handed'], simple: false },
+  { nameEn: 'Halberd', nameFr: 'Hallebarde', dice: '1d10', damageType: 'Slashing', properties: ['heavy', 'reach', 'two-handed'], simple: false },
+  { nameEn: 'Lance', nameFr: "Lance d'arçon", dice: '1d12', damageType: 'Piercing', properties: ['reach', 'special'], simple: false },
+  { nameEn: 'Longsword', nameFr: 'Épée longue', dice: '1d8', damageType: 'Slashing', properties: ['versatile'], simple: false, twoHandedDice: '1d10' },
+  { nameEn: 'Maul', nameFr: 'Maillet', dice: '2d6', damageType: 'Bludgeoning', properties: ['heavy', 'two-handed'], simple: false },
+  { nameEn: 'Morningstar', nameFr: 'Morgenstern', dice: '1d8', damageType: 'Piercing', properties: [], simple: false },
+  { nameEn: 'Pike', nameFr: 'Pique', dice: '1d10', damageType: 'Piercing', properties: ['heavy', 'reach', 'two-handed'], simple: false },
+  { nameEn: 'Rapier', nameFr: 'Rapière', dice: '1d8', damageType: 'Piercing', properties: ['finesse'], simple: false },
+  { nameEn: 'Scimitar', nameFr: 'Cimeterre', dice: '1d6', damageType: 'Slashing', properties: ['finesse', 'light'], simple: false },
+  { nameEn: 'Shortsword', nameFr: 'Épée courte', dice: '1d6', damageType: 'Piercing', properties: ['finesse', 'light'], simple: false },
+  { nameEn: 'Trident', nameFr: 'Trident', dice: '1d6', damageType: 'Piercing', properties: ['thrown', 'versatile'], simple: false, twoHandedDice: '1d8' },
+  { nameEn: 'War pick', nameFr: 'Pic de guerre', dice: '1d8', damageType: 'Piercing', properties: [], simple: false },
+  { nameEn: 'Warhammer', nameFr: 'Marteau de guerre', dice: '1d8', damageType: 'Bludgeoning', properties: ['versatile'], simple: false, twoHandedDice: '1d10' },
+  { nameEn: 'Whip', nameFr: 'Fouet', dice: '1d4', damageType: 'Slashing', properties: ['finesse', 'reach'], simple: false },
+  // Martial ranged
+  { nameEn: 'Blowgun', nameFr: 'Sarbacane', dice: '1', damageType: 'Piercing', properties: ['ammunition', 'loading'], simple: false },
+  { nameEn: 'Crossbow, hand', nameFr: 'Arbalète de poing', dice: '1d6', damageType: 'Piercing', properties: ['ammunition', 'light', 'loading'], simple: false },
+  { nameEn: 'Crossbow, heavy', nameFr: 'Arbalète lourde', dice: '1d10', damageType: 'Piercing', properties: ['ammunition', 'heavy', 'loading', 'two-handed'], simple: false },
+  { nameEn: 'Longbow', nameFr: 'Arc long', dice: '1d8', damageType: 'Piercing', properties: ['ammunition', 'heavy', 'two-handed'], simple: false },
+  { nameEn: 'Net', nameFr: 'Filet', dice: '', damageType: 'Slashing', properties: ['thrown', 'special'], simple: false },
+];
+
+/** Weapon proficiency profile for a class (SRD). */
+export interface WeaponProficiencySet {
+  simple: boolean;
+  martial: boolean;
+  /** Specific weapons (English item names) granted beyond simple/martial. */
+  specific: string[];
+}
+
+export const CLASS_WEAPON_PROFICIENCIES: Record<string, WeaponProficiencySet> = {
+  Artificier:  { simple: true,  martial: false, specific: [] },
+  Barbare:     { simple: true,  martial: true,  specific: [] },
+  Barde:       { simple: true,  martial: false, specific: ['Crossbow, hand', 'Longsword', 'Rapier', 'Shortsword'] },
+  Clerc:       { simple: true,  martial: false, specific: [] },
+  Druide:      { simple: false, martial: false, specific: ['Club', 'Dagger', 'Dart', 'Quarterstaff', 'Scimitar', 'Sickle', 'Sling', 'Spear'] },
+  Ensorceleur: { simple: false, martial: false, specific: ['Dagger', 'Dart', 'Sling', 'Quarterstaff', 'Crossbow, light'] },
+  Guerrier:    { simple: true,  martial: true,  specific: [] },
+  Magicien:    { simple: false, martial: false, specific: ['Dagger', 'Dart', 'Sling', 'Quarterstaff', 'Crossbow, light'] },
+  Moine:       { simple: true,  martial: false, specific: ['Shortsword'] },
+  Occultiste:  { simple: true,  martial: false, specific: ['Crossbow, light'] },
+  Paladin:     { simple: true,  martial: true,  specific: [] },
+  'Rôdeur':    { simple: true,  martial: true,  specific: [] },
+  Roublard:    { simple: true,  martial: false, specific: ['Crossbow, hand', 'Longsword', 'Rapier', 'Shortsword'] },
+};
+
+/** Class default weapon proficiencies (SRD). Unknown class → nothing. */
+export function classWeaponProficiencies(className: string | null | undefined): WeaponProficiencySet {
+  const cls = findClass(className);
+  if (!cls) return { simple: false, martial: false, specific: [] };
+  return CLASS_WEAPON_PROFICIENCIES[cls.name] ?? { simple: false, martial: false, specific: [] };
+}
+
+/**
+ * Effective weapon proficiencies for a character: the explicit list
+ * (weaponProficiencies tokens: 'simple', 'martial', or English weapon names)
+ * when set, otherwise the class default.
+ */
+export function effectiveWeaponProficiencies(
+  character: { characterClass?: string | null; weaponProficiencies?: string[] | null },
+): WeaponProficiencySet {
+  if (character.weaponProficiencies != null) {
+    const tokens = character.weaponProficiencies;
+    return {
+      simple: tokens.includes('simple'),
+      martial: tokens.includes('martial'),
+      specific: tokens.filter((t) => t !== 'simple' && t !== 'martial'),
+    };
+  }
+  return classWeaponProficiencies(character.characterClass);
+}
+
+/** Is the character proficient with this weapon? (Magic weapons follow their base weapon.) */
+export function isProficientWithWeapon(
+  item: Pick<Item, 'category' | 'name' | 'nameFr' | 'properties' | 'damageDice' | 'damageType' | 'description'>,
+  character: { characterClass?: string | null; weaponProficiencies?: string[] | null },
+): boolean {
+  if (item.category !== 'weapon') return false;
+  // Resolve the effective weapon name: the base weapon for magic items
+  let nameEn = item.name;
+  if (!item.damageDice) {
+    const magic = resolveMagicWeaponBase(item);
+    if (magic.base) nameEn = magic.base.nameEn;
+  }
+  const prof = effectiveWeaponProficiencies(character);
+  const base = findMundaneByName(nameEn, item.nameFr);
+  const simple = base ? base.simple : isSimpleWeaponName(nameEn);
+  if (prof.martial && !simple) return true;
+  if (prof.simple && simple) return true;
+  return prof.specific.includes(nameEn);
+}
+
+function isSimpleWeaponName(nameEn: string): boolean {
+  const w = MUNDANE_WEAPONS.find((m) => m.nameEn === nameEn);
+  return w ? w.simple : false;
+}
+
+/** Find a mundane weapon by exact English or French name. */
+export function findMundaneByName(nameEn: string | null | undefined, nameFr: string | null | undefined): MundaneWeapon | null {
+  if (nameEn) {
+    const byEn = MUNDANE_WEAPONS.find((m) => m.nameEn.toLowerCase() === nameEn.toLowerCase());
+    if (byEn) return byEn;
+  }
+  if (nameFr) {
+    const byFr = MUNDANE_WEAPONS.find((m) => m.nameFr.toLowerCase() === nameFr.toLowerCase());
+    if (byFr) return byFr;
+  }
+  return null;
+}
+
+/** Result of resolving a magic weapon to its base weapon + magic bonus. */
+export interface MagicWeaponBase {
+  base: MundaneWeapon | null;
+  /** True when the base is a family default (e.g. "n'importe quelle épée" → épée longue). */
+  presumed: boolean;
+  /** Flat attack & damage bonus (+1/+2/+3), 0 when none. */
+  magicBonus: number;
+}
+
+/**
+ * Resolve a magic weapon (damageDice null) to its base weapon and magic bonus.
+ *
+ * Detection order:
+ *  1. Exact mundane name (EN or FR, word-boundary) inside the item name
+ *     (e.g. "Dague venimeuse" → Dague).
+ *  2. The French SRD description header `Arme (<base>)` — specific bases
+ *     (épée longue, marteau de guerre…) or families with a presumed default
+ *     (n'importe quelle épée → épée longue, hache → hache d'armes, masse → masse d'armes).
+ *  3. Magic bonus: "+N" in the name, or "bonus de +N aux jets d'attaque et
+ *     de dégâts" in the description.
+ */
+export function resolveMagicWeaponBase(
+  item: Pick<Item, 'name' | 'nameFr' | 'description' | 'properties' | 'damageDice'>,
+): MagicWeaponBase {
+  const result: MagicWeaponBase = { base: null, presumed: false, magicBonus: 0 };
+
+  // Magic bonus from name ("Arme +2") or description
+  const nameBonus = (item.name ?? '').match(/\+(\d)/);
+  if (nameBonus) result.magicBonus = parseInt(nameBonus[1], 10);
+  if (result.magicBonus === 0 && item.description) {
+    // Accept both straight (') and typographic (’) apostrophes
+    const descBonus = item.description.match(/bonus de \+(\d+) aux jets d['’]attaque et de dégâts/);
+    if (descBonus) result.magicBonus = parseInt(descBonus[1], 10);
+  }
+
+  // 1. Word-boundary name match against mundane weapons (longest names first)
+  const haystack = `${item.name ?? ''} ${item.nameFr ?? ''}`.toLowerCase();
+  const candidates = [...MUNDANE_WEAPONS].sort((a, b) => b.nameFr.length - a.nameFr.length);
+  for (const m of candidates) {
+    const en = escapeRegExp(m.nameEn.toLowerCase());
+    const fr = escapeRegExp(m.nameFr.toLowerCase());
+    if (new RegExp(`(^|[^a-zà-öø-ÿ])${en}([^a-zà-öø-ÿ]|$)`).test(haystack)
+      || new RegExp(`(^|[^a-zà-öø-ÿ])${fr}([^a-zà-öø-ÿ]|$)`).test(haystack)) {
+      result.base = m;
+      return result;
+    }
+  }
+
+  // 2. Description header: "Arme (<base>)"
+  const header = item.description?.match(/^Arme \(([^)]+)\)/i)?.[1]?.toLowerCase() ?? '';
+  if (header) {
+    const specific: Record<string, string> = {
+      'dague': 'Dagger',
+      'javeline': 'Javelin',
+      'arc long': 'Longbow',
+      'cimeterre': 'Scimitar',
+      'épée longue': 'Longsword',
+      'trident': 'Trident',
+      'marteau de guerre': 'Warhammer',
+      "masse d'armes": 'Mace',
+    };
+    for (const [needle, nameEn] of Object.entries(specific)) {
+      if (header.includes(needle)) {
+        result.base = MUNDANE_WEAPONS.find((m) => m.nameEn === nameEn) ?? null;
+        return result;
+      }
+    }
+    // Families → presumed defaults
+    if (header.includes('épée')) {
+      result.base = MUNDANE_WEAPONS.find((m) => m.nameEn === 'Longsword') ?? null;
+      result.presumed = true;
+    } else if (header.includes('hache')) {
+      result.base = MUNDANE_WEAPONS.find((m) => m.nameEn === 'Battleaxe') ?? null;
+      result.presumed = true;
+    } else if (header.includes('masse')) {
+      result.base = MUNDANE_WEAPONS.find((m) => m.nameEn === 'Mace') ?? null;
+      result.presumed = true;
+    }
+  }
+
+  return result;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Computed attack & damage stats for a weapon, from SRD combat rules. */
+export interface WeaponAttackStats {
+  proficient: boolean;
+  /** Ability used for attack & damage. */
+  ability: 'strength' | 'dexterity';
+  /** d20 attack bonus (ability mod + proficiency if proficient + magic bonus). */
+  attackBonus: number;
+  /** Damage with modifier & magic bonus, e.g. "2d6+3" (empty when the weapon has no dice, e.g. filet). */
+  damageStr: string | null;
+  damageTypeFr: string | null;
+  /** Two-handed variant for versatile weapons, e.g. "1d10+3". */
+  versatileDamageStr: string | null;
+  /** Flat magic bonus (+1/+2/+3), 0 for mundane weapons. */
+  magicBonus: number;
+  /** True when the base weapon was inferred from a family (magic items). */
+  presumedBase: boolean;
+  ranged: boolean;
+  finesse: boolean;
+}
+
+function formatDiceWithMod(dice: string, mod: number): string | null {
+  if (dice === '') return null;
+  if (mod === 0) return dice;
+  return mod > 0 ? `${dice}+${mod}` : `${dice}${mod}`;
+}
+
+/**
+ * Compute attack & damage stats for a weapon item given the character.
+ *
+ * SRD rules: attack = d20 + ability modifier + proficiency (if proficient) + magic bonus.
+ * Ability: melee → STR, ranged (ammunition) → DEX, finesse (and monk weapons for Monks)
+ * → best of STR/DEX, thrown without finesse → STR.
+ * Damage = weapon dice + same ability modifier (+ magic bonus).
+ * Returns null for non-weapons or weapons with no dice and no resolvable base.
+ */
+export function computeWeaponStats(
+  item: Pick<Item, 'category' | 'name' | 'nameFr' | 'description' | 'properties' | 'damageDice' | 'damageType'>,
+  character: Pick<Character, 'strength' | 'dexterity' | 'level' | 'characterClass'> & { weaponProficiencies?: string[] | null },
+): WeaponAttackStats | null {
+  if (item.category !== 'weapon') return null;
+
+  // Magic weapons: resolve base weapon + bonus
+  let dice = item.damageDice;
+  let damageType = item.damageType;
+  let props = item.properties;
+  let magicBonus = 0;
+  let presumedBase = false;
+  let nameEn = item.name;
+
+  if (!dice) {
+    const magic = resolveMagicWeaponBase(item);
+    if (!magic.base) return null;
+    dice = magic.base.dice;
+    damageType = magic.base.damageType;
+    props = magic.base.properties;
+    magicBonus = magic.magicBonus;
+    presumedBase = magic.presumed;
+    nameEn = magic.base.nameEn;
+  }
+
+  const strMod = abilityModifier(character.strength ?? 10);
+  const dexMod = abilityModifier(character.dexterity ?? 10);
+  const ranged = props.includes('ammunition');
+  const finesse = props.includes('finesse');
+  // Monk weapons (martial arts): STR or DEX for Monks
+  const monkWeapon = props.includes('monk') || isMonkWeaponName(nameEn, item.nameFr);
+  const isMonk = findClass(character.characterClass)?.name === 'Moine';
+
+  let ability: 'strength' | 'dexterity';
+  if (finesse || (isMonk && monkWeapon)) {
+    ability = dexMod >= strMod ? 'dexterity' : 'strength';
+  } else if (ranged) {
+    ability = 'dexterity';
+  } else {
+    ability = 'strength';
+  }
+  const abilityMod = ability === 'dexterity' ? dexMod : strMod;
+
+  // Proficiency (magic weapons inherit the base weapon's category)
+  const prof = effectiveWeaponProficiencies(character);
+  const base = findMundaneByName(nameEn, item.nameFr);
+  const simple = base ? base.simple : isSimpleWeaponName(nameEn);
+  const proficient =
+    (prof.martial && !simple) || (prof.simple && simple) || prof.specific.includes(nameEn);
+
+  const attackBonus = abilityMod + (proficient ? proficiencyBonus(character.level ?? 1) : 0) + magicBonus;
+
+  const damageStr = dice ? formatDiceWithMod(dice, abilityMod + magicBonus) : null;
+  const twoHanded = base?.twoHandedDice ?? MUNDANE_WEAPONS.find((m) => m.nameEn === nameEn)?.twoHandedDice;
+  const versatileDamageStr = twoHanded && dice ? formatDiceWithMod(twoHanded, abilityMod + magicBonus) : null;
+
+  return {
+    proficient,
+    ability,
+    attackBonus,
+    damageStr,
+    damageTypeFr: damageType ? DAMAGE_TYPE_LABELS_FR[damageType] ?? damageType : null,
+    versatileDamageStr,
+    magicBonus,
+    presumedBase,
+    ranged,
+    finesse,
+  };
+}
+
+/** Monk weapon names (SRD martial arts: simple melee + shortsword, minus heavy/two-handed). */
+function isMonkWeaponName(nameEn: string, nameFr: string | null): boolean {
+  const m = findMundaneByName(nameEn, nameFr);
+  if (!m) return false;
+  if (!m.simple) return m.nameEn === 'Shortsword';
+  // Simple melee weapons (no ammunition) that aren't two-handed
+  return !m.properties.includes('ammunition') && !m.properties.includes('two-handed');
+}
+
 
 // ---------- Spells (SRD catalog) ----------
 

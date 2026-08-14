@@ -19,6 +19,9 @@ import {
   passivePerception,
   computeAC,
   findClass,
+  effectiveWeaponProficiencies,
+  classWeaponProficiencies,
+  MUNDANE_WEAPONS,
 } from '@dnd-inventory/shared';
 
 interface Props {
@@ -216,6 +219,9 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
         </div>
       </section>
 
+      {/* Weapon mastery */}
+      <WeaponMasteryCard character={character} patchCharacter={patchCharacter} />
+
       {/* Ability scores */}
       <section className="card p-4 sm:p-5 space-y-3">
         <h2 className="font-display text-lg font-semibold">Caractéristiques</h2>
@@ -352,5 +358,80 @@ function DerivedStat({
         <div className="text-xl font-bold text-ink-800">{value}</div>
       )}
     </div>
+  );
+}
+
+/** Weapon mastery editor: toggles for simple/martial + class-specific info. */
+function WeaponMasteryCard({ character, patchCharacter }: {
+  character: Character;
+  patchCharacter: (payload: Record<string, unknown>, errMsg: string) => Promise<void>;
+}) {
+  const effective = effectiveWeaponProficiencies(character);
+  const isCustom = character.weaponProficiencies != null;
+  const classDefault = classWeaponProficiencies(character.characterClass);
+
+  const toggle = (token: 'simple' | 'martial') => {
+    // Materialize the effective list (class defaults when untouched), then flip
+    const tokens: string[] = [];
+    if (token === 'simple' ? !effective.simple : effective.simple) tokens.push('simple');
+    if (token === 'martial' ? !effective.martial : effective.martial) tokens.push('martial');
+    tokens.push(...effective.specific);
+    patchCharacter({ weaponProficiencies: tokens }, 'Erreur de mise à jour');
+  };
+
+  const specificFr = effective.specific
+    .map((nameEn) => MUNDANE_WEAPONS.find((m) => m.nameEn === nameEn)?.nameFr ?? nameEn);
+
+  const chip = (active: boolean) =>
+    `flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+      active
+        ? 'bg-blood-600 text-white border-blood-700'
+        : 'bg-parchment-50 text-ink-600 border-parchment-200 hover:border-blood-400'
+    }`;
+
+  return (
+    <section className="card p-4 sm:p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="font-display text-lg font-semibold">Maîtrise d'armes</h2>
+        {isCustom && (
+          <button
+            onClick={() => patchCharacter({ weaponProficiencies: null }, 'Erreur de mise à jour')}
+            className="text-xs text-blood-600 hover:underline"
+            title="Revenir aux maîtrises par défaut de la classe"
+          >
+            ↺ Selon la classe
+          </button>
+        )}
+      </div>
+      <div className="flex gap-2">
+        <button onClick={() => toggle('simple')} className={chip(effective.simple)} aria-pressed={effective.simple}>
+          <span aria-hidden="true">🗡</span> Armes simples
+        </button>
+        <button onClick={() => toggle('martial')} className={chip(effective.martial)} aria-pressed={effective.martial}>
+          <span aria-hidden="true">⚔️</span> Armes de guerre
+        </button>
+      </div>
+      {specificFr.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-ink-400">Spécifiques :</span>
+          {specificFr.map((fr) => (
+            <span key={fr} className="px-2 py-0.5 rounded-full bg-parchment-100 border border-parchment-300 text-xs font-medium text-ink-700">
+              {fr}
+            </span>
+          ))}
+        </div>
+      )}
+      <p className="text-xs text-ink-400">
+        {isCustom
+          ? 'Maîtrises personnalisées.'
+          : `Selon la classe ${character.characterClass ?? '—'} : ${
+              [
+                classDefault.simple && 'armes simples',
+                classDefault.martial && 'armes de guerre',
+                classDefault.specific.length > 0 && `${classDefault.specific.length} arme(s) spécifique(s)`,
+              ].filter(Boolean).join(' + ') || 'aucune maîtrise'
+            }.`}
+      </p>
+    </section>
   );
 }

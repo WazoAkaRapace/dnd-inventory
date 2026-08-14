@@ -21,6 +21,10 @@ import {
   RARITY_LABELS_FR,
   COIN_LABELS_FR,
   DND_CONDITIONS_FR,
+  computeWeaponStats,
+  WEAPON_PROPERTY_LABELS_FR,
+  proficiencyBonus,
+  formatModifier,
 } from '@dnd-inventory/shared';
 import CharacterStatsTab from './CharacterStatsTab';
 import CharacterSkillsTab from './CharacterSkillsTab';
@@ -909,6 +913,7 @@ export default function CharacterInventoryPage() {
                   key={group.category}
                   category={group.category}
                   entries={group.entries}
+                  character={character}
                   busyEntryIds={busyEntryIds}
                   expandedId={expandedId}
                   flashEntryId={flashEntryId}
@@ -1030,6 +1035,7 @@ function groupByCategory(entries: InventoryEntry[]): CategoryGroupData[] {
 interface CategoryGroupProps {
   category: ItemCategory;
   entries: InventoryEntry[];
+  character: Character;
   busyEntryIds: Set<number>;
   expandedId: number | null;
   flashEntryId: number | null;
@@ -1049,6 +1055,7 @@ interface CategoryGroupProps {
 function CategoryGroup({
   category,
   entries,
+  character,
   busyEntryIds,
   expandedId,
   flashEntryId,
@@ -1095,6 +1102,7 @@ function CategoryGroup({
               <InventoryRow
                 key={entry.id}
                 entry={entry}
+                character={character}
                 busy={busyEntryIds.has(entry.id)}
                 expanded={expandedId === entry.id}
                 flashed={flashEntryId === entry.id}
@@ -1122,6 +1130,7 @@ function CategoryGroup({
 
 interface InventoryRowProps {
   entry: InventoryEntry;
+  character: Character;
   busy: boolean;
   expanded: boolean;
   flashed: boolean;
@@ -1140,6 +1149,7 @@ interface InventoryRowProps {
 
 function InventoryRow({
   entry,
+  character,
   busy,
   expanded,
   flashed,
@@ -1335,15 +1345,64 @@ function InventoryRow({
                         Aussi connu sous : {item.aliases.join(', ')}
                       </p>
                     )}
+                    {/* Computed attack & damage from character stats (weapons) */}
+                    {item.category === 'weapon' && (() => {
+                      const stats = computeWeaponStats(item, character);
+                      if (!stats) return null;
+                      const abilityLabel = stats.ability === 'dexterity' ? 'DEX' : 'FOR';
+                      const breakdown = `d20 ${formatModifier(stats.attackBonus - (stats.proficient ? proficiencyBonus(character.level ?? 1) : 0) - stats.magicBonus)} (${abilityLabel})`
+                        + (stats.proficient ? ` + ${proficiencyBonus(character.level ?? 1)} (maîtrise)` : '')
+                        + (stats.magicBonus > 0 ? ` + ${stats.magicBonus} (magique)` : '');
+                      return (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium border ${
+                              stats.proficient
+                                ? 'bg-red-50 text-red-800 border-red-200'
+                                : 'bg-amber-50 text-amber-800 border-amber-300'
+                            }`}
+                            title={stats.proficient ? `Attaque : ${breakdown}` : `Attaque : ${breakdown} — non qualifié avec cette arme (pas de bonus de maîtrise)`}
+                          >
+                            🎯 {formatModifier(stats.attackBonus)}{!stats.proficient && ' ⚠'}
+                          </span>
+                          {stats.damageStr && (
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50 text-orange-800 text-[11px] font-medium border border-orange-200"
+                              title={`Dégâts : ${stats.damageStr} (${abilityLabel})${stats.magicBonus > 0 ? ` + ${stats.magicBonus} magique` : ''}`}
+                            >
+                              ⚔ {stats.damageStr}{stats.damageTypeFr ? ` ${stats.damageTypeFr}` : ''}
+                            </span>
+                          )}
+                          {stats.versatileDamageStr && (
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50/60 text-orange-700 text-[11px] font-medium border border-orange-200"
+                              title="Dégâts à deux mains"
+                            >
+                              {stats.versatileDamageStr} · deux mains
+                            </span>
+                          )}
+                          {stats.magicBonus > 0 && (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gold-100 text-gold-700 text-[11px] font-semibold border border-gold-300">
+                              ✨ +{stats.magicBonus}
+                            </span>
+                          )}
+                          {stats.presumedBase && (
+                            <span className="text-[10px] text-ink-400 italic">base présumée</span>
+                          )}
+                        </div>
+                      );
+                    })()}
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-500">
-                      {item.damageDice && (
-                        <span>⚔ Dégâts : {item.damageDice}{item.damageType ? ` (${item.damageType})` : ''}</span>
-                      )}
                       {item.acBase !== null && <span>🛡 CA : {item.acBase}</span>}
                       {item.strMin !== null && <span>💪 FOR min. : {item.strMin}</span>}
                       {item.stealthDisadvantage && <span>🤫 Désavantage Discrétion</span>}
-                      {item.properties && item.properties.length > 0 && (
-                        <span>Propriétés : {item.properties.join(', ')}</span>
+                      {item.properties && item.properties.filter((p) => p !== 'monk').length > 0 && (
+                        <span>
+                          Propriétés : {item.properties
+                            .filter((p) => p !== 'monk')
+                            .map((p) => WEAPON_PROPERTY_LABELS_FR[p] ?? p)
+                            .join(', ')}
+                        </span>
                       )}
                     </div>
                     {entry.notes && (
