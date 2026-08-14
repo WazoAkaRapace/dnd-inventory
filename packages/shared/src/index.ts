@@ -676,37 +676,63 @@ export interface ArmorClassResult {
 /**
  * Compute Armor Class from equipped armor items + DEX modifier.
  * Armor type detection by strMin and acBase:
- *   - Heavy (strMin != null): acBase, no DEX
- *   - Medium (acBase 12-15, strMin null): acBase + min(DEX, 2)
- *   - Light (acBase <= 12, strMin null): acBase + DEX
- * defenseStyle: +1 CA from the Défense fighting style (wearing armor).
+ *   - Heavy (strMin >= 13): acBase, no DEX
+ *   - Medium (acBase 12-15): acBase + min(DEX, 2)
+ *   - Light (acBase <= 12): acBase + DEX
+ * Magic armor (acBase null) resolves to its mundane base + magic bonus,
+ * like magic weapons. defenseStyle: +1 CA from the Défense fighting style.
  */
 export function computeAC(
-  entries: Array<{ item: { category: string; acBase: number | null; strMin: number | null; nameFr: string | null; name: string }; equipped: boolean }>,
+  entries: Array<{ item: { category: string; acBase: number | null; strMin: number | null; nameFr: string | null; name: string; description?: string | null }; equipped: boolean }>,
   dexMod: number,
   defenseStyle = false,
 ): ArmorClassResult {
   // Find equipped armor (non-shield) and shield
-  let armor: { acBase: number; strMin: number | null; name: string } | null = null;
+  let armor: { acBase: number; armorType: 'light' | 'medium' | 'heavy'; name: string } | null = null;
   let hasShield = false;
+  let magicAcBonus = 0;
 
   for (const entry of entries) {
     if (!entry.equipped) continue;
     if (entry.item.category !== 'armor') continue;
-    if (entry.item.acBase === null || entry.item.acBase === 0) continue;
     const name = (entry.item.nameFr ?? entry.item.name).toLowerCase();
+
+    // Magic armor: resolve its mundane base (+ bonus) before the acBase filter
+    let acBase = entry.item.acBase;
+    let base: MundaneArmor | null = null;
+    let magicBonus = 0;
+    if (acBase === null || acBase === 0) {
+      const magic = resolveMagicArmorBase(entry.item);
+      if (magic.shield) {
+        hasShield = true;
+        continue;
+      }
+      if (!magic.base) continue; // family armor (légère/intermédiaire/lourde): base unknowable
+      acBase = magic.base.acBase;
+      base = magic.base;
+      magicBonus = magic.magicBonus;
+    } else {
+      // Mundane armor: look up its true type (acBase 12 is studded-leather
+      // light AND hide medium — the value alone can't tell them apart)
+      base = findMundaneArmorByName(entry.item.name, entry.item.nameFr);
+    }
+
     // Shield gives +2 and is tracked separately
-    if (name.includes('bouclier') || name.includes('shield')) {
+    if (base?.armorType === 'shield' || name.includes('bouclier') || name.includes('shield')) {
       hasShield = true;
       continue;
     }
     // First equipped armor piece wins
     if (!armor) {
       armor = {
-        acBase: entry.item.acBase,
-        strMin: entry.item.strMin,
+        acBase,
+        armorType: base && base.armorType !== 'shield' ? base.armorType
+          : (entry.item.strMin !== null && entry.item.strMin >= 13) ? 'heavy'
+          : (acBase >= 13 && acBase <= 15) ? 'medium'
+          : 'light',
         name: entry.item.nameFr ?? entry.item.name,
       };
+      magicAcBonus = magicBonus;
     }
   }
 
@@ -718,8 +744,8 @@ export function computeAC(
     ac = 10 + dexMod;
     source = `Sans armure · 10 ${formatModifier(dexMod)}`;
   } else {
-    const isHeavy = armor.strMin !== null;
-    const isMedium = !isHeavy && armor.acBase >= 12 && armor.acBase <= 15;
+    const isHeavy = armor.armorType === 'heavy';
+    const isMedium = armor.armorType === 'medium';
     // Light: acBase + full DEX; Medium: acBase + min(DEX, 2); Heavy: acBase only
     if (isHeavy) {
       ac = armor.acBase;
@@ -731,6 +757,10 @@ export function computeAC(
     } else {
       ac = armor.acBase + dexMod;
       source = `${armor.name} · ${armor.acBase} ${formatModifier(dexMod)}`;
+    }
+    if (magicAcBonus > 0) {
+      ac += magicAcBonus;
+      source += ` +${magicAcBonus}`;
     }
   }
 
@@ -1150,6 +1180,126 @@ function isMonkWeaponName(nameEn: string, nameFr: string | null): boolean {
   if (!m.simple) return m.nameEn === 'Shortsword';
   // Simple melee weapons (no ammunition) that aren't two-handed
   return !m.properties.includes('ammunition') && !m.properties.includes('two-handed');
+}
+
+// ---------- Magic armor base resolution (SRD) ----------
+
+/** One SRD mundane armor (names match the item catalog). strMin: 0 = no minimum. */
+export interface MundaneArmor {
+  nameEn: string;
+  nameFr: string;
+  acBase: number;
+  strMin: number;
+  stealthDisadvantage: boolean;
+  armorType: 'light' | 'medium' | 'heavy' | 'shield';
+}
+
+export const MUNDANE_ARMORS: MundaneArmor[] = [
+  { nameEn: 'Padded Armor', nameFr: 'Matelassée', acBase: 11, strMin: 0, stealthDisadvantage: true, armorType: 'light' },
+  { nameEn: 'Leather Armor', nameFr: 'Cuir', acBase: 11, strMin: 0, stealthDisadvantage: false, armorType: 'light' },
+  { nameEn: 'Studded Leather Armor', nameFr: 'Cuir clouté', acBase: 12, strMin: 0, stealthDisadvantage: false, armorType: 'light' },
+  { nameEn: 'Hide Armor', nameFr: 'Peaux', acBase: 12, strMin: 0, stealthDisadvantage: false, armorType: 'medium' },
+  { nameEn: 'Chain Shirt', nameFr: 'Chemise de mailles', acBase: 13, strMin: 0, stealthDisadvantage: false, armorType: 'medium' },
+  { nameEn: 'Scale Mail', nameFr: "Cotte d'écailles", acBase: 14, strMin: 0, stealthDisadvantage: true, armorType: 'medium' },
+  { nameEn: 'Breastplate', nameFr: 'Cuirasse', acBase: 14, strMin: 0, stealthDisadvantage: false, armorType: 'medium' },
+  { nameEn: 'Half Plate Armor', nameFr: 'Demi-plate', acBase: 15, strMin: 0, stealthDisadvantage: true, armorType: 'medium' },
+  { nameEn: 'Ring Mail', nameFr: 'Broigne', acBase: 14, strMin: 0, stealthDisadvantage: true, armorType: 'heavy' },
+  { nameEn: 'Chain Mail', nameFr: 'Cotte de mailles', acBase: 16, strMin: 13, stealthDisadvantage: true, armorType: 'heavy' },
+  { nameEn: 'Splint Armor', nameFr: 'Clibanion', acBase: 17, strMin: 15, stealthDisadvantage: true, armorType: 'heavy' },
+  { nameEn: 'Plate Armor', nameFr: 'Harnois', acBase: 18, strMin: 15, stealthDisadvantage: true, armorType: 'heavy' },
+  { nameEn: 'Shield', nameFr: 'Bouclier', acBase: 2, strMin: 0, stealthDisadvantage: false, armorType: 'shield' },
+];
+
+/** Find a mundane armor by exact English or French name. */
+export function findMundaneArmorByName(nameEn: string | null | undefined, nameFr: string | null | undefined): MundaneArmor | null {
+  if (nameEn) {
+    const byEn = MUNDANE_ARMORS.find((a) => a.nameEn.toLowerCase() === nameEn.toLowerCase());
+    if (byEn) return byEn;
+  }
+  if (nameFr) {
+    const byFr = MUNDANE_ARMORS.find((a) => a.nameFr.toLowerCase() === nameFr.toLowerCase());
+    if (byFr) return byFr;
+  }
+  return null;
+}
+
+/** Result of resolving a magic armor to its base armor + AC bonus. */
+export interface MagicArmorBase {
+  base: MundaneArmor | null; // null: family armor (légère/intermédiaire/lourde) — base unknowable
+  shield: boolean;
+  /** Flat AC bonus (+1/+2/+3), 0 when none. */
+  magicBonus: number;
+}
+
+/**
+ * Resolve a magic armor (acBase null) to its base armor and magic AC bonus.
+ *
+ * Detection order (mirrors resolveMagicWeaponBase):
+ *  1. Shield: name contains bouclier/shield, or the description header
+ *     `Armure (bouclier)`.
+ *  2. Exact mundane name (EN or FR, word-boundary, longest first).
+ *  3. Description header `Armure (<base>)` — specific bases, including the
+ *     synonyms "plates"/"armure de plates" → Harnois (Plate). Family headers
+ *     (légère/intermédiaire/lourde) resolve to no base.
+ *  4. Bonus: "+N" in the name, or "bonus de +N à la CA" in the description —
+ *     excluding the conditional "+N à la CA contre …" (Bouclier attrape-flèches).
+ */
+export function resolveMagicArmorBase(
+  item: Pick<Item, 'name' | 'nameFr' | 'description'>,
+): MagicArmorBase {
+  const result: MagicArmorBase = { base: null, shield: false, magicBonus: 0 };
+  const header = item.description?.match(/^Armure \(([^)]+)\)/i)?.[1]?.toLowerCase() ?? '';
+  const nameLower = `${item.name ?? ''} ${item.nameFr ?? ''}`.toLowerCase();
+
+  // Shields
+  if (nameLower.includes('bouclier') || nameLower.includes('shield') || header.includes('bouclier')) {
+    result.shield = true;
+    result.base = MUNDANE_ARMORS.find((a) => a.armorType === 'shield') ?? null;
+  }
+
+  // Magic bonus: +N in the name, or "bonus de +N à la CA" (not the conditional "contre" variant)
+  const nameBonus = (item.name ?? '').match(/\+(\d)/);
+  if (nameBonus) result.magicBonus = parseInt(nameBonus[1], 10);
+  if (result.magicBonus === 0 && item.description) {
+    const descBonus = item.description.match(/bonus de \+(\d+) à la CA(?! contre)/i);
+    if (descBonus) result.magicBonus = parseInt(descBonus[1], 10);
+  }
+
+  if (result.shield) return result;
+
+  // Description header first — canonical and immune to French inflections
+  // ("cuir cloutée" never word-matches "Cuir clouté" and would fall through
+  // to the shorter base "Cuir")
+  if (header) {
+    const specific: Array<[string, string]> = [
+      ["cotte d'écailles", 'Scale Mail'],
+      ['chemise de mailles', 'Chain Shirt'],
+      ['cuir clouté', 'Studded Leather Armor'],
+      ['plates', 'Plate Armor'],
+    ];
+    for (const [needle, nameEn] of specific) {
+      if (header.includes(needle)) {
+        result.base = MUNDANE_ARMORS.find((a) => a.nameEn === nameEn) ?? null;
+        return result;
+      }
+    }
+    // Family headers (légère / intermédiaire ou lourde) → fall through to
+    // name matching, then no base
+  }
+
+  // Exact mundane name (longest FR names first, word boundaries)
+  const candidates = [...MUNDANE_ARMORS].filter((a) => a.armorType !== 'shield').sort((a, b) => b.nameFr.length - a.nameFr.length);
+  for (const a of candidates) {
+    const en = escapeRegExp(a.nameEn.toLowerCase());
+    const fr = escapeRegExp(a.nameFr.toLowerCase());
+    if (new RegExp(`(^|[^a-zà-öø-ÿ])${en}([^a-zà-öø-ÿ]|$)`).test(nameLower)
+      || new RegExp(`(^|[^a-zà-öø-ÿ])${fr}([^a-zà-öø-ÿ]|$)`).test(nameLower)) {
+      result.base = a;
+      return result;
+    }
+  }
+
+  return result;
 }
 
 

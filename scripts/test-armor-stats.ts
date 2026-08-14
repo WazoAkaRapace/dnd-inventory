@@ -1,0 +1,103 @@
+/**
+ * Sanity checks for resolveMagicArmorBase / computeAC magic-armor handling.
+ * Run: npm run test-armor-stats
+ */
+import {
+  computeAC,
+  resolveMagicArmorBase,
+  type Item,
+} from '@dnd-inventory/shared';
+
+let failures = 0;
+function check(label: string, actual: unknown, expected: unknown) {
+  const ok = JSON.stringify(actual) === JSON.stringify(expected);
+  if (!ok) {
+    failures++;
+    console.error(`✗ ${label}: got ${JSON.stringify(actual)}, expected ${JSON.stringify(expected)}`);
+  } else {
+    console.log(`✓ ${label}`);
+  }
+}
+
+const mkArmor = (over: Partial<Item>): Item => ({
+  id: 1, source: 'srd', partyId: null, category: 'armor', name: 'Plate Armor', nameFr: 'Harnois',
+  rarity: 'veryRare', weightKg: 32.5, costQty: null, costUnit: null, description: 'Armure (plates), très rare',
+  damageDice: null, damageType: null, acBase: null, strMin: null,
+  stealthDisadvantage: false, properties: [], survivalTags: [], aliases: [], imagePath: null,
+  ...over,
+});
+
+const entry = (item: Item) => ({ item: { ...item, category: item.category }, equipped: true });
+
+// --- Base resolution ---
+let r = resolveMagicArmorBase(mkArmor({ name: 'Dwarven Plate', nameFr: 'Harnois nain', description: 'Armure (plates), très rare (requiert une harmonisation) Vous gagnez un bonus de +2 à la CA.' }));
+check('Harnois nain → plates +2', { base: r.base?.nameEn, bonus: r.magicBonus, shield: r.shield }, { base: 'Plate Armor', bonus: 2, shield: false });
+
+r = resolveMagicArmorBase(mkArmor({
+  name: 'Elven Chain', nameFr: 'Chemise de mailles elfique', weightKg: 10,
+  description: 'Armure (chemise de mailles), rare Vous gagnez un bonus de +1 à la CA tant que vous portez cette armure.',
+}));
+check('Chemise elfique → chain shirt +1', { base: r.base?.nameEn, bonus: r.magicBonus }, { base: 'Chain Shirt', bonus: 1 });
+
+r = resolveMagicArmorBase(mkArmor({
+  name: 'Red Dragon Scale Mail', nameFr: "Cotte d'écailles de dragon rouge", weightKg: 22.5,
+  description: "Armure (cotte d'écailles), très rare Vous gagnez un bonus de +1 à la CA.",
+}));
+check('Cotte de dragon rouge → scale mail +1', { base: r.base?.nameEn, bonus: r.magicBonus }, { base: 'Scale Mail', bonus: 1 });
+
+r = resolveMagicArmorBase(mkArmor({
+  name: 'Glamoured Studded Leather Armor', nameFr: 'Armure de cuir cloutée illusoire', weightKg: 6.5,
+  description: 'Armure (cuir clouté), rare … vous gagnez un bonus de +1 à la CA.',
+}));
+check('Cuir clouté illusoire (accord féminin) via en-tête', r.base?.nameEn, 'Studded Leather Armor');
+
+r = resolveMagicArmorBase(mkArmor({
+  name: 'Armor of Invulnerability', nameFr: "Armure d'invulnérabilité",
+  description: "Armure (armure de plates), légendaire …",
+}));
+check('Invulnérabilité → plates (synonyme)', r.base?.nameEn, 'Plate Armor');
+
+r = resolveMagicArmorBase(mkArmor({
+  name: 'Armor, +1', nameFr: 'Armure +1', rarity: 'rare',
+  description: 'Armure (légère, intermédiaire ou lourde), rare Vous bénéficiez d\u2019un bonus de +1 à la CA tant que vous portez cette armure.',
+}));
+check('Armure +1 → famille sans base, bonus 1', { base: r.base, bonus: r.magicBonus }, { base: null, bonus: 1 });
+
+r = resolveMagicArmorBase(mkArmor({
+  name: 'Bouclier animé', nameFr: 'Bouclier animé', description: 'Armure (bouclier), très rare …', weightKg: 2.7,
+}));
+check('Bouclier animé → shield', { shield: r.shield, bonus: r.magicBonus }, { shield: true, bonus: 0 });
+
+r = resolveMagicArmorBase(mkArmor({
+  name: 'Arrow-Catching Shield', nameFr: 'Bouclier attrape-flèches', description: 'Armure (bouclier), rare … bonus de +2 à la CA contre les attaques à distance …', weightKg: 2.7,
+}));
+check('Attrape-flèches : bonus conditionnel exclu', { shield: r.shield, bonus: r.magicBonus }, { shield: true, bonus: 0 });
+
+// --- computeAC ---
+const dex4 = 4; // DEX 18
+check('Harnois nain équipé → 18 + 2, sans DEX',
+  computeAC([entry(mkArmor({ name: 'Dwarven Plate', nameFr: 'Harnois nain', description: 'Armure (plates) … bonus de +2 à la CA.' }))], dex4).ac, 20);
+
+check('Chemise elfique → 13 + min(4,2) + 1 = 16',
+  computeAC([entry(mkArmor({ name: 'Elven Chain', nameFr: 'Chemise de mailles elfique', description: 'Armure (chemise de mailles) … bonus de +1 à la CA.' }))], dex4).ac, 16);
+
+check('Cuir clouté illusoire → 12 + DEX + 1 = 17',
+  computeAC([entry(mkArmor({ name: 'Glamoured Studded Leather', nameFr: 'Armure de cuir cloutée illusoire', description: 'Armure (cuir clouté) … bonus de +1 à la CA.' }))], dex4).ac, 17);
+
+check('Bouclier animé → +2 sur sans armure',
+  computeAC([entry(mkArmor({ name: 'Animated Shield', nameFr: 'Bouclier animé', description: 'Armure (bouclier) …' }))], dex4).ac, 16);
+
+check('Armure +1 seule (famille) → sans armure 10 + DEX',
+  computeAC([entry(mkArmor({ name: 'Armor, +1', nameFr: 'Armure +1', description: 'Armure (légère, intermédiaire ou lourde) … bonus de +1 à la CA …' }))], dex4).ac, 14);
+
+// Mundane armor regression: light/medium DEX handling (strMin 0 in the data)
+const cuirasse = mkArmor({ name: 'Breastplate', nameFr: 'Cuirasse', rarity: 'none' as any, acBase: 14, strMin: 0, description: '' });
+check('Cuirasse simple → 14 + min(4,2) = 16 (DEX plafonnée)',
+  computeAC([entry(cuirasse)], dex4).ac, 16);
+const cuir = mkArmor({ name: 'Leather Armor', nameFr: 'Cuir', rarity: 'none' as any, acBase: 11, strMin: 0, description: '' });
+check('Cuir simple → 11 + 4 = 15', computeAC([entry(cuir)], dex4).ac, 15);
+const harnois = mkArmor({ name: 'Plate Armor', nameFr: 'Harnois', rarity: 'none' as any, acBase: 18, strMin: 15, description: '' });
+check('Harnois simple → 18 sans DEX', computeAC([entry(harnois)], dex4).ac, 18);
+
+console.log(failures === 0 ? '\n✅ All armor stats checks pass' : `\n❌ ${failures} failure(s)`);
+process.exit(failures === 0 ? 0 : 1);

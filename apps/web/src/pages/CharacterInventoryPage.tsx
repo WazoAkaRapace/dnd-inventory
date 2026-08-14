@@ -23,6 +23,7 @@ import {
   DND_CONDITIONS_FR,
   computeWeaponStats,
   WEAPON_PROPERTY_LABELS_FR,
+  resolveMagicArmorBase,
   proficiencyBonus,
   formatModifier,
 } from '@dnd-inventory/shared';
@@ -1516,6 +1517,17 @@ function InventoryRow({
                     })()}
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-500">
                       {item.acBase !== null && <span>🛡 CA : {item.acBase}</span>}
+                      {item.acBase === null && item.category === 'armor' && (() => {
+                        const magic = resolveMagicArmorBase(item);
+                        if (magic.shield) return <span>🛡 Bouclier (+2 à la CA)</span>;
+                        if (!magic.base) return null;
+                        return (
+                          <span>
+                            🛡 CA : {magic.base.acBase}
+                            {magic.magicBonus > 0 && ` +${magic.magicBonus}`} · base {magic.base.nameFr}
+                          </span>
+                        );
+                      })()}
                       {item.strMin !== null && <span>💪 FOR min. : {item.strMin}</span>}
                       {item.stealthDisadvantage && <span>🤫 Désavantage Discrétion</span>}
                       {item.properties && item.properties.filter((p) => p !== 'monk').length > 0 && (
