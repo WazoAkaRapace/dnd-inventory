@@ -68,7 +68,7 @@ export default function CastSpellSheet({ spell, slots, slotsUsed, concentrating,
             </h3>
             <p className="text-xs text-ink-400">
               {isCantrip ? 'Tour de magie' : `Sort de niveau ${spell.level}`}
-              {spell.concentration && ' · 🎯 Concentration'}
+              {spell.concentration && ' · 🌀 Concentration'}
               {spell.ritual && ' · ⚗ Rituel'}
             </p>
           </div>

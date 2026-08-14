@@ -401,7 +401,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                                 </span>
                                 {spell.concentration && (
                                   <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
-                                    🎯 Concentration
+                                    🌀 Concentration
                                   </span>
                                 )}
                                 {spell.ritual && (
@@ -434,7 +434,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                                 <div className="flex flex-wrap gap-1.5 pt-1">
                                   {spell.concentration && (
                                     <span className="px-2 py-1 rounded-md bg-indigo-100 text-indigo-800 text-[11px] font-semibold border border-indigo-300">
-                                      🎯 Nécessite de la concentration
+                                      🌀 Nécessite de la concentration
                                     </span>
                                   )}
                                   {spell.ritual && (
@@ -747,7 +747,7 @@ function SpellCatalog({
                         <span>{spell.level === 0 ? 'Tour' : `Niv. ${spell.level}`}</span>
                         {spell.concentration && (
                           <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
-                            🎯 Concentration
+                            🌀 Concentration
                           </span>
                         )}
                         {spell.ritual && (
@@ -771,7 +771,7 @@ function SpellCatalog({
                         <div className="flex flex-wrap gap-1.5 pt-1">
                           {spell.concentration && (
                             <span className="px-2 py-1 rounded-md bg-indigo-100 text-indigo-800 text-[11px] font-semibold border border-indigo-300">
-                              🎯 Nécessite de la concentration
+                              🌀 Nécessite de la concentration
                             </span>
                           )}
                           {spell.ritual && (
