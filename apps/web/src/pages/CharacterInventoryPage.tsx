@@ -621,7 +621,7 @@ export default function CharacterInventoryPage() {
               )}
               {character.concentrating && (
                 <span className="shrink-0 text-base" title="Concentration en cours" aria-label="En concentration">
-                  🎯
+                  🌀
                 </span>
               )}
               <button
