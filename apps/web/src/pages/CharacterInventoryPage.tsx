@@ -36,6 +36,21 @@ import CharacterNotesTab from './CharacterNotesTab';
 import ConcentrationAlert from '../components/ConcentrationAlert';
 
 type CharacterTab = 'inventory' | 'survival' | 'stats' | 'spells' | 'skills' | 'features' | 'description' | 'npcs' | 'notes';
+
+/** Character sheet tabs (shared by the desktop top bar and the mobile bottom dock). */
+const CHARACTER_TABS: { key: CharacterTab; label: string; icon: string; primary: boolean; short?: string }[] = [
+  { key: 'inventory', label: 'Inventaire', icon: '🎒', primary: false },
+  { key: 'survival', label: 'Survie', icon: '🩸', primary: true, short: 'Survie' },
+  { key: 'stats', label: 'Caractéristiques', icon: '⚔️', primary: true, short: 'Caract.' },
+  { key: 'spells', label: 'Sorts', icon: '✨', primary: true, short: 'Sorts' },
+  { key: 'skills', label: 'Compétences', icon: '🎯', primary: true, short: 'Comp.' },
+  { key: 'features', label: 'Traits', icon: '📋', primary: false },
+  { key: 'description', label: 'Description', icon: '👤', primary: false },
+  { key: 'npcs', label: 'PNJ', icon: '🎭', primary: false },
+  { key: 'notes', label: 'Notes', icon: '📝', primary: false },
+];
+/** Dock slot order: the 4 essentials split around the center button. */
+const DOCK_PRIMARY: CharacterTab[] = ['survival', 'stats', 'spells', 'skills'];
 import {
   LoadingSpinner,
   ErrorMsg,
@@ -152,6 +167,7 @@ export default function CharacterInventoryPage() {
 
   // Catalog (in bottom-sheet on mobile, right column on desktop)
   const [catalogOpen, setCatalogOpen] = useState(false); // mobile sheet
+  const [moreOpen, setMoreOpen] = useState(false); // mobile « Plus » tabs sheet
   const [catalogSearch, setCatalogSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [catalogCategory, setCatalogCategory] = useState<'' | ItemCategory>('');
@@ -588,7 +604,7 @@ export default function CharacterInventoryPage() {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-16 lg:pb-0">
       {/* Character header + encumbrance */}
       <div>
         <div className="card p-4 sm:p-5">
@@ -689,20 +705,10 @@ export default function CharacterInventoryPage() {
         </div>
       </Modal>
 
-      {/* ---------- Tab navigation ---------- */}
-      <div className="-mx-4 px-4 sm:mx-0 sm:px-0">
+      {/* ---------- Tab navigation — desktop top bar ---------- */}
+      <div className="-mx-4 px-4 sm:mx-0 sm:px-0 hidden lg:block">
         <div className="flex items-center gap-1 bg-parchment-100 rounded-xl p-1 overflow-x-auto no-scrollbar">
-          {([
-            { key: 'inventory', label: 'Inventaire', icon: '🎒' },
-            { key: 'survival', label: 'Survie', icon: '🩸' },
-            { key: 'stats', label: 'Caractéristiques', icon: '⚔️' },
-            { key: 'skills', label: 'Compétences', icon: '🎯' },
-            { key: 'spells', label: 'Sorts', icon: '✨' },
-            { key: 'features', label: 'Traits', icon: '📋' },
-            { key: 'description', label: 'Description', icon: '👤' },
-            { key: 'npcs', label: 'PNJ', icon: '🎭' },
-            { key: 'notes', label: 'Notes', icon: '📝' },
-          ] as { key: CharacterTab; label: string; icon: string }[]).map((tab) => (
+          {CHARACTER_TABS.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
@@ -719,6 +725,119 @@ export default function CharacterInventoryPage() {
           ))}
         </div>
       </div>
+
+      {/* ---------- Tab navigation — floating mobile dock with sliding indicator ---------- */}
+      <div className="lg:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-30 max-w-[calc(100vw-2rem)]">
+        {(() => {
+          const primaries = DOCK_PRIMARY.map((k) => CHARACTER_TABS.find((t) => t.key === k)!);
+          const left = primaries.slice(0, 2);
+          const right = primaries.slice(2);
+          const secondary = CHARACTER_TABS.find((t) => t.key === activeTab && !t.primary);
+          // Flex order: [slot][slot][hub][slot][slot] — equal 56px blocks with
+          // 4px gaps after an 8px padding. The hub occupies visual slot 2, so
+          // right-side tabs skip it; the indicator slides behind the hub only
+          // when a secondary tab is selected.
+          const activeIdx = primaries.findIndex((p) => p.key === activeTab);
+          const indicatorIdx = activeIdx === -1 ? 2 : activeIdx <= 1 ? activeIdx : activeIdx + 1;
+            const slot = (tab: typeof primaries[number]) => {
+              const active = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`relative z-10 flex flex-col items-center gap-0.5 w-14 py-1 rounded-full transition-[color,transform] duration-200 active:scale-95 whitespace-nowrap ${
+                    active ? 'text-white' : 'text-ink-400 hover:text-ink-700'
+                  }`}
+                  aria-pressed={active}
+                  aria-label={tab.label}
+                >
+                  <span className="text-lg leading-none" aria-hidden="true">{tab.icon}</span>
+                  <span className="text-[9px] font-medium leading-none">{tab.short ?? tab.label}</span>
+                </button>
+              );
+            };
+            return (
+              <div className="dock-rise relative flex items-center gap-1 bg-white/95 backdrop-blur rounded-full shadow-xl border border-parchment-200 px-2 py-1.5">
+                {/* Sliding active indicator — 8px padding + 60px per block */}
+                <span
+                  className="dock-indicator absolute top-1 bottom-1 left-2 w-14 rounded-full bg-blood-600 shadow-sm"
+                  style={{ transform: `translateX(${indicatorIdx * 60}px)` }}
+                  aria-hidden="true"
+                />
+                {left.map(slot)}
+                {/* Center: expandable button — shows the active secondary tab */}
+                <button
+                  onClick={() => setMoreOpen((o) => !o)}
+                  className={`hub-button relative z-10 mx-1 -my-3 w-12 h-12 shrink-0 rounded-full shadow-lg flex items-center justify-center text-xl leading-none text-white active:scale-90 border-4 border-parchment-50 ${
+                    moreOpen ? 'bg-ink-900 rotate-90' : 'bg-blood-600 hover:bg-blood-700'
+                  }`}
+                  aria-expanded={moreOpen}
+                  aria-label={moreOpen ? 'Fermer les autres onglets' : 'Autres onglets'}
+                >
+                  <span key={moreOpen ? 'x' : secondary ? secondary.key : 'menu'} className="icon-swap" aria-hidden="true">
+                    {moreOpen ? '✕' : secondary ? secondary.icon : '☰'}
+                  </span>
+                </button>
+                {right.map(slot)}
+              </div>
+            );
+        })()}
+      </div>
+
+      {/* Expanding dial: scrim + secondary tab stack above the center button,
+          with the same sliding indicator (vertical) behind the active tab */}
+      {moreOpen && (
+        <>
+          <div className="scrim-fade lg:hidden fixed inset-0 z-40 bg-black/40" onClick={() => setMoreOpen(false)} />
+          {(() => {
+            const secondaryTabs = CHARACTER_TABS.filter((t) => !t.primary);
+            const activeIdx = secondaryTabs.findIndex((t) => t.key === activeTab);
+            // Compact 2-column grid anchored just above the dock — stays in
+            // thumb reach. Cells are w-36 (144px) + 8px gaps; the 5th item
+            // spans both columns. No highlight when a dock tab is active.
+            const indPos = (idx: number) => {
+              const row = Math.floor(idx / 2);
+              const span = idx === 4; // 5th item is full-width
+              return {
+                x: span ? 0 : (idx % 2) * 152,
+                y: row * 48,
+                w: span ? 296 : 144,
+              };
+            };
+            const p = activeIdx >= 0 ? indPos(activeIdx) : null;
+            return (
+              <div className="lg:hidden fixed z-50 bottom-24 left-1/2 -translate-x-1/2 w-[296px] grid grid-cols-2 gap-2">
+                {p && (
+                  <span
+                    className="dock-indicator absolute top-0 left-0 h-10 rounded-full bg-blood-600 shadow-sm"
+                    style={{ width: p.w, transform: `translate(${p.x}px, ${p.y}px)` }}
+                    aria-hidden="true"
+                  />
+                )}
+                {secondaryTabs.map((tab, i) => {
+                  const active = activeTab === tab.key;
+                  const span = i === 4;
+                  return (
+                    <button
+                      key={tab.key}
+                      onClick={() => { setActiveTab(tab.key); setMoreOpen(false); }}
+                      className={`dial-item relative z-10 ${span ? 'col-span-2 w-full' : 'w-36'} h-10 flex items-center justify-center gap-2 rounded-full border shadow-lg text-sm font-medium whitespace-nowrap transition-[color,border-color,background-color] duration-200 active:scale-95 ${
+                        active
+                          ? 'bg-transparent text-white border-blood-700'
+                          : 'bg-white text-ink-700 border-parchment-200 hover:border-blood-400'
+                      }`}
+                      style={{ animationDelay: `${i * 30}ms` }}
+                    >
+                      <span className="text-lg leading-none" aria-hidden="true">{tab.icon}</span>
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </>
+      )}
 
       {/* ---------- Non-inventory tabs (rendered when selected) ---------- */}
       {activeTab === 'survival' && (
@@ -959,7 +1078,7 @@ export default function CharacterInventoryPage() {
       {activeTab === 'inventory' && (
       <button
         onClick={() => setCatalogOpen(true)}
-        className="lg:hidden fab-enter fixed bottom-5 right-5 z-30 w-14 h-14 rounded-full bg-blood-600 text-white shadow-lg flex items-center justify-center text-2xl font-light hover:bg-blood-700 active:scale-95 transition-all"
+        className="lg:hidden fab-enter fixed bottom-24 right-5 z-30 w-14 h-14 rounded-full bg-blood-600 text-white shadow-lg flex items-center justify-center text-2xl font-light hover:bg-blood-700 active:scale-95 transition-all"
         aria-label="Ajouter un objet au catalogue"
       >
         +

@@ -158,7 +158,7 @@ export default function CombatWidget() {
     return (
       <button
         onClick={() => setCollapsed(false)}
-        className={`fixed bottom-4 left-4 z-40 w-12 h-12 rounded-full flex items-center justify-center text-xl transition-shadow ${
+        className={`fixed bottom-24 lg:bottom-4 left-4 z-40 w-12 h-12 rounded-full flex items-center justify-center text-xl transition-shadow ${
           isMyTurn
             ? 'bg-blood-600 text-parchment-50'
             : needsInitiative
@@ -178,7 +178,7 @@ export default function CombatWidget() {
 
   return (
     <div
-      className={`fixed bottom-4 left-4 z-40 w-72 rounded-xl shadow-xl border-2 bg-white ${
+      className={`fixed bottom-24 lg:bottom-4 left-4 z-40 w-72 rounded-xl shadow-xl border-2 bg-white ${
         isMyTurn
           ? 'border-blood-500'
           : needsInitiative

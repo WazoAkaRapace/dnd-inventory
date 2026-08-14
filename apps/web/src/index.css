@@ -207,3 +207,59 @@ input[type='number'] {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* ---------- Dock navigation motion ---------- */
+
+/* Confident ease-out shared by every dock transition */
+.dock-indicator {
+  transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.hub-button {
+  transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 200ms ease-out;
+}
+
+/* Dock entrance — one authored arrival on page load */
+@keyframes dock-rise {
+  from { transform: translateY(18px); opacity: 0; }
+}
+.dock-rise {
+  animation: dock-rise 450ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+/* Hub → dial: scrim fades in */
+@keyframes scrim-fade {
+  from { opacity: 0; }
+}
+.scrim-fade {
+  animation: scrim-fade 200ms ease-out backwards;
+}
+
+/* Hub → dial: items rise out of the hub with a capped stagger */
+@keyframes dial-item-rise {
+  from { transform: translateY(14px) scale(0.95); opacity: 0; }
+}
+.dial-item {
+  animation: dial-item-rise 320ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+/* Hub face swap (☰ → tab icon → ✕) */
+@keyframes icon-swap {
+  from { transform: scale(0.5); opacity: 0; }
+}
+.icon-swap {
+  animation: icon-swap 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock-rise,
+  .scrim-fade,
+  .dial-item,
+  .icon-swap {
+    animation: none;
+  }
+  .dock-indicator,
+  .hub-button {
+    transition: none;
+  }
+}
