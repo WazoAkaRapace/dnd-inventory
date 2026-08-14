@@ -725,6 +725,7 @@ export default function CharacterInventoryPage() {
           markLocalMutation={markLocalMutation}
           onSaved={refreshInventory}
           onError={(msg) => pushToast(msg, 'error')}
+          onNotice={(msg) => pushToast(msg)}
         />
       )}
       {activeTab === 'stats' && (
@@ -1935,9 +1936,10 @@ interface SurvivalPanelProps {
   markLocalMutation: () => void;
   onSaved: () => Promise<void>;
   onError: (msg: string) => void;
+  onNotice?: (msg: string) => void;
 }
 
-function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved, onError }: SurvivalPanelProps) {
+function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved, onError, onNotice }: SurvivalPanelProps) {
   const [exhaustion, setExhaustion] = useState(character.exhaustion);
   const [conditions, setConditions] = useState<string[]>(character.conditions);
   const [foodDays, setFoodDays] = useState(character.foodDays);
@@ -1997,7 +1999,11 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
   const patchCharacter = async (payload: Record<string, unknown>, errorMsg: string) => {
     markLocalMutation();
     try {
-      await api.patch(`/api/characters/${charId}`, payload);
+      const res = await api.patch(`/api/characters/${charId}`, payload);
+      // Applying an incapacitating condition breaks concentration — tell the player.
+      if (res?.data?.concentrationBroken) {
+        onNotice?.(`🌀 Concentration rompue : ${res.data.concentrationBroken} — le sort en cours est interrompu`);
+      }
       await onSaved();
     } catch (err: any) {
       onError(err.response?.data?.error || errorMsg);

@@ -11,6 +11,7 @@ import {
   mapCharacter,
   mapCharacterSummary,
 } from './helpers.ts';
+import { CONCENTRATION_BREAKING_CONDITIONS_FR } from '@dnd-inventory/shared';
 import type {
   CreateCharacterPayload,
   PatchCharacterPayload,
@@ -191,6 +192,19 @@ export async function characterRoutes(app: FastifyInstance) {
         }
       }
 
+      // --- Concentration: applying an incapacitating condition
+      // (Inconscient, Paralysé, Pétrifié, Étourdi, Neutralisé) breaks it.
+      let concentrationBroken: string | null = null;
+      if (body.conditions && char.concentrating && body.concentrating !== false) {
+        const breaking = body.conditions.find((c) => CONCENTRATION_BREAKING_CONDITIONS_FR.includes(c));
+        if (breaking) {
+          concentrationBroken = breaking;
+          if (body.concentrating === undefined && !sets.some((s) => s.startsWith('concentrating'))) {
+            sets.push('concentrating = 0'); // literal — no ? placeholder
+          }
+        }
+      }
+
       vals.push(char.id);
       db.prepare(`UPDATE characters SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
 
@@ -213,6 +227,7 @@ export async function characterRoutes(app: FastifyInstance) {
       return reply.send({
         character: mapCharacter(row),
         ...(concentrationCheck ? { concentrationCheck } : {}),
+        ...(concentrationBroken ? { concentrationBroken } : {}),
       });
     },
   );

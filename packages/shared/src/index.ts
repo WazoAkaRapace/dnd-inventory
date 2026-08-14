@@ -218,6 +218,18 @@ export const DND_CONDITIONS_FR = [
   'Neutralisé',
 ] as const;
 
+/**
+ * Conditions that incapacitate the character and therefore automatically
+ * break concentration (5e SRD: incapacitated = unable to concentrate).
+ */
+export const CONCENTRATION_BREAKING_CONDITIONS_FR: readonly string[] = [
+  'Neutralisé',
+  'Étourdi',
+  'Inconscient',
+  'Paralysé',
+  'Pétrifié',
+];
+
 // ---------- Characters ----------
 
 export interface CharacterSummary {

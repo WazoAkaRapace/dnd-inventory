@@ -12,7 +12,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
 import { requireUser, isPartyMember, isPartyGM, getUserId } from './helpers.ts';
-import { abilityModifier, computeAC } from '@dnd-inventory/shared';
+import { abilityModifier, computeAC, CONCENTRATION_BREAKING_CONDITIONS_FR } from '@dnd-inventory/shared';
 import type {
   Combatant,
   CombatantCondition,
@@ -574,6 +574,23 @@ export async function combatRoutes(app: FastifyInstance) {
       }
 
       const row = db.prepare('SELECT * FROM combatants WHERE id = ?').get(combatant.id);
+
+      // --- Concentration: an incapacitating condition applied by the GM
+      // (Inconscient, Paralysé, …) breaks the player's concentration.
+      let concentrationBroken: string | undefined;
+      if (body.conditions && combatant.type === 'player' && combatant.character_id) {
+        const breaking = body.conditions.find((c) => CONCENTRATION_BREAKING_CONDITIONS_FR.includes(c.name));
+        if (breaking) {
+          const ch = db.prepare('SELECT id, concentrating FROM characters WHERE id = ?')
+            .get(combatant.character_id) as any;
+          if (ch?.concentrating) {
+            db.prepare('UPDATE characters SET concentrating = 0 WHERE id = ?').run(ch.id);
+            bus.emitChange({ type: 'character:change', partyId: enc.party_id, characterId: ch.id, action: 'stats', actorUserId: userId });
+            concentrationBroken = breaking.name;
+          }
+        }
+      }
+
       bus.emitChange({
         type: 'combat:change',
         partyId: enc.party_id,
@@ -581,7 +598,10 @@ export async function combatRoutes(app: FastifyInstance) {
         actorUserId: userId,
         ...(concentration ? { concentration } : {}),
       });
-      return reply.send({ combatant: mapCombatant(row) });
+      return reply.send({
+        combatant: mapCombatant(row),
+        ...(concentrationBroken ? { concentrationBroken } : {}),
+      });
     },
   );
 
