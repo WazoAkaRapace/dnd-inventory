@@ -135,7 +135,7 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
             <div className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-1.5">
               {ABILITY_SHORT_FR[group.ability as AbilityKey]} — {group.label}
             </div>
-            <div className="space-y-1.5">
+            <div className="grid grid-cols-2 gap-1.5">
               {group.skills.map((skill) => {
                 const score = abilityScore(character, skill.ability);
                 const mod = abilityModifier(score);
@@ -145,20 +145,20 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
                   <button
                     key={skill.key}
                     onClick={() => toggleSkill(skill.key)}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border transition-colors text-left ${
+                    className={`w-full flex items-center justify-between gap-1 px-3 py-2 rounded-lg border transition-colors text-left ${
                       prof > 0
                         ? 'bg-blood-50 border-blood-300'
                         : 'bg-parchment-50 border-parchment-200 hover:border-parchment-300'
                     }`}
                     aria-pressed={prof > 0}
                   >
-                    <span className="flex items-center gap-2">
-                      <span className={`text-xs w-4 ${prof > 0 ? 'text-blood-600' : 'text-parchment-300'}`}>
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className={`text-xs w-4 shrink-0 ${prof > 0 ? 'text-blood-600' : 'text-parchment-300'}`}>
                         {prof > 0 ? '●' : '○'}
                       </span>
-                      <span className="text-sm text-ink-700">{skill.label}</span>
+                      <span className="text-sm text-ink-700 truncate">{skill.label}</span>
                     </span>
-                    <span className="font-bold text-ink-800">{formatModifier(total)}</span>
+                    <span className="font-bold text-ink-800 shrink-0">{formatModifier(total)}</span>
                   </button>
                 );
               })}
