@@ -2235,6 +2235,90 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
         <span aria-hidden="true">🩸</span> Survie
       </h2>
 
+      {/* Attack options — equipped weapons with computed attack & damage */}
+      <div>
+        <span className="text-sm font-medium text-ink-700 block mb-1.5">⚔ Attaques</span>
+        {(() => {
+          const equippedWeapons = entries.filter((e) => e.equipped && e.item.category === 'weapon');
+          if (equippedWeapons.length === 0) {
+            return (
+              <p className="text-xs text-ink-400 italic">
+                Équipez une arme dans l'Inventaire pour voir vos jets d'attaque.
+              </p>
+            );
+          }
+          return (
+            <div className="space-y-1.5">
+              {equippedWeapons.map((e) => {
+                const stats = computeWeaponStats(e.item, character);
+                const itemName = e.item.nameFr || e.item.name;
+                if (!stats) {
+                  return (
+                    <div key={e.id} className="flex items-center justify-between bg-parchment-50 rounded-lg px-3 py-2 border border-parchment-200">
+                      <span className="text-sm font-medium text-ink-800 truncate">{itemName}</span>
+                      <span className="text-xs text-ink-400">arme non résolue</span>
+                    </div>
+                  );
+                }
+                const abilityLabel = stats.ability === 'dexterity' ? 'DEX' : 'FOR';
+                const profBonus = proficiencyBonus(character.level ?? 1);
+                const archery = character.fightingStyle === 'archery' && stats.ranged ? 2 : 0;
+                const breakdown = `d20 ${formatModifier(stats.attackBonus - (stats.proficient ? profBonus : 0) - stats.magicBonus - archery)} (${abilityLabel})`
+                  + (stats.proficient ? ` + ${profBonus} (maîtrise)` : '')
+                  + (archery > 0 ? ` + ${archery} (archerie)` : '')
+                  + (stats.magicBonus > 0 ? ` + ${stats.magicBonus} (magique)` : '');
+                return (
+                  <div key={e.id} className="bg-parchment-50 rounded-lg px-3 py-2 border border-parchment-200 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium text-ink-800 truncate">{itemName}</span>
+                      {!stats.proficient && (
+                        <span className="text-[10px] font-semibold text-amber-600 shrink-0">⚠ non qualifié</span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium border ${
+                          stats.proficient
+                            ? 'bg-red-50 text-red-800 border-red-200'
+                            : 'bg-amber-50 text-amber-800 border-amber-300'
+                        }`}
+                        title={`Attaque : ${breakdown}`}
+                      >
+                        🎯 {formatModifier(stats.attackBonus)}
+                      </span>
+                      {stats.damageStr && (
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50 text-orange-800 text-[11px] font-medium border border-orange-200"
+                          title={`Dégâts : ${stats.damageStr} (${abilityLabel})`}
+                        >
+                          ⚔ {stats.damageStr}{stats.damageTypeFr ? ` ${stats.damageTypeFr}` : ''}
+                        </span>
+                      )}
+                      {stats.versatileDamageStr && (
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50/60 text-orange-700 text-[11px] font-medium border border-orange-200"
+                          title="Dégâts à deux mains"
+                        >
+                          {stats.versatileDamageStr} · deux mains
+                        </span>
+                      )}
+                      {stats.magicBonus > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gold-100 text-gold-700 text-[11px] font-semibold border border-gold-300">
+                          ✨ +{stats.magicBonus}
+                        </span>
+                      )}
+                      {stats.presumedBase && (
+                        <span className="text-[10px] text-ink-400 italic">base présumée</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+      </div>
+
       <div className="space-y-4">
           {/* Exhaustion tracker */}
           {/* HP tracker */}
