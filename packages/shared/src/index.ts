@@ -296,6 +296,9 @@ export interface CharacterSummary {
   druidCircle: string | null;
   // Divine domain (Clerc): 'savoir' | 'vie' | … | null
   divineDomain: string | null;
+  // Druid Circle of the Land terrain + Paladin Sacred Oath
+  landCircle: string | null;
+  sacredOath: string | null;
 }
 
 /** A Constitution save required to maintain concentration after taking damage. */
@@ -391,6 +394,8 @@ export interface PatchCharacterPayload {
   wildShapeSeen?: string[];
   druidCircle?: string | null;
   divineDomain?: string | null;
+  landCircle?: string | null;
+  sacredOath?: string | null;
 }
 
 // ---------- D&D 5e Abilities (Caractéristiques) ----------
@@ -1479,6 +1484,162 @@ export function domainSpellsFor(domain: string | null | undefined, level: number
   for (const lvl of [1, 2, 3, 4, 5]) {
     if (level >= 2 * lvl - 1) {
       out.push({ level: lvl, names: [...info.spells[lvl]] });
+    }
+  }
+  return out;
+}
+
+// ---------- Circle spells (Druide, Terre) & Oath spells (Paladin, SRD) ----------
+
+export interface LandCircleInfo {
+  key: string;
+  label: string;
+  /** Spell level 2-5 → two English names; unlocked at druid levels 3/5/7/9. */
+  spells: Record<number, [string, string]>;
+}
+
+/** Circle of the Land terrains — circle spells are always prepared (SRD). */
+export const LAND_CIRCLES: LandCircleInfo[] = [
+  {
+    key: 'arctique', label: 'Arctique',
+    spells: {
+      2: ['Hold Person', 'Spike Growth'],
+      3: ['Sleet Storm', 'Slow'],
+      4: ['Freedom of Movement', 'Ice Storm'],
+      5: ['Commune with Nature', 'Cone of Cold'],
+    },
+  },
+  {
+    key: 'littoral', label: 'Littoral',
+    spells: {
+      2: ['Mirror Image', 'Misty Step'],
+      3: ['Water Breathing', 'Water Walk'],
+      4: ['Control Water', 'Freedom of Movement'],
+      5: ['Conjure Elemental', 'Scrying'],
+    },
+  },
+  {
+    key: 'desert', label: 'Désert',
+    spells: {
+      2: ['Blur', 'Silence'],
+      3: ['Create Food and Water', 'Protection From Energy'],
+      4: ['Blight', 'Hallucinatory Terrain'],
+      5: ['Insect Plague', 'Wall of Stone'],
+    },
+  },
+  {
+    key: 'foret', label: 'Forêt',
+    spells: {
+      2: ['Barkskin', 'Spider Climb'],
+      3: ['Call Lightning', 'Plant Growth'],
+      4: ['Divination', 'Freedom of Movement'],
+      5: ['Commune with Nature', 'Tree Stride'],
+    },
+  },
+  {
+    key: 'prairie', label: 'Prairie',
+    spells: {
+      2: ['Invisibility', 'Pass Without Trace'],
+      3: ['Daylight', 'Haste'],
+      4: ['Divination', 'Freedom of Movement'],
+      5: ['Dream', 'Wall of Thorns'],
+    },
+  },
+  {
+    key: 'montagne', label: 'Montagne',
+    spells: {
+      2: ['Spider Climb', 'Spike Growth'],
+      3: ['Lightning Bolt', 'Meld into Stone'],
+      4: ['Stone Shape', 'Stoneskin'],
+      5: ['Passwall', 'Wall of Stone'],
+    },
+  },
+  {
+    key: 'marais', label: 'Marais',
+    spells: {
+      2: ['Darkness', 'Acid Arrow'], // Acid Arrow = Flèche acide de Melf
+      3: ['Water Walk', 'Stinking Cloud'],
+      4: ['Freedom of Movement', 'Locate Creature'],
+      5: ['Insect Plague', 'Scrying'],
+    },
+  },
+  {
+    key: 'outreterre', label: 'Outreterre',
+    spells: {
+      2: ['Spider Climb', 'Web'],
+      3: ['Gaseous Form', 'Stinking Cloud'],
+      4: ['Greater Invisibility', 'Stone Shape'],
+      5: ['Cloudkill', 'Insect Plague'],
+    },
+  },
+];
+
+export interface SacredOathInfo {
+  key: string;
+  label: string;
+  /** Spell level 1-5 → two English names; unlocked at paladin levels 3/5/9/13/17. */
+  spells: Record<number, [string, string]>;
+}
+
+/** Paladin Sacred Oaths (SRD) — oath spells are always prepared. */
+export const SACRED_OATHS: SacredOathInfo[] = [
+  {
+    key: 'devotion', label: 'Dévotion',
+    spells: {
+      1: ['Protection From Evil and Good', 'Sanctuary'],
+      2: ['Aid', 'Zone of Truth'],
+      3: ['Beacon of Hope', 'Dispel Magic'],
+      4: ['Freedom of Movement', 'Guardian of Faith'],
+      5: ['Commune', 'Flame Strike'],
+    },
+  },
+  {
+    key: 'anciennes', label: 'Anciennes',
+    spells: {
+      1: ['Ensnaring Strike', 'Speak with Animals'],
+      2: ['Moonbeam', 'Misty Step'],
+      3: ['Plant Growth', 'Protection From Energy'],
+      4: ['Ice Storm', 'Freedom of Movement'],
+      5: ['Commune with Nature', 'Tree Stride'],
+    },
+  },
+  {
+    key: 'vengeance', label: 'Vengeance',
+    spells: {
+      1: ['Bane', 'Hunter\'s Mark'],
+      2: ['Hold Person', 'Misty Step'],
+      3: ['Haste', 'Protection From Energy'],
+      4: ['Banishment', 'Dimension Door'],
+      5: ['Hold Monster', 'Scrying'],
+    },
+  },
+];
+
+/**
+ * Always-prepared bonus spells for druid (Circle of the Land terrain) or
+ * paladin (Sacred Oath). Druid spell levels 2-5 unlock at levels 3/5/7/9;
+ * paladin spell levels 1-5 unlock at levels 3/5/9/13/17.
+ */
+export function bonusPreparedSpells(
+  cls: string | null | undefined,
+  subclass: string | null | undefined,
+  level: number,
+): Array<{ level: number; names: string[] }> {
+  if (!subclass) return [];
+  const out: Array<{ level: number; names: string[] }> = [];
+  if (cls === 'Druide') {
+    const terrain = LAND_CIRCLES.find((t) => t.key === subclass);
+    if (!terrain) return [];
+    const unlock: Record<number, number> = { 2: 3, 3: 5, 4: 7, 5: 9 };
+    for (const lvl of [2, 3, 4, 5]) {
+      if (level >= unlock[lvl]) out.push({ level: lvl, names: [...terrain.spells[lvl]] });
+    }
+  } else if (cls === 'Paladin') {
+    const oath = SACRED_OATHS.find((o) => o.key === subclass);
+    if (!oath) return [];
+    const unlock: Record<number, number> = { 1: 3, 2: 5, 3: 9, 4: 13, 5: 17 };
+    for (const lvl of [1, 2, 3, 4, 5]) {
+      if (level >= unlock[lvl]) out.push({ level: lvl, names: [...oath.spells[lvl]] });
     }
   }
   return out;

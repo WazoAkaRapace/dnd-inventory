@@ -5,7 +5,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { requireUser, isPartyGM, mapSpell } from './helpers.ts';
-import { domainSpellsFor } from '@dnd-inventory/shared';
+import { domainSpellsFor, bonusPreparedSpells, findClass } from '@dnd-inventory/shared';
 import type { Spell } from '@dnd-inventory/shared';
 
 export async function domainSpellRoutes(app: FastifyInstance) {
@@ -22,7 +22,16 @@ export async function domainSpellRoutes(app: FastifyInstance) {
         return reply.code(403).send({ error: 'Réservé au propriétaire ou au MD' });
       }
 
-      const groups = domainSpellsFor(char.divine_domain, char.level ?? 1);
+      // Cleric domains, druid Circle of the Land terrains, paladin oaths —
+      // all the same SRD mechanic: always prepared, excluded from the limit.
+      const clsName = findClass(char.character_class)?.name ?? null;
+      const groups = clsName === 'Clerc'
+        ? domainSpellsFor(char.divine_domain, char.level ?? 1)
+        : clsName === 'Druide'
+          ? bonusPreparedSpells('Druide', char.druid_circle === 'terre' ? char.land_circle : null, char.level ?? 1)
+          : clsName === 'Paladin'
+            ? bonusPreparedSpells('Paladin', char.sacred_oath, char.level ?? 1)
+            : [];
       const spells: Array<Spell & { domainLevel: number }> = [];
       for (const g of groups) {
         for (const name of g.names) {
@@ -30,7 +39,7 @@ export async function domainSpellRoutes(app: FastifyInstance) {
           if (row) spells.push({ ...mapSpell(row), domainLevel: g.level });
         }
       }
-      return reply.send({ domain: char.divine_domain ?? null, spells });
+      return reply.send({ domain: char.divine_domain ?? null, spells }); // 'domain' kept for client compat
     },
   );
 }

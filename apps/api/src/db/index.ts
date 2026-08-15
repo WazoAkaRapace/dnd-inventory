@@ -115,6 +115,8 @@ const COLUMN_MIGRATIONS: Record<string, Array<{ name: string; ddl: string }>> = 
     { name: 'wild_shape_seen_json', ddl: "TEXT NOT NULL DEFAULT '[]'" },
     { name: 'druid_circle', ddl: 'TEXT' },
     { name: 'divine_domain', ddl: 'TEXT' },
+    { name: 'land_circle', ddl: 'TEXT' },
+    { name: 'sacred_oath', ddl: 'TEXT' },
   ],
   items: [
     { name: 'survival_tags', ddl: "TEXT NOT NULL DEFAULT '[]'" },

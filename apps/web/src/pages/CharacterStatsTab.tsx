@@ -22,6 +22,8 @@ import {
   effectiveWeaponProficiencies,
   classWeaponProficiencies,
   DIVINE_DOMAINS,
+  LAND_CIRCLES,
+  SACRED_OATHS,
   computeSpeed,
   MUNDANE_WEAPONS,
   FIGHTING_STYLE_LABELS_FR,
@@ -240,6 +242,44 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
               <option value="">—</option>
               {DIVINE_DOMAINS.map((d) => (
                 <option key={d.key} value={d.key}>{d.label}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        {findClass(character.characterClass)?.name === 'Druide' && character.druidCircle === 'terre' && (
+          <label className="flex items-center justify-between gap-3 max-w-xs">
+            <span className="label mb-0">Terrain du cercle</span>
+            <select
+              className="input py-1.5 text-sm w-auto"
+              value={character.landCircle ?? ''}
+              onChange={(e) => patchCharacter(
+                { landCircle: e.target.value === '' ? null : e.target.value },
+                'Erreur de mise à jour',
+              )}
+              aria-label="Terrain du cercle"
+            >
+              <option value="">—</option>
+              {LAND_CIRCLES.map((t) => (
+                <option key={t.key} value={t.key}>{t.label}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        {findClass(character.characterClass)?.name === 'Paladin' && (
+          <label className="flex items-center justify-between gap-3 max-w-xs">
+            <span className="label mb-0">Serment sacré</span>
+            <select
+              className="input py-1.5 text-sm w-auto"
+              value={character.sacredOath ?? ''}
+              onChange={(e) => patchCharacter(
+                { sacredOath: e.target.value === '' ? null : e.target.value },
+                'Erreur de mise à jour',
+              )}
+              aria-label="Serment sacré"
+            >
+              <option value="">—</option>
+              {SACRED_OATHS.map((o) => (
+                <option key={o.key} value={o.key}>{o.label}</option>
               ))}
             </select>
           </label>

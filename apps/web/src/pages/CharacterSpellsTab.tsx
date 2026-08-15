@@ -112,17 +112,21 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
     fetchCharSpells();
   }, [fetchCharSpells]);
 
-  // Divine domain spells (always prepared, derived — refetched with the character)
-  const isCleric = findClass(character.characterClass)?.name === 'Clerc';
-  const divineDomain = character.divineDomain ?? null;
+  // Always-prepared bonus spells: cleric domain, druid circle terrain,
+  // paladin oath (derived — refetched with the character)
+  const clsName = findClass(character.characterClass)?.name ?? null;
+  const hasBonusSource =
+    (clsName === 'Clerc' && !!character.divineDomain)
+    || (clsName === 'Druide' && character.druidCircle === 'terre' && !!character.landCircle)
+    || (clsName === 'Paladin' && !!character.sacredOath);
   useEffect(() => {
-    if (!isCleric || !divineDomain) { setDomainSpells([]); return; }
+    if (!hasBonusSource) { setDomainSpells([]); return; }
     let alive = true;
     api.get(`/api/characters/${charId}/domain-spells`)
       .then((res) => { if (alive) setDomainSpells(res.data.spells ?? []); })
       .catch(() => { if (alive) setDomainSpells([]); });
     return () => { alive = false; };
-  }, [isCleric, divineDomain, charId, character.level]);
+  }, [hasBonusSource, charId, character.level]);
 
   // Debounce search input (same pattern as items catalog)
   useEffect(() => {
