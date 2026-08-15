@@ -52,7 +52,7 @@ Conçue pour être utilisée sur téléphone et tablette pendant la partie : PWA
 ![Caractéristiques](docs/screenshots/08-caracteristiques.png)
 
 ### 🗡️ Traqueur de combat (MD)
-- **Rencontres** : monstres du bestiaire **964 bêtes** (SRD complet + ToA + extensions), groupés par type avec initiative partagée, **PV lancés aux dés de vie**
+- **Rencontres** : monstres du bestiaire **964 bêtes**, groupés par type avec initiative partagée, **PV lancés aux dés de vie**
 - Ajout des PJ en un clic, initiative saisie par les joueurs depuis leur écran
 - **Démarrage en un clic**, avancement des tours (groupes sautés ensemble), tours et rounds
 - Dégâts / soins / demi-dégâts / vaincu, édition directe PV/CA, couleurs de cartes
