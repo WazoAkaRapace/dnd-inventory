@@ -155,10 +155,12 @@ export default function CombatWidget() {
       : needsInitiative
         ? 'shadow-[0_0_0_3px_rgba(202,138,4,0.4),0_0_20px_rgba(202,138,4,0.6)]'
         : 'shadow-lg';
+    // On mobile the dock hub is the combat indicator — this floating button
+    // only appears on desktop (lg+) where there's no dock.
     return (
       <button
         onClick={() => setCollapsed(false)}
-        className={`fixed bottom-24 lg:bottom-4 left-1/2 -translate-x-1/2 z-40 -my-3 w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-xl leading-none transition-all active:scale-95 border-4 border-parchment-50 ${
+        className={`hidden lg:flex fixed bottom-4 left-1/2 -translate-x-1/2 z-40 -my-3 w-12 h-12 rounded-full shadow-lg items-center justify-center text-xl leading-none transition-all active:scale-95 border-4 border-parchment-50 ${
           isMyTurn
             ? 'bg-blood-600 hover:bg-blood-700 text-parchment-50'
             : needsInitiative
@@ -178,7 +180,7 @@ export default function CombatWidget() {
 
   return (
     <div
-      className={`fixed bottom-24 lg:bottom-4 left-1/2 -translate-x-1/2 z-40 w-[min(92vw,20rem)] rounded-xl shadow-xl border-2 bg-white ${
+      className={`hidden lg:block fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[min(92vw,20rem)] rounded-xl shadow-xl border-2 bg-white ${
         isMyTurn
           ? 'border-blood-500'
           : needsInitiative

@@ -670,7 +670,7 @@ export default function CharacterInventoryPage() {
               </button>
             </h1>
           </div>
-          <div className="mt-3">
+              </div>          <div className="mt-3">
             <EncumbranceBar encumbrance={encumbrance} />
           </div>
         </div>
@@ -823,7 +823,36 @@ export default function CharacterInventoryPage() {
             };
             const p = activeIdx >= 0 ? indPos(activeIdx) : null;
             return (
-              <div className="lg:hidden fixed z-50 bottom-24 left-1/2 -translate-x-1/2 w-[296px] grid grid-cols-2 gap-2">
+              <div className="lg:hidden fixed z-50 bottom-24 left-1/2 -translate-x-1/2 space-y-2">
+              {hubCombat && (
+                <div className="rounded-xl border-2 p-3 space-y-1.5 bg-white shadow-lg border-blood-300">
+                  {hubCombat.isMyTurn && (
+                    <div className="text-center py-1.5 rounded-lg bg-blood-600 text-parchment-50 text-sm font-bold">
+                      ⚔ À toi de jouer !
+                    </div>
+                  )}
+                  {hubCombat.needsInitiative && (
+                    <div className="text-center py-1.5 rounded-lg bg-yellow-400 text-ink-900 text-sm font-bold">
+                      🎲 Lance ton initiative !
+                    </div>
+                  )}
+                  {!hubCombat.isMyTurn && !hubCombat.needsInitiative && hubCombat.currentCombatantName && (
+                    <div className="text-xs text-ink-600">
+                      Au tour de : <strong>{hubCombat.currentCombatantName}</strong>
+                    </div>
+                  )}
+                  {hubCombat.status === 'setup' && (
+                    <div className="text-[10px] text-ink-400">Combat en préparation</div>
+                  )}
+                  <Link
+                    to={"/party/" + hubCombat.partyId + "/combat"}
+                    className="block text-center text-xs text-blood-600 hover:text-blood-700 font-medium pt-0.5"
+                  >
+                    Voir le combat →
+                  </Link>
+                </div>
+              )}
+              <div className="w-[296px] grid grid-cols-2 gap-2">
                 {p && (
                   <span
                     className="dock-indicator absolute top-0 left-0 h-10 rounded-full bg-blood-600 shadow-sm"
@@ -851,9 +880,10 @@ export default function CharacterInventoryPage() {
                   );
                 })}
               </div>
-            );
-          })()}
-        </>
+              </div>
+          );
+        })()}
+      </>
       )}
 
       {/* ---------- Non-inventory tabs (rendered when selected) ---------- */}
