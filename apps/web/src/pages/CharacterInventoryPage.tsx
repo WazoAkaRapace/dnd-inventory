@@ -580,10 +580,12 @@ export default function CharacterInventoryPage() {
 
   const { character, encumbrance, locations, locationWeights } = data;
 
-  // Mobile combat: check if this character is in an active/setup encounter
-  const isSheetOwner = user?.id === data?.character?.ownerId;
+  // Mobile combat: check if this character is in an active/setup encounter.
+  // Only setState when the combat status actually changes to avoid re-render loops.
+  const hubCombatRef = useRef<string>('');
   useEffect(() => {
-    if (!isSheetOwner || !user) { setHubCombat(null); return; }
+    if (!user || !data?.character) return;
+    const ownerId = data.character.ownerId;
     let alive = true;
     const load = async () => {
       try {
@@ -598,24 +600,39 @@ export default function CharacterInventoryPage() {
           );
           if (mine) {
             const current = detail.combatants[detail.turnIndex];
-            if (alive) {
-              setHubCombat({
-                encounterId: detail.id, partyId: detail.partyId,
-                status: detail.status, round: detail.round,
-                needsInitiative: mine.initiative === null,
-                isMyTurn: detail.status === 'active' && current?.id === mine.id,
-                currentCombatantName: current?.name ?? null,
-              });
+            const next = {
+              encounterId: detail.id, partyId: detail.partyId,
+              status: detail.status, round: detail.round,
+              needsInitiative: mine.initiative === null,
+              isMyTurn: detail.status === 'active' && current?.id === mine.id,
+              currentCombatantName: current?.name ?? null,
+            };
+            // Only update state if the combat snapshot actually changed
+            const key = JSON.stringify(next);
+            if (alive && key !== hubCombatRef.current) {
+              hubCombatRef.current = key;
+              setHubCombat(next);
             }
             return;
           }
         }
-        if (alive) setHubCombat(null);
-      } catch { if (alive) setHubCombat(null); }
+        if (alive && hubCombatRef.current !== '') {
+          hubCombatRef.current = '';
+          setHubCombat(null);
+        }
+      } catch { /* silent */ }
     };
     load();
     return () => { alive = false; };
-  }, [isSheetOwner, user, partyId, charId]);
+  }, [user, partyId, charId, data?.character?.ownerId, combatRefresh]);
+
+  // Refresh combat status on combat sync events (turn change, HP, etc.)
+  const [combatRefresh, setCombatRefresh] = useState(0);
+  useSyncEvent((event) => {
+    if (event.partyId === Number(partyId) && event.type === 'combat:change') {
+      setCombatRefresh(n => n + 1);
+    }
+  }, [partyId]);
 
   // Non-casters never open Sorts: Traits takes its dock slot, Sorts moves to the hub
   const isCasterClass = !!findClass(character.characterClass) && findClass(character.characterClass)!.spellcasting !== 'none';
