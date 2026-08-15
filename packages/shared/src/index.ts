@@ -2478,7 +2478,9 @@ export interface AddMonsterPayload {
 }
 
 export interface AddPlayerPayload {
-  characterId: number;
+  /** Single character (legacy) — use characterIds to add several at once. */
+  characterId?: number;
+  characterIds?: number[];
 }
 
 export interface PatchCombatantPayload {

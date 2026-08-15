@@ -388,54 +388,78 @@ export async function combatRoutes(app: FastifyInstance) {
       if (!isPartyGM(enc.party_id, userId)) return reply.code(403).send({ error: 'Réservé au MD' });
 
       const body = req.body || ({} as AddPlayerPayload);
-      if (!body.characterId) return reply.code(400).send({ error: 'characterId requis' });
+      // Accept a batch (characterIds) or a single legacy characterId
+      const characterIds = body.characterIds?.length
+        ? body.characterIds
+        : body.characterId
+          ? [body.characterId]
+          : [];
+      if (characterIds.length === 0) return reply.code(400).send({ error: 'characterId requis' });
 
-      const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(body.characterId) as any;
-      if (!char) return reply.code(404).send({ error: 'Personnage introuvable' });
-      if (char.party_id !== enc.party_id) return reply.code(400).send({ error: 'Personnage pas dans ce groupe' });
+      const chars = db.prepare(
+        `SELECT * FROM characters WHERE id IN (${characterIds.map(() => '?').join(',')})`,
+      ).all(...characterIds) as any[];
+      if (chars.length !== characterIds.length) {
+        return reply.code(404).send({ error: 'Personnage introuvable' });
+      }
+      if (chars.some((char) => char.party_id !== enc.party_id)) {
+        return reply.code(400).send({ error: 'Personnage pas dans ce groupe' });
+      }
 
-      // Compute AC from equipped armor
-      const invRows = db.prepare(`
+      const invStmt = db.prepare(`
         SELECT i.category AS category, i.ac_base AS ac_base, i.str_min AS str_min,
                i.name_fr AS name_fr, i.name AS name, inv.equipped AS equipped
         FROM inventory inv JOIN items i ON i.id = inv.item_id
         WHERE inv.character_id = ? AND inv.equipped = 1
-      `).all(char.id) as any[];
-      const dexMod = abilityModifier(char.dexterity ?? 10);
-      const acResult = computeAC(
-        invRows.map((r) => ({
-          item: {
-            category: r.category,
-            acBase: r.ac_base,
-            strMin: r.str_min,
-            nameFr: r.name_fr,
-            name: r.name,
-          },
-          equipped: !!r.equipped,
-        })),
-        dexMod,
-        char.fighting_style === 'defense',
-        { constitution: char.constitution, wisdom: char.wisdom, characterClass: char.character_class },
-      );
-      const ac = char.armor_class_override ?? acResult.ac;
-
-      const info = db.prepare(`
+      `);
+      const insertStmt = db.prepare(`
         INSERT INTO combatants (encounter_id, type, character_id, name, count, initiative_bonus, armor_class, hit_points, max_hit_points, sort_order)
         VALUES (?, 'player', ?, ?, 1, ?, ?, ?, ?, ?)
-      `).run(
-        enc.id,
-        char.id,
-        char.name,
-        dexMod,
-        ac,
-        char.current_hp ?? 1,
-        char.max_hp ?? 1,
-        Date.now(),
-      );
+      `);
 
-      const row = db.prepare('SELECT * FROM combatants WHERE id = ?').get(info.lastInsertRowid);
+      const createdIds: number[] = [];
+      const tx = db.transaction(() => {
+        for (const char of chars) {
+          // Compute AC from equipped armor
+          const invRows = invStmt.all(char.id) as any[];
+          const dexMod = abilityModifier(char.dexterity ?? 10);
+          const acResult = computeAC(
+            invRows.map((r) => ({
+              item: {
+                category: r.category,
+                acBase: r.ac_base,
+                strMin: r.str_min,
+                nameFr: r.name_fr,
+                name: r.name,
+              },
+              equipped: !!r.equipped,
+            })),
+            dexMod,
+            char.fighting_style === 'defense',
+            { constitution: char.constitution, wisdom: char.wisdom, characterClass: char.character_class },
+          );
+          const ac = char.armor_class_override ?? acResult.ac;
+
+          const info = insertStmt.run(
+            enc.id,
+            char.id,
+            char.name,
+            dexMod,
+            ac,
+            char.current_hp ?? 1,
+            char.max_hp ?? 1,
+            Date.now(),
+          );
+          createdIds.push(Number(info.lastInsertRowid));
+        }
+      });
+      tx();
+
+      const rows = db.prepare(
+        `SELECT * FROM combatants WHERE id IN (${createdIds.map(() => '?').join(',')}) ORDER BY id`,
+      ).all(...createdIds);
       bus.emitChange({ type: 'combat:change', partyId: enc.party_id, action: 'add', actorUserId: userId });
-      return reply.code(201).send({ combatant: mapCombatant(row) });
+      return reply.code(201).send({ combatants: rows.map(mapCombatant) });
     },
   );
 
