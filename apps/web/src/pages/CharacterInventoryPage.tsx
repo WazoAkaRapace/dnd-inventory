@@ -186,7 +186,10 @@ export default function CharacterInventoryPage() {
   const [hubCombat, setHubCombat] = useState<{
     encounterId: number; partyId: number; status: string; round: number;
     needsInitiative: boolean; isMyTurn: boolean; currentCombatantName: string | null;
+    myCombatantId: number | null; initiativeBonus: number;
   } | null>(null);
+  const [hubInitOpen, setHubInitOpen] = useState(false);
+  const [hubInitInput, setHubInitInput] = useState('');
   const [catalogSearch, setCatalogSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [catalogCategory, setCatalogCategory] = useState<'' | ItemCategory>('');
@@ -618,12 +621,15 @@ export default function CharacterInventoryPage() {
           );
           if (mine) {
             const current = detail.combatants[detail.turnIndex];
+            const dexMod = Math.floor(((data?.character?.dexterity ?? 10) - 10) / 2);
             const next = {
               encounterId: detail.id, partyId: detail.partyId,
               status: detail.status, round: detail.round,
               needsInitiative: mine.initiative === null,
               isMyTurn: detail.status === 'active' && current?.id === mine.id,
               currentCombatantName: current?.name ?? null,
+              myCombatantId: mine.id,
+              initiativeBonus: mine.initiativeBonus ?? dexMod,
             };
             // Only update state if the combat snapshot actually changed
             const key = JSON.stringify(next);
@@ -830,26 +836,78 @@ export default function CharacterInventoryPage() {
 
       {/* ---------- Tab navigation — floating mobile dock with sliding indicator ---------- */}
       <div className="lg:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-30 max-w-[calc(100vw-2rem)]">
-        {/* Combat status card — always visible, attached to the top of the dock */}
-        {hubCombat && (
+        {/* Combat status card — always visible, attached to the top of the dock.
+            Initiative pending: expands inline with input + dice. */}
+        {hubCombat && hubCombat.needsInitiative && hubCombat.myCombatantId ? (
+          <div className={`mb-[-6px] mx-auto w-fit max-w-full rounded-t-xl rounded-b-md shadow-md border border-b-0 overflow-hidden transition-all duration-300 bg-yellow-400 border-yellow-500 ${
+            hubInitOpen ? 'max-h-44' : 'max-h-12'
+          }`}>
+            <button
+              onClick={() => setHubInitOpen(o => !o)}
+              className="block w-full px-3 py-1.5 text-xs font-semibold text-ink-900"
+              aria-expanded={hubInitOpen}
+            >
+              🎲 Lance ton initiative !
+            </button>
+            {hubInitOpen && (
+              <div className="px-3 pb-2 pt-1 flex items-center gap-2 bg-yellow-50 border-t border-yellow-300">
+                <input
+                  type="number"
+                  min={1}
+                  max={40}
+                  value={hubInitInput}
+                  onChange={(e) => setHubInitInput(e.target.value)}
+                  placeholder="—"
+                  className="input input-compact text-sm py-1"
+                  autoFocus
+                  aria-label="Ton initiative"
+                />
+                <button
+                  onClick={async () => {
+                    const v = parseInt(hubInitInput, 10);
+                    if (isNaN(v)) return;
+                    try {
+                      await api.patch(
+                        `/api/encounters/${hubCombat.encounterId}/combatants/${hubCombat.myCombatantId}/initiative`,
+                        { initiative: v },
+                      );
+                      setHubInitOpen(false);
+                      setHubInitInput('');
+                      await refreshInventory();
+                    } catch { /* silent */ }
+                  }}
+                  className="btn-primary text-xs px-3 py-1"
+                >
+                  OK
+                </button>
+                <button
+                  onClick={() => {
+                    const roll = Math.floor(Math.random() * 20) + 1;
+                    setHubInitInput(String(roll + hubCombat.initiativeBonus));
+                  }}
+                  className="btn-secondary text-xs px-2 py-1"
+                  title={`d20 + ${hubCombat.initiativeBonus} (DEX)`}
+                >
+                  🎲
+                </button>
+              </div>
+            )}
+          </div>
+        ) : hubCombat && (
           <Link
             to={`/party/${hubCombat.partyId}/combat`}
             className={`block mb-[-6px] mx-auto w-fit max-w-full px-3 py-1.5 rounded-t-xl rounded-b-md text-xs font-semibold shadow-md border border-b-0 transition-colors ${
               hubCombat.isMyTurn
                 ? 'bg-blood-600 text-parchment-50 border-blood-700'
-                : hubCombat.needsInitiative
-                  ? 'bg-yellow-400 text-ink-900 border-yellow-500'
-                  : 'bg-ink-900 text-parchment-200 border-ink-700'
+                : 'bg-ink-900 text-parchment-200 border-ink-700'
             }`}
             aria-label="Combat en cours — ouvrir le traqueur"
           >
             {hubCombat.isMyTurn
               ? '⚔ À toi de jouer !'
-              : hubCombat.needsInitiative
-                ? '🎲 Lance ton initiative !'
-                : hubCombat.currentCombatantName
-                  ? `⚔ ${hubCombat.currentCombatantName}`
-                  : '⚔ Combat en préparation'}
+              : hubCombat.currentCombatantName
+                ? `⚔ ${hubCombat.currentCombatantName}`
+                : '⚔ Combat en préparation'}
           </Link>
         )}
         {(() => {
