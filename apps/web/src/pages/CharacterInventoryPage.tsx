@@ -580,6 +580,14 @@ export default function CharacterInventoryPage() {
 
   const { character, encumbrance, locations, locationWeights } = data;
 
+  // Combat sync listener must come before the effect that depends on its counter
+  const [combatRefresh, setCombatRefresh] = useState(0);
+  useSyncEvent((event) => {
+    if (event.partyId === Number(partyId) && event.type === 'combat:change') {
+      setCombatRefresh(n => n + 1);
+    }
+  }, [partyId]);
+
   // Mobile combat: check if this character is in an active/setup encounter.
   // Only setState when the combat status actually changes to avoid re-render loops.
   const hubCombatRef = useRef<string>('');
@@ -625,14 +633,6 @@ export default function CharacterInventoryPage() {
     load();
     return () => { alive = false; };
   }, [user, partyId, charId, data?.character?.ownerId, combatRefresh]);
-
-  // Refresh combat status on combat sync events (turn change, HP, etc.)
-  const [combatRefresh, setCombatRefresh] = useState(0);
-  useSyncEvent((event) => {
-    if (event.partyId === Number(partyId) && event.type === 'combat:change') {
-      setCombatRefresh(n => n + 1);
-    }
-  }, [partyId]);
 
   // Non-casters never open Sorts: Traits takes its dock slot, Sorts moves to the hub
   const isCasterClass = !!findClass(character.characterClass) && findClass(character.characterClass)!.spellcasting !== 'none';
