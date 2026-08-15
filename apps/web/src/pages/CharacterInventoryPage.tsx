@@ -276,6 +276,10 @@ export default function CharacterInventoryPage() {
   const currentCharId = Number(charId);
   const currentPartyId = Number(partyId);
 
+  // Skip the sync-triggered refresh when we just refreshed from our own
+  // mutation (the echo of our own character:change arrives ~300ms later).
+  const lastLocalRefresh = useRef(0);
+
   useSyncEvent((event) => {
     // Only react to events for this character or this party
     if (event.partyId !== currentPartyId) return;
@@ -290,6 +294,9 @@ export default function CharacterInventoryPage() {
       }
     } else if (event.type === 'character:change') {
       if (event.characterId === currentCharId) {
+        // Skip the echo of our own edit — we already refreshed after the PATCH.
+        // Concentration payloads always pass through (they're one-shot alerts).
+        if (!event.concentration && Date.now() - lastLocalRefresh.current < 600) return;
         refreshInventory();
       }
     }
@@ -356,6 +363,7 @@ export default function CharacterInventoryPage() {
 
   const refreshInventory = useCallback(async (flashId?: number) => {
     if (!charId) return;
+    lastLocalRefresh.current = Date.now();
     try {
       const res = await api.get<CharacterInventory>(`/api/characters/${charId}/inventory`);
       // Diff guard: only update state if data actually changed.
