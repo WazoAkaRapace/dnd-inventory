@@ -2159,6 +2159,7 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
   const [shapeSearch, setShapeSearch] = useState('');
   const [shapeSeenOnly, setShapeSeenOnly] = useState(true);
   const [shapeStatBlock, setShapeStatBlock] = useState<string | null>(null);
+  const [shapeHpDraft, setShapeHpDraft] = useState<string | null>(null);
 
   // Count available food/water from tagged inventory items
   // Water: skip items marked 'empty' in notes
@@ -2419,9 +2420,6 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
         )}
         {findClass(character.characterClass)?.name === 'Druide' && (character.level ?? 1) >= 2 && (() => {
           const shaped = !!character.wildShapeSlug;
-          const shapePct = shaped && character.wildShapeMaxHp
-            ? Math.max(0, Math.min(100, ((character.wildShapeHp ?? 0) / character.wildShapeMaxHp) * 100))
-            : 0;
           return (
             <div className="rounded-xl border border-green-300 bg-green-50 p-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
@@ -2465,15 +2463,6 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
                     >
                       📜
                     </button>
-                  </div>
-                  <div className="h-3 bg-green-100 rounded-full overflow-hidden border border-green-200">
-                    <div
-                      className={`h-full rounded-full transition-all ${(character.wildShapeHp ?? 0) <= 0 ? 'bg-red-600' : (character.wildShapeHp ?? 0) <= (character.wildShapeMaxHp ?? 1) * 0.3 ? 'bg-orange-500' : 'bg-green-600'}`}
-                      style={{ width: `${shapePct}%` }}
-                    />
-                  </div>
-                  <div className="text-xs text-green-700 font-medium">
-                    ❤ {Math.max(0, character.wildShapeHp ?? 0)}/{character.wildShapeMaxHp} — PV de la forme
                   </div>
                   <button onClick={revertShape} className="btn-secondary text-xs w-full py-1.5">
                     ↩ Revenir à la forme normale (action bonus)
@@ -2655,49 +2644,73 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
       <div className="space-y-4">
           {/* Exhaustion tracker */}
           {/* HP tracker — while shaped it shows the beast's bar (routed server-side to wild_shape_hp) */}
-      {character.wildShapeSlug ? (
-        <div className="rounded-xl border border-green-300 bg-green-50 p-3 space-y-2">
-          <div className="text-xs font-semibold text-green-900">❤ PV — forme animale</div>
-          <div className="h-4 bg-green-100 rounded-full overflow-hidden border border-green-200">
-            <div
-              className={`h-full rounded-full transition-all ${(character.wildShapeHp ?? 0) <= 0 ? 'bg-red-600' : (character.wildShapeHp ?? 0) <= (character.wildShapeMaxHp ?? 1) * 0.3 ? 'bg-orange-500' : 'bg-green-600'}`}
-              style={{ width: `${character.wildShapeMaxHp ? Math.max(0, Math.min(100, ((character.wildShapeHp ?? 0) / character.wildShapeMaxHp) * 100)) : 0}%` }}
-            />
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-sm font-bold text-green-900">
-              {Math.max(0, character.wildShapeHp ?? 0)} / {character.wildShapeMaxHp}
-            </span>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={async () => {
-                  const n = Math.max(0, (character.wildShapeHp ?? 0) - 1);
-                  markLocalMutation();
-                  try {
-                    await api.patch(`/api/characters/${charId}`, { currentHp: n });
-                    await onSaved();
-                  } catch { onError('Erreur'); }
-                }}
-                className="w-7 h-7 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 text-sm font-medium flex items-center justify-center"
-                aria-label="Blesser la forme"
-              >−</button>
-              <button
-                onClick={async () => {
-                  const n = (character.wildShapeHp ?? 0) + 1;
-                  markLocalMutation();
-                  try {
-                    await api.patch(`/api/characters/${charId}`, { currentHp: n });
-                    await onSaved();
-                  } catch { onError('Erreur'); }
-                }}
-                className="w-7 h-7 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 text-sm font-medium flex items-center justify-center"
-                aria-label="Soigner la forme"
-              >+</button>
+      {character.wildShapeSlug ? (() => {
+        const shapeHp = character.wildShapeHp ?? 0;
+        const shapeMax = character.wildShapeMaxHp ?? 1;
+        const commitShapeHp = async () => {
+          if (shapeHpDraft === null) return;
+          const n = Math.max(0, Math.round(Number(shapeHpDraft) || 0));
+          setShapeHpDraft(null);
+          if (n === shapeHp) return;
+          markLocalMutation();
+          try {
+            await api.patch(`/api/characters/${charId}`, { currentHp: n });
+            await onSaved();
+          } catch { onError('Erreur'); }
+        };
+        return (
+          <div className="rounded-xl border border-green-300 bg-green-50 p-3 space-y-2">
+            <div className="text-xs font-semibold text-green-900">❤ PV — forme animale</div>
+            <div className="h-4 bg-green-100 rounded-full overflow-hidden border border-green-200">
+              <div
+                className={`h-full rounded-full transition-all ${shapeHp <= 0 ? 'bg-red-600' : shapeHp <= shapeMax * 0.3 ? 'bg-orange-500' : 'bg-green-600'}`}
+                style={{ width: `${Math.max(0, Math.min(100, (shapeHp / shapeMax) * 100))}%` }}
+              />
             </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1">
+                <input
+                  type="number"
+                  className="w-14 text-center text-sm font-bold bg-white border border-green-200 rounded-md py-1 focus:outline-none focus:border-green-500 text-green-900"
+                  value={shapeHpDraft ?? String(shapeHp)}
+                  onChange={(e) => setShapeHpDraft(e.target.value)}
+                  onBlur={commitShapeHp}
+                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                  aria-label="Points de vie de la forme"
+                />
+                <span className="text-xs text-green-700">/ {shapeMax}</span>
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={async () => {
+                    const n = Math.max(0, shapeHp - 1);
+                    markLocalMutation();
+                    try {
+                      await api.patch(`/api/characters/${charId}`, { currentHp: n });
+                      await onSaved();
+                    } catch { onError('Erreur'); }
+                  }}
+                  className="w-7 h-7 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 text-sm font-medium flex items-center justify-center"
+                  aria-label="Blesser la forme"
+                >−</button>
+                <button
+                  onClick={async () => {
+                    const n = shapeHp + 1;
+                    markLocalMutation();
+                    try {
+                      await api.patch(`/api/characters/${charId}`, { currentHp: n });
+                      await onSaved();
+                    } catch { onError('Erreur'); }
+                  }}
+                  className="w-7 h-7 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 text-sm font-medium flex items-center justify-center"
+                  aria-label="Soigner la forme"
+                >+</button>
+              </div>
+            </div>
+            <p className="text-[10px] text-green-700 italic">À 0 PV : retour automatique à la forme normale, les dégâts excédentaires s'appliquent.</p>
           </div>
-          <p className="text-[10px] text-green-700 italic">À 0 PV : retour automatique à la forme normale, les dégâts excédentaires s'appliquent.</p>
-        </div>
-      ) : (
+        );
+      })() : (
         <HpTracker
           character={character}
           charId={charId}
