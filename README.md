@@ -1,169 +1,97 @@
 # ⚔️ Inventaire D&D
 
-Une application web mobile-first de gestion de fiche de personnage et d'inventaire pour D&D 5e, entièrement en **français** avec le **système métrique**.
+Application web **mobile-first** de gestion de fiche de personnage, d'inventaire et de **combat** pour D&D 5e — entièrement en **français**, poids en **kilogrammes**, avec un moteur de règles SRD complet et de la **synchronisation en temps réel** entre le MD et les joueurs.
 
-Gérez l'équipement, l'encombrance, les sorts, les compétences, les caractéristiques et plus encore — pour tout votre groupe, en temps réel.
+Conçue pour être utilisée sur téléphone et tablette pendant la partie : PWA installable, chaque joueur sur son écran, le MD sur le sien.
 
-![Party page](docs/screenshot-party.png)
+![Groupes](docs/screenshots/01-parties.png)
 
-## ✨ Fonctionnalités
+## ✨ Toutes les fonctionnalités
 
-### 🎒 Inventaire complet
-- 599 objets du SRD 5e (catalogue consultable et filtrable)
-- Poids en **kilogrammes** (valeurs métriques officielles du SRD français)
-- Encombrance avec barre visuelle et effets (paliers STR × 2.5 / 5 / 7.5 kg)
-- Emplacements de stockage : porté, montures, conteneurs (avec poids par emplacement)
-- Bourse : pièces de cuivre, argent, électrum, or, platine
-- Transfert d'objets entre personnages
+### 🎒 Inventaire & équipement
+- **646 objets** du SRD 5e (catalogue consultable, recherche instantanée)
+- Poids en **kilogrammes** + encombrance par paliers avec effets sur la vitesse
+- Emplacements de stockage (porté, montures, conteneurs avec poids propre)
+- Bourse (PC/PA/PE/PO/PP) — l'argent pèse !
+- Transfert d'objets entre personnages en temps réel
+- **Puces de combat calculées** sur chaque arme : bonus d'attaque avec détail au clic (FOR/DEX + maîtrise + magique), dés de dégâts avec type en français, variante à deux mains, bonus magique ✨, ⚠ non qualifié — les **armes magiques** retrouvent leur arme de base depuis la description SRD
 
-![Inventory](docs/screenshot-inventory.png)
-![Mobile inventory](docs/mobile-inventory.png)
+| Inventaire | Arme avec stats calculées |
+|---|---|
+| ![Inventaire](docs/screenshots/02-inventaire.png) | ![Arme](docs/screenshots/03-arme-calcul.png) |
 
-### ⚔️ Caractéristiques
-- 6 scores de caractéristiques (FOR, DEX, CON, INT, SAG, CHA) avec modificateurs
-- Classe, niveau, race, historique
-- Stats dérivées : bonus de maîtrise, initiative, perception passive, **CA calculée** (depuis l'armure équipée + DEX), DD de sauvegarde des sorts, dé de vie
+### 🩸 Survie & combat du personnage
+- **Options d'attaque** : chaque arme équipée affichée avec ses jets (attaques ×2/×3/×4 pour les classes martiales, attaque furtive du Roublard, frappe sans arme avec dé d'arts martiaux du Moine)
+- **PV** avec édition directe, dés de vie (compteur dépense/récupération), sauvegardes contre la mort à 0 PV
+- **Concentration** : case à cocher ; si le joueur subit des dégâts (depuis sa fiche **ou** depuis le traqueur du MD), une notification lui demande un jet de Constitution DD 10 ou ½ dégâts ; les états incapacitants et les 0 PV rompent automatiquement la concentration
+- Épuisement 1–6, 16 états SRD avec durées, inspiration, ration/eau (survie Chult)
+- **Forme sauvage** (Druide) : formes selon DD et vol/nage par niveau, liste limitée aux **bêtes déjà vues** (👁), PV lancés aux dés, bloc de stats consultable, barre de PV de la forme intégrée au traqueur, retour auto avec dégâts excédentaires
 
-![Stats](docs/screenshot-stats.png)
-
-### 🎯 Compétences
-- 18 compétences + 6 jets de sauvegarde
-- Bascule de maîtrise en un clic (calcul automatique des modificateurs)
-- Groupé par caractéristique
-
-![Skills](docs/screenshot-skills.png)
+| Attaques & PV | Forme sauvage |
+|---|---|
+| ![Survie](docs/screenshots/04-survie-attaques.png) | ![Forme sauvage](docs/screenshots/09-forme-sauvage.png) |
 
 ### ✨ Sorts
-- **490 sorts** du SRD + extensions (Xanathar, Tasha, Fizban) — tous en français depuis AideDD.org
-- Traqueur d'emplacements de sort (calculé selon la classe et le niveau)
-- Liste de sorts connus/préparés avec bascule ★/☆
-- Limite de préparation par classe (formule SRD officielle)
-- Grimoire consultable avec filtres par classe, niveau, école
-- **Badges de stats calculés** : DD de sauvegarde, bonus d'attaque, dés de dégâts (mis à l'échelle pour les tours de magie)
+- **490 sorts** SRD + extensions (Xanathar/Tasha/Fizban), tout en français (AideDD)
+- Traqueur d'emplacements par classe/niveau (grimoire complet, pacte, demi-magie, artificier)
+- **Lancement de sort** : choix de l'emplacement, **incantation supérieure** (tous les niveaux disponibles avec dégâts mis à l'échelle affichés en direct), rituel sans emplacement, gestion de la concentration
+- **Sorts toujours préparés** : domaine divin du Clerc, terrain du Cercle de la Terre du Druide, serment du Paladin — fusionnés dans la liste avec le marqueur ◆, hors quota de préparation
+- Aperçu des dés au niveau choisi, DD de sauvegarde et bonus d'attaque
 
-![Spells](docs/screenshot-spells.png)
-![Mobile spells](docs/mobile-spells.png)
-
-### 📋 Traits
-- Capacités libres (classe, race, historique, dons, personnalisé)
-- **Système de modèles** : insérez des valeurs calculées avec `{{save_dc}}`, `{{prof}}`, `{{str_mod}}`, `{{skill:perception}}`, etc.
-- Aperçu en direct lors de l'édition
-
-![Traits](docs/screenshot-traits.png)
-
-### 👤 Description
-- Portrait du personnage (téléversement d'image)
-- Attributs physiques : alignement, sexe, âge, taille, poids, peau, yeux, cheveux
-- Personnalité : traits, idéaux, liens, défauts
-
-![Description](docs/screenshot-description.png)
-
-### 🎭 PNJ
-- Tableau de bord des PNJ partagé au sein du groupe
-- Création/édition par tout membre du groupe
-- Filtres par faction, disposition, statut
-
-### 📝 Notes
-- Notes libres avec formatage Markdown simple
-- Mode édition + aperçu en direct
-- Idéal pour les quêtes, le lore, les rappels
-
-![Notes](docs/screenshot-notes.png)
-
-## 🏗️ Stack technique
-
-| Couche | Technologie |
+| Grimoire | Lancer (avec dégâts upcastés) |
 |---|---|
-| Frontend | React 18 + Vite + Tailwind CSS (mobile-first, PWA) |
-| Backend | Fastify 5 + better-sqlite3 (Node 20) |
-| Auth | bcrypt + JWT |
-| Sync | WebSocket temps réel (synchronisation chirurgicale) |
-| Données | 5e SRD (5e-bits/5e-database) + AideDD.org |
-| Deploy | Docker Compose multi-arch (GHCR) |
+| ![Sorts](docs/screenshots/06-sorts.png) | ![Lancer](docs/screenshots/07-lancer-sort.png) |
 
-## 🚀 Démarrage rapide
+### ⚔️ Caractéristiques & règles de classe
+- 6 scores, classe/niveau/race/historique, **sous-classes** (cercle druidique + terrain, domaine divin, serment sacré), style de combat
+- **CA calculée** : type d'armure réel (légère/intermédiaire/lourde), boucliers, **armures magiques** résolues depuis la description, défense sans armure du Barbare (10+DEX+CON) et du Moine (10+DEX+SAG), style Défense
+- **Vitesse** avec Déplacement sans armure (Moine), Déplacement rapide (Barbare), pénalité d'armure lourde sous la FOR minimale
+- **Maîtrise d'armes** éditable (armes simples/de guerre/spécifiques par classe)
+- 18 compétences + 6 jets de sauvegarde (2 colonnes), bonus de maîtrise
 
-### Docker (images pré-construites)
+![Caractéristiques](docs/screenshots/08-caracteristiques.png)
 
-```bash
-export JWT_SECRET="votre-secret-ici"
-docker compose -f docker-compose.prod.yml up -d
-```
+### 🗡️ Traqueur de combat (MD)
+- **Rencontres** : monstres du bestiaire **964 bêtes** (SRD complet + ToA + extensions), groupés par type avec initiative partagée, **PV lancés aux dés de vie**
+- Ajout des PJ en un clic, initiative saisie par les joueurs depuis leur écran
+- **Démarrage en un clic**, avancement des tours (groupes sautés ensemble), tours et rounds
+- Dégâts / soins / demi-dégâts / vaincu, édition directe PV/CA, couleurs de cartes
+- **16 états avec durées** qui expirent automatiquement en fin de tour (et se synchronisent avec la fiche du joueur)
+- **Blocs de stats complets** : capacités, actions avec **dés cliquables** (attaque d20, dégâts doublés sur critique), sorts des monstres consultables
+- **PV synchronisés dans les deux sens** entre le traqueur du MD et la fiche du joueur
 
-- App : http://localhost:8080
-- API : http://localhost:4010
-
-### Docker (build depuis le source)
-
-```bash
-docker compose up --build
-```
-
-### Développement local
-
-```bash
-npm install
-npm run import-items    # Importe le catalogue SRD (lb → kg)
-npm run import-spells   # Importe les sorts SRD
-npm run migrate         # Crée les tables
-npm run seed            # Insère les données
-npm run dev             # Démarre API + Web
-```
-
-- Web : http://localhost:5173
-- API : http://localhost:4000
-
-## 📊 Encombrance (SRD français, système métrique)
-
-| Palier | Seuil (kg) | Effet |
+| Table du MD | Traqueur de combat | Bloc de stats |
 |---|---|---|
-| Encombré | FOR × **2.5** kg | Vitesse −3 m |
-| Lourdement encombré | FOR × **5** kg | Vitesse −6 m · Désavantage FOR/CON |
-| Surchargé | FOR × **7.5** kg | Immobilisé |
+| ![Table du MD](docs/screenshots/11-table-md.png) | ![Traqueur](docs/screenshots/12-traqueur.png) | ![Bloc de stats](docs/screenshots/13-bloc-stats.png) |
 
-Poids des pièces inclus : 1 pièce ≈ 10 g (50 pièces = 0.5 kg).
+### 🔄 Temps réel & multi-appareils
+- **Synchronisation WebSocket** : tout le monde voit les mêmes PV, états, initiative, en direct — le MD blesse, la fiche du joueur suit ; le joueur se soigne, le traqueur suit
+- Notifications poussées : demande d'initiative, jet de concentration, tour du joueur (widget flottant)
+- PNJ partagés avec secrets réservés au MD, notes par personnage, traits avec compteurs (Rage, Divinité…)
+- Installable comme **PWA** sur téléphone/tablette
 
-## 🎭 Classes prises en charge
+| Widget de combat (joueur) | Formes (bêtes vues) |
+|---|---|
+| ![Widget](docs/screenshots/05-widget-combat.png) | ![Formes](docs/screenshots/10-formes.png) |
 
-13 classes du SRD + extensions, avec données propres à chaque classe :
+## 🚀 Démarrage
 
-| Classe | Dé de vie | Incantation | Préparation | Source |
-|---|---|---|---|---|
-| Artificier | d8 | Demi (INT) | Oui | Tasha's |
-| Barde | d8 | Complète (CHA) | Non | SRD |
-| Clerc | d8 | Complète (SAG) | Oui | SRD |
-| Druide | d8 | Complète (SAG) | Oui | SRD |
-| Ensorceleur | d6 | Complète (CHA) | Non | SRD |
-| Magicien | d6 | Complète (INT) | Oui | SRD |
-| Occultiste | d8 | Pacte (CHA) | Non | SRD |
-| Paladin | d10 | Demi (CHA) | Oui | SRD |
-| Rôdeur | d10 | Demi (SAG) | Oui | SRD |
-| Barbare, Guerrier, Moine, Roublard | — | Non | — | SRD |
+```bash
+npm install                 # dépendances (workspaces)
+npm run dev                 # API :4000 + Web :5173
+docker compose up --build   # API :4010 + Web :8080
+```
 
-Chaque classe calcule automatiquement : dés de vie, sauvegardes maîtrisées, emplacements de sort, DD de sauvegarde, limite de préparation.
+Le serveur auto-migre et sème la base au démarrage : 646 objets, 490 sorts, 964 monstres.
 
-## 🔄 Synchronisation temps réel
+## 🧱 Architecture
 
-L'application utilise WebSocket pour synchroniser instantanément tous les joueurs connectés :
-- **Suppression d'écho serveur** : l'auteur d'une action ne reçoit pas l'événement (pas de double-rafraîchissement)
-- **Debounce 300ms** : les événements rapides sont coalescés (1 rafraîchissement au lieu de N)
-- **Rafraîchissement silencieux** : les pages de liste ne clignotent pas (pas de spinner)
-- **Garde de diff** : les réponses identiques ne déclenchent pas de re-rendu
+- `apps/api` — Fastify 5 + better-sqlite3 (WebSocket `/ws`, JWT)
+- `apps/web` — React 19 + Vite + Tailwind v4 (mobile-first, PWA)
+- `packages/shared` — **moteur de règles SRD** partagé (CA, armes, vitesse, sorts, forme sauvage) + types
+- `data/` — seeds JSON + SQLite
+- Tests de règles : `npm run test-weapon-stats` / `npm run test-armor-stats`
 
-## 📱 Mobile-first
+## 📜 Licence & données
 
-L'interface est conçue pour mobile d'abord, avec adaptation responsive desktop :
-
-![Mobile party](docs/mobile-party.png)
-![Mobile stats](docs/mobile-stats.png)
-
-## 📜 Licence
-
-- **Code** : MIT
-- **Données d'objets** : [5e-bits/5e-database](https://github.com/5e-bits/5e-database) (MIT + OGL v1.0a)
-- **Traductions françaises** : [AideDD.org](https://www.aidedd.org) / [5e-drs.fr](https://5e-drs.fr)
-
-## 🔗 Liens
-
-- **Dépôt** : [github.com/WazoAkaRapace/dnd-inventory](https://github.com/WazoAkaRapace/dnd-inventory)
-- **Images Docker** : `ghcr.io/wazoakarapace/dnd-inventory-api:main` / `ghcr.io/wazoakarapace/dnd-inventory-web:main`
+Objets/monstres du SRD 5.1 (usage personnel, pas de revente). Traductions françaises de [5e-drs.fr](https://5e-drs.fr) et [AideDD.org](https://www.aidedd.org).
