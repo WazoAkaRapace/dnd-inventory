@@ -178,6 +178,11 @@ export default function CharacterInventoryPage() {
   // Catalog (in bottom-sheet on mobile, right column on desktop)
   const [catalogOpen, setCatalogOpen] = useState(false); // mobile sheet
   const [moreOpen, setMoreOpen] = useState(false); // mobile « Plus » tabs sheet
+  // Mobile combat: the dock hub doubles as the combat indicator
+  const [hubCombat, setHubCombat] = useState<{
+    encounterId: number; partyId: number; status: string; round: number;
+    needsInitiative: boolean; isMyTurn: boolean; currentCombatantName: string | null;
+  } | null>(null);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [catalogCategory, setCatalogCategory] = useState<'' | ItemCategory>('');
@@ -573,6 +578,43 @@ export default function CharacterInventoryPage() {
 
   const { character, encumbrance, locations, locationWeights } = data;
 
+  // Mobile combat: check if this character is in an active/setup encounter
+  const isSheetOwner = user?.id === data?.character?.ownerId;
+  useEffect(() => {
+    if (!isSheetOwner || !user) { setHubCombat(null); return; }
+    let alive = true;
+    const load = async () => {
+      try {
+        const encRes = await api.get(`/api/parties/${partyId}/encounters`);
+        const encounters = encRes.data.encounters || [];
+        const relevant = encounters.filter((e: any) => e.status === 'active' || e.status === 'setup');
+        for (const enc of relevant) {
+          const det = await api.get(`/api/encounters/${enc.id}`);
+          const detail = det.data.encounter;
+          const mine = detail.combatants.find(
+            (c: any) => c.characterId === Number(charId),
+          );
+          if (mine) {
+            const current = detail.combatants[detail.turnIndex];
+            if (alive) {
+              setHubCombat({
+                encounterId: detail.id, partyId: detail.partyId,
+                status: detail.status, round: detail.round,
+                needsInitiative: mine.initiative === null,
+                isMyTurn: detail.status === 'active' && current?.id === mine.id,
+                currentCombatantName: current?.name ?? null,
+              });
+            }
+            return;
+          }
+        }
+        if (alive) setHubCombat(null);
+      } catch { if (alive) setHubCombat(null); }
+    };
+    load();
+    return () => { alive = false; };
+  }, [isSheetOwner, user, partyId, charId]);
+
   // Non-casters never open Sorts: Traits takes its dock slot, Sorts moves to the hub
   const isCasterClass = !!findClass(character.characterClass) && findClass(character.characterClass)!.spellcasting !== 'none';
   const dockPrimaryList: CharacterTab[] = isCasterClass
@@ -782,17 +824,21 @@ export default function CharacterInventoryPage() {
                   aria-hidden="true"
                 />
                 {left.map(slot)}
-                {/* Center: expandable button — shows the active secondary tab */}
+                {/* Center: expandable button — doubles as the combat indicator */}
                 <button
                   onClick={() => setMoreOpen((o) => !o)}
-                  className={`hub-button relative z-10 mx-1 -my-3 w-12 h-12 shrink-0 rounded-full shadow-lg flex items-center justify-center text-xl leading-none text-white active:scale-90 border-4 border-parchment-50 ${
-                    moreOpen ? 'bg-ink-900 rotate-90' : 'bg-blood-600 hover:bg-blood-700'
+                  className={`hub-button relative z-10 mx-1 -my-3 w-12 h-12 shrink-0 rounded-full shadow-lg flex items-center justify-center text-xl leading-none active:scale-90 border-4 border-parchment-50 ${
+                    moreOpen ? 'bg-ink-900 rotate-90 text-white'
+                    : hubCombat?.isMyTurn ? 'bg-blood-700 text-white shadow-[0_0_0_3px_rgba(185,28,28,0.5),0_0_18px_rgba(185,28,28,0.5)]'
+                    : hubCombat?.needsInitiative ? 'bg-yellow-500 text-ink-900 shadow-[0_0_0_3px_rgba(202,138,4,0.5),0_0_18px_rgba(202,138,4,0.5)]'
+                    : hubCombat ? 'bg-blood-600 text-white shadow-[0_0_0_2px_rgba(185,28,28,0.3),0_0_12px_rgba(185,28,28,0.25)]'
+                    : 'bg-blood-600 hover:bg-blood-700 text-white'
                   }`}
                   aria-expanded={moreOpen}
-                  aria-label={moreOpen ? 'Fermer les autres onglets' : 'Autres onglets'}
+                  aria-label={hubCombat ? 'Combat en cours' : moreOpen ? 'Fermer les autres onglets' : 'Autres onglets'}
                 >
-                  <span key={moreOpen ? 'x' : secondary ? secondary.key : 'menu'} className="icon-swap" aria-hidden="true">
-                    {moreOpen ? '✕' : secondary ? secondary.icon : '☰'}
+                  <span key={moreOpen ? 'x' : hubCombat ? 'combat' : secondary ? secondary.key : 'menu'} className="icon-swap" aria-hidden="true">
+                    {moreOpen ? '✕' : hubCombat ? '⚔' : secondary ? secondary.icon : '☰'}
                   </span>
                 </button>
                 {right.map(slot)}
