@@ -23,6 +23,7 @@ import {
   DND_CONDITIONS_FR,
   computeWeaponStats,
   computeUnarmedStats,
+  findClass,
   WEAPON_PROPERTY_LABELS_FR,
   resolveMagicArmorBase,
   proficiencyBonus,
@@ -46,7 +47,7 @@ const CHARACTER_TABS: { key: CharacterTab; label: string; icon: string; primary:
   { key: 'stats', label: 'Caractéristiques', icon: '⚔️', primary: true, short: 'Caract.' },
   { key: 'spells', label: 'Sorts', icon: '✨', primary: true, short: 'Sorts' },
   { key: 'skills', label: 'Compétences', icon: '🎯', primary: true, short: 'Comp.' },
-  { key: 'features', label: 'Traits', icon: '📋', primary: false },
+  { key: 'features', label: 'Traits', icon: '📋', primary: false, short: 'Traits' },
   { key: 'description', label: 'Description', icon: '👤', primary: false },
   { key: 'npcs', label: 'PNJ', icon: '🎭', primary: false },
   { key: 'notes', label: 'Notes', icon: '📝', primary: false },
@@ -565,6 +566,12 @@ export default function CharacterInventoryPage() {
 
   const { character, encumbrance, locations, locationWeights } = data;
 
+  // Non-casters never open Sorts: Traits takes its dock slot, Sorts moves to the hub
+  const isCasterClass = !!findClass(character.characterClass) && findClass(character.characterClass)!.spellcasting !== 'none';
+  const dockPrimaryList: CharacterTab[] = isCasterClass
+    ? ['survival', 'stats', 'spells', 'skills']
+    : ['survival', 'stats', 'features', 'skills'];
+
   // Resolve the active location (fall back to carried, then first)
   const activeLocation: StorageLocation | undefined =
     locations.find((l) => l.id === activeLocationId) ??
@@ -731,10 +738,11 @@ export default function CharacterInventoryPage() {
       {/* ---------- Tab navigation — floating mobile dock with sliding indicator ---------- */}
       <div className="lg:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-30 max-w-[calc(100vw-2rem)]">
         {(() => {
-          const primaries = DOCK_PRIMARY.map((k) => CHARACTER_TABS.find((t) => t.key === k)!);
+          const dockPrimary = dockPrimaryList;
+          const primaries = dockPrimary.map((k) => CHARACTER_TABS.find((t) => t.key === k)!);
           const left = primaries.slice(0, 2);
           const right = primaries.slice(2);
-          const secondary = CHARACTER_TABS.find((t) => t.key === activeTab && !t.primary);
+          const secondary = CHARACTER_TABS.find((t) => t.key === activeTab && !dockPrimary.includes(t.key));
           // Flex order: [slot][slot][hub][slot][slot] — equal 56px blocks with
           // 4px gaps after an 8px padding. The hub occupies visual slot 2, so
           // right-side tabs skip it; the indicator slides behind the hub only
@@ -792,7 +800,7 @@ export default function CharacterInventoryPage() {
         <>
           <div className="scrim-fade lg:hidden fixed inset-0 z-40 bg-black/40" onClick={() => setMoreOpen(false)} />
           {(() => {
-            const secondaryTabs = CHARACTER_TABS.filter((t) => !t.primary);
+            const secondaryTabs = CHARACTER_TABS.filter((t) => !dockPrimaryList.includes(t.key));
             const activeIdx = secondaryTabs.findIndex((t) => t.key === activeTab);
             // Compact 2-column grid anchored just above the dock — stays in
             // thumb reach. Cells are w-36 (144px) + 8px gaps; the 5th item
