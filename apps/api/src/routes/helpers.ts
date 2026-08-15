@@ -158,6 +158,7 @@ export function mapCharacterSummary(row: any): CharacterSummary {
     wildShapeHp: row.wild_shape_hp ?? null,
     wildShapeMaxHp: row.wild_shape_max_hp ?? null,
     wildShapeUses: row.wild_shape_uses ?? 2,
+    hitDiceUsed: row.hit_dice_used ?? 0,
   };
 }
 

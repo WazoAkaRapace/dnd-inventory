@@ -288,6 +288,8 @@ export interface CharacterSummary {
   wildShapeHp: number | null;
   wildShapeMaxHp: number | null;
   wildShapeUses: number;
+  // Hit dice: level dice of the class die; spent on short rests to heal
+  hitDiceUsed: number;
 }
 
 /** A Constitution save required to maintain concentration after taking damage. */
@@ -379,6 +381,7 @@ export interface PatchCharacterPayload {
   wildShapeHp?: number | null;
   wildShapeMaxHp?: number | null;
   wildShapeUses?: number;
+  hitDiceUsed?: number;
 }
 
 // ---------- D&D 5e Abilities (Caractéristiques) ----------

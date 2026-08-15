@@ -111,6 +111,7 @@ const COLUMN_MIGRATIONS: Record<string, Array<{ name: string; ddl: string }>> = 
     { name: 'wild_shape_hp', ddl: 'INTEGER' },
     { name: 'wild_shape_max_hp', ddl: 'INTEGER' },
     { name: 'wild_shape_uses', ddl: 'INTEGER NOT NULL DEFAULT 2' },
+    { name: 'hit_dice_used', ddl: 'INTEGER NOT NULL DEFAULT 0' },
   ],
   items: [
     { name: 'survival_tags', ddl: "TEXT NOT NULL DEFAULT '[]'" },

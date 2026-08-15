@@ -321,7 +321,7 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
             </>
           )}
           {classInfo && (
-            <DerivedStat label="Dé de vie" value={`d${classInfo.hitDie}`} />
+            <DerivedStat label="Dé de vie" value={`d${classInfo.hitDie} · ${Math.max(0, (character.level ?? 1) - (character.hitDiceUsed ?? 0))}/${character.level ?? 1}`} />
           )}
         </div>
         {classInfo && (

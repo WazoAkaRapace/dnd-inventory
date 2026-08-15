@@ -2612,6 +2612,68 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
         />
       )}
 
+      {/* Hit dice — spent on a short rest to heal */}
+      {(() => {
+        const classInfo = findClass(character.characterClass);
+        const die = classInfo?.hitDie ?? 8;
+        const total = character.level ?? 1;
+        const used = character.hitDiceUsed ?? 0;
+        const remaining = Math.max(0, total - used);
+        const conMod = Math.floor(((character.constitution ?? 10) - 10) / 2);
+        const canSpend = remaining > 0 && character.currentHp < character.maxHp && !character.wildShapeSlug;
+        const spendDie = async () => {
+          const roll = Math.floor(Math.random() * die) + 1;
+          const heal = Math.max(1, roll + conMod);
+          const newHp = Math.min(character.maxHp, character.currentHp + heal);
+          markLocalMutation();
+          try {
+            await api.patch(`/api/characters/${charId}`, { hitDiceUsed: used + 1, currentHp: newHp });
+            onNotice?.(`🎲 Dé de vie d${die} : ${roll}${conMod >= 0 ? ` + ${conMod}` : ` ${conMod}`} CON → +${newHp - character.currentHp} PV`);
+            await onSaved();
+          } catch {
+            onError('Erreur de mise à jour');
+          }
+        };
+        const regain = async (n: number) => {
+          markLocalMutation();
+          try {
+            await api.patch(`/api/characters/${charId}`, { hitDiceUsed: Math.max(0, used - n) });
+            await onSaved();
+          } catch {
+            onError('Erreur de mise à jour');
+          }
+        };
+        return (
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-sm font-medium text-ink-700 flex items-center gap-1.5">
+              🎲 Dés de vie
+              <span className="text-xs font-normal text-ink-400">d{die}</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <button
+                onClick={() => regain(1)}
+                disabled={used <= 0}
+                className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center"
+                aria-label="Récupérer un dé de vie"
+                title="Récupérer un dé (repos long : niveau/2 dés, min 1)"
+              >+</button>
+              <span className={`text-sm font-bold tabular-nums ${remaining === 0 ? 'text-red-500' : 'text-ink-800'}`}>
+                {remaining}
+              </span>
+              <span className="text-xs text-ink-400">/ {total}</span>
+              <button
+                onClick={spendDie}
+                disabled={!canSpend}
+                className="ml-1 px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-200 text-red-700 hover:bg-red-100 disabled:opacity-40 text-xs font-semibold transition-colors"
+                title="Dépenser un dé de vie (repos court) : lance le dé + mod. de CON et soigne"
+              >
+                🎲 Soigner
+              </button>
+            </span>
+          </div>
+        );
+      })()}
+
       {/* Inspiration + Concentration toggles */}
       <div className="flex items-center gap-2 flex-wrap">
         <button
