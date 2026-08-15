@@ -149,7 +149,7 @@ export default function CombatWidget() {
   const isSetup = combat.encounter.status === 'setup';
 
   if (collapsed) {
-    // Glow ring color based on state
+    // Raised circular button popping out of the bottom edge, like the dock hub
     const glowColor = isMyTurn
       ? 'shadow-[0_0_0_3px_rgba(185,28,28,0.4),0_0_20px_rgba(185,28,28,0.6)]'
       : needsInitiative
@@ -158,12 +158,12 @@ export default function CombatWidget() {
     return (
       <button
         onClick={() => setCollapsed(false)}
-        className={`fixed bottom-24 lg:bottom-4 left-4 z-40 w-12 h-12 rounded-full flex items-center justify-center text-xl transition-shadow ${
+        className={`fixed bottom-24 lg:bottom-4 left-1/2 -translate-x-1/2 z-40 -my-3 w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-xl leading-none transition-all active:scale-95 border-4 border-parchment-50 ${
           isMyTurn
-            ? 'bg-blood-600 text-parchment-50'
+            ? 'bg-blood-600 hover:bg-blood-700 text-parchment-50'
             : needsInitiative
-              ? 'bg-yellow-500 text-ink-900'
-              : 'bg-ink-900 text-parchment-50'
+              ? 'bg-yellow-500 hover:bg-yellow-600 text-ink-900'
+              : 'bg-ink-900 hover:bg-ink-800 text-parchment-50'
         } ${glowColor}`}
         title={
           isMyTurn ? 'À toi de jouer !'
@@ -178,7 +178,7 @@ export default function CombatWidget() {
 
   return (
     <div
-      className={`fixed bottom-24 lg:bottom-4 left-4 z-40 w-72 rounded-xl shadow-xl border-2 bg-white ${
+      className={`fixed bottom-24 lg:bottom-4 left-1/2 -translate-x-1/2 z-40 w-[min(92vw,20rem)] rounded-xl shadow-xl border-2 bg-white ${
         isMyTurn
           ? 'border-blood-500'
           : needsInitiative
