@@ -951,16 +951,21 @@ function SwipeToReveal({ reveal, onAction, actionLabel, children }: {
 
   return (
     <div className="relative rounded-lg overflow-hidden">
-      {/* Action underneath — clipped to the row box so no red peeks out */}
-      <button
-        onClick={() => { setOpen(false); setDx(0); onAction(); }}
-        className="absolute inset-y-0 right-0 w-[76px] rounded-r-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold flex flex-col items-center justify-center gap-0.5"
-        aria-label={actionLabel}
-        tabIndex={open ? 0 : -1}
-      >
-        <span className="text-base leading-none">🗑</span>
-        Oublier
-      </button>
+      {/* Drawer: the action travels with the row inside a clipped reveal
+          zone — closed, it is fully outside the clip (zero pixels painted,
+          no sub-pixel seam at any device pixel ratio). */}
+      <div className="absolute inset-y-0 right-0 w-[76px] overflow-hidden">
+        <button
+          onClick={() => { setOpen(false); setDx(0); onAction(); }}
+          className={`w-full h-full bg-red-600 hover:bg-red-700 text-white text-xs font-semibold flex flex-col items-center justify-center gap-0.5 ${dragging ? '' : 'transition-transform duration-200'}`}
+          style={{ transform: `translateX(${WIDTH + dx}px)` }}
+          aria-label={actionLabel}
+          tabIndex={open ? 0 : -1}
+        >
+          <span className="text-base leading-none">🗑</span>
+          Oublier
+        </button>
+      </div>
       {/* Row content — draggable anywhere */}
       <div
         onPointerDown={onPointerDown}
