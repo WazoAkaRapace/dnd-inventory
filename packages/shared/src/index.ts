@@ -686,6 +686,7 @@ export function computeAC(
   entries: Array<{ item: { category: string; acBase: number | null; strMin: number | null; nameFr: string | null; name: string; description?: string | null }; equipped: boolean }>,
   dexMod: number,
   defenseStyle = false,
+  character?: { constitution?: number; wisdom?: number; characterClass?: string | null },
 ): ArmorClassResult {
   // Find equipped armor (non-shield) and shield
   let armor: { acBase: number; armorType: 'light' | 'medium' | 'heavy'; name: string } | null = null;
@@ -740,9 +741,22 @@ export function computeAC(
   let source: string;
 
   if (!armor) {
-    // Unarmored: 10 + DEX
-    ac = 10 + dexMod;
-    source = `Sans armure · 10 ${formatModifier(dexMod)}`;
+    // Unarmored: 10 + DEX, or a class Unarmored Defense (SRD):
+    //   Barbare — 10 + DEX + CON (shield allowed)
+    //   Moine   — 10 + DEX + WIS (only without a shield)
+    const cls = character ? findClass(character.characterClass)?.name : null;
+    if (cls === 'Barbare') {
+      const conMod = abilityModifier(character?.constitution ?? 10);
+      ac = 10 + dexMod + conMod;
+      source = `Sans armure · 10 ${formatModifier(dexMod)} ${formatModifier(conMod)} (Barbare)`;
+    } else if (cls === 'Moine' && !hasShield) {
+      const wisMod = abilityModifier(character?.wisdom ?? 10);
+      ac = 10 + dexMod + wisMod;
+      source = `Sans armure · 10 ${formatModifier(dexMod)} ${formatModifier(wisMod)} (Moine)`;
+    } else {
+      ac = 10 + dexMod;
+      source = `Sans armure · 10 ${formatModifier(dexMod)}`;
+    }
   } else {
     const isHeavy = armor.armorType === 'heavy';
     const isMedium = armor.armorType === 'medium';
@@ -1180,6 +1194,76 @@ function isMonkWeaponName(nameEn: string, nameFr: string | null): boolean {
   if (!m.simple) return m.nameEn === 'Shortsword';
   // Simple melee weapons (no ammunition) that aren't two-handed
   return !m.properties.includes('ammunition') && !m.properties.includes('two-handed');
+}
+
+// ---------- Armor-dependent speed (SRD) ----------
+
+/** Monk Unarmored Movement bonus (meters) by level: 3 at 2, 4.5 at 6, 6 at 10, 7.5 at 14, 9 at 18. */
+export function unarmoredMovementBonus(level: number): number {
+  if (level >= 18) return 9;
+  if (level >= 14) return 7.5;
+  if (level >= 10) return 6;
+  if (level >= 6) return 4.5;
+  if (level >= 2) return 3;
+  return 0;
+}
+
+export interface SpeedResult {
+  /** Effective speed in meters (base + class bonus). */
+  speed: number;
+  /** Bonus applied, 0 when none (meters). */
+  bonus: number;
+  /** Human-readable source of the bonus. */
+  source: string | null;
+}
+
+/**
+ * Effective speed with SRD armor-dependent class features:
+ *  - Moine, Déplacement sans armure: +bonus while wearing no armor and no shield
+ *  - Barbare, Déplacement rapide (level 5+): +3 m unless wearing heavy armor
+ */
+export function computeSpeed(
+  character: { characterClass?: string | null; level?: number; speed?: number },
+  entries: Array<{ item: { category: string; acBase: number | null; strMin: number | null; nameFr: string | null; name: string; description?: string | null }; equipped: boolean }>,
+): SpeedResult {
+  const base = character.speed ?? 9;
+  const cls = findClass(character.characterClass)?.name;
+  const level = character.level ?? 1;
+
+  const worn = entries.filter((e) => {
+    if (!e.equipped || e.item.category !== 'armor') return false;
+    const name = (e.item.nameFr ?? e.item.name).toLowerCase();
+    if (name.includes('bouclier') || name.includes('shield')) return false;
+    if (e.item.acBase !== null && e.item.acBase !== 0) return true;
+    // Magic armor counts as worn if it resolved to a non-shield base
+    return resolveMagicArmorBase(e.item).base !== null;
+  });
+  const wearingArmor = worn.length > 0;
+  const wearingHeavy = worn.some((e) => {
+    if (e.item.acBase !== null && e.item.acBase !== 0) {
+      const base = findMundaneArmorByName(e.item.name, e.item.nameFr);
+      return base ? base.armorType === 'heavy' : (e.item.strMin !== null && e.item.strMin >= 13);
+    }
+    return resolveMagicArmorBase(e.item).base?.armorType === 'heavy';
+  });
+  const hasShield = entries.some((e) => {
+    if (!e.equipped || e.item.category !== 'armor') return false;
+    const name = (e.item.nameFr ?? e.item.name).toLowerCase();
+    if (name.includes('bouclier') || name.includes('shield')) return true;
+    if (e.item.acBase === null || e.item.acBase === 0) return resolveMagicArmorBase(e.item).shield;
+    return false;
+  });
+
+  if (cls === 'Moine' && !wearingArmor && !hasShield) {
+    const bonus = unarmoredMovementBonus(level);
+    if (bonus > 0) {
+      return { speed: base + bonus, bonus, source: `Déplacement sans armure +${bonus} m` };
+    }
+  }
+  if (cls === 'Barbare' && level >= 5 && !wearingHeavy) {
+    return { speed: base + 3, bonus: 3, source: 'Déplacement rapide +3 m' };
+  }
+  return { speed: base, bonus: 0, source: null };
 }
 
 // ---------- Unarmed strikes (SRD) ----------

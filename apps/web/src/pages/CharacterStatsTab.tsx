@@ -21,6 +21,7 @@ import {
   findClass,
   effectiveWeaponProficiencies,
   classWeaponProficiencies,
+  computeSpeed,
   MUNDANE_WEAPONS,
   FIGHTING_STYLE_LABELS_FR,
   FIGHTING_STYLE_CLASSES,
@@ -125,6 +126,9 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
     patchCharacter({ speed: Math.max(0, Math.round(val)) }, 'Erreur de mise à jour');
   };
 
+  // Armor-dependent class speed features (Moine / Barbare)
+  const speedResult = computeSpeed(character, entries);
+
   // Derived stats
   const level = character.level ?? 1;
   const classInfo = findClass(character.characterClass);
@@ -143,7 +147,7 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
   const spellDC = isSpellcaster ? spellSaveDC(castingMod, profBonus) : 0;
 
   // Armor Class — computed from equipped armor, or manual override
-  const acResult = computeAC(entries, dexMod, character.fightingStyle === 'defense');
+  const acResult = computeAC(entries, dexMod, character.fightingStyle === 'defense', character);
   const acOverride = character.armorClassOverride;
   const effectiveAC = acOverride ?? acResult.ac;
   const [acDraft, setAcDraft] = useState('');
@@ -300,11 +304,12 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
           <DerivedStat label="Bonus de maîtrise" value={formatModifier(profBonus)} />
           <DerivedStat label="Initiative" value={formatModifier(dexMod)} />
           <DerivedStat label="Perception passive" value={String(passPerc)} />
-          <DerivedStat label="Vitesse" value={`${character.speed ?? 9} m`}
+          <DerivedStat label="Vitesse" value={`${speedResult.speed} m`}
             editable
             draftValue={speedDraft}
             onChange={setSpeedDraft}
             onBlur={commitSpeed}
+            hint={speedResult.source ? `→ ${speedResult.speed} m · ${speedResult.source}` : undefined}
           />
           {isSpellcaster && (
             <>
@@ -337,6 +342,7 @@ function DerivedStat({
   draftValue,
   onChange,
   onBlur,
+  hint,
 }: {
   label: string;
   value: string;
@@ -344,10 +350,12 @@ function DerivedStat({
   draftValue?: string;
   onChange?: (v: string) => void;
   onBlur?: () => void;
+  hint?: string;
 }) {
   return (
     <div className="bg-parchment-100 rounded-xl p-3 text-center">
       <div className="text-xs font-medium text-ink-500 mb-1">{label}</div>
+      {hint && <div className="text-[10px] text-blood-600 font-medium leading-tight">{hint}</div>}
       {editable ? (
         <input
           type="number"

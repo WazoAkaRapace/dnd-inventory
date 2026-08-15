@@ -4,6 +4,7 @@
  */
 import {
   computeAC,
+  computeSpeed,
   resolveMagicArmorBase,
   type Item,
 } from '@dnd-inventory/shared';
@@ -99,5 +100,46 @@ check('Cuir simple → 11 + 4 = 15', computeAC([entry(cuir)], dex4).ac, 15);
 const harnois = mkArmor({ name: 'Plate Armor', nameFr: 'Harnois', rarity: 'none' as any, acBase: 18, strMin: 15, description: '' });
 check('Harnois simple → 18 sans DEX', computeAC([entry(harnois)], dex4).ac, 18);
 
+// --- Class unarmored defense & armor-dependent speed ---
+const barbare = { constitution: 16, wisdom: 10, characterClass: 'Barbare' };
+const moine = { constitution: 10, wisdom: 16, characterClass: 'Moine' };
+
+check('Barbare sans armure → 10 + 4 DEX + 3 CON = 17',
+  computeAC([], 4, false, barbare).ac, 17);
+check('Barbare sans armure + bouclier → 17 + 2 = 19',
+  computeAC([entry(mkArmor({ name: 'Shield', nameFr: 'Bouclier', rarity: 'none' as any, acBase: 2, strMin: 0, description: '' }))], 4, false, barbare).ac, 19);
+check('Barbare en armure → règle normale (Cuir 11 + 4)',
+  computeAC([entry(cuir)], 4, false, barbare).ac, 15);
+check('Moine sans armure ni bouclier → 10 + 4 DEX + 3 SAG = 17',
+  computeAC([], 4, false, moine).ac, 17);
+check('Moine AVEC bouclier → perd la SAG mais garde le bouclier : 10 + 4 + 2 = 16',
+  computeAC([entry(mkArmor({ name: 'Shield', nameFr: 'Bouclier', rarity: 'none' as any, acBase: 2, strMin: 0, description: '' }))], 4, false, moine).ac, 16);
+check('Moine en armure → règle normale',
+  computeAC([entry(cuir)], 4, false, moine).ac, 15);
+check('Non-classe sans armure → 10 + DEX (inchangé)',
+  computeAC([], 4, false, { constitution: 18, wisdom: 18, characterClass: 'Guerrier' }).ac, 14);
+
+// Speed
+check('Moine niv 10 sans armure → +6 m (9 → 15)',
+  computeSpeed({ characterClass: 'Moine', level: 10, speed: 9 }, []), { speed: 15, bonus: 6, source: 'Déplacement sans armure +6 m' });
+check('Moine niv 10 avec bouclier → pas de bonus',
+  computeSpeed({ characterClass: 'Moine', level: 10, speed: 9 }, [entry(mkArmor({ name: 'Shield', nameFr: 'Bouclier', rarity: 'none' as any, acBase: 2, strMin: 0, description: '' }))].map(e => e)).bonus, 0);
+check('Moine niv 1 → pas de bonus (niveau 2 requis)',
+  computeSpeed({ characterClass: 'Moine', level: 1, speed: 9 }, []).bonus, 0);
+check('Barbare niv 5 sans armure → +3 m',
+  computeSpeed({ characterClass: 'Barbare', level: 5, speed: 9 }, []).bonus, 3);
+check('Barbare niv 5 en armure légère → +3 m quand même',
+  computeSpeed({ characterClass: 'Barbare', level: 5, speed: 9 }, [entry(cuir)]).bonus, 3);
+check('Barbare niv 5 en armure lourde → pas de bonus',
+  computeSpeed({ characterClass: 'Barbare', level: 5, speed: 9 }, [entry(harnois)]).bonus, 0);
+check('Barbare niv 5 en armure lourde MAGIQUE → pas de bonus',
+  computeSpeed({ characterClass: 'Barbare', level: 5, speed: 9 }, [entry(mkArmor({ name: 'Dwarven Plate', nameFr: 'Harnois nain', description: 'Armure (plates) … bonus de +2 à la CA.' }))]).bonus, 0);
+check('Guerrier → pas de bonus',
+  computeSpeed({ characterClass: 'Guerrier', level: 20, speed: 9 }, []).bonus, 0);
+
+console.log('class rules: done');
+
 console.log(failures === 0 ? '\n✅ All armor stats checks pass' : `\n❌ ${failures} failure(s)`);
 process.exit(failures === 0 ? 0 : 1);
+
+
