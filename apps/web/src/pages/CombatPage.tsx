@@ -15,13 +15,13 @@ import type {
   EncounterDetail,
   EncounterSummary,
   Combatant,
-  CharacterSummary,
   PartyDetail,
   EncounterStatus,
 } from '@dnd-inventory/shared';
 import { LoadingSpinner, ErrorMsg, EmptyState, Modal } from '../components/ui';
 import CombatantRow from '../components/CombatantRow';
 import AddMonsterModal from '../components/AddMonsterModal';
+import AddPlayerModal from '../components/AddPlayerModal';
 import MonsterStatBlock from '../components/MonsterStatBlock';
 
 export default function CombatPage() {
@@ -151,10 +151,10 @@ export default function CombatPage() {
     }
   };
 
-  const addPlayer = async (characterId: number) => {
-    if (!activeEncounter) return;
+  const addPlayers = async (characterIds: number[]) => {
+    if (!activeEncounter || characterIds.length === 0) return;
     try {
-      await api.post(`/api/encounters/${activeEncounter.id}/combatants/player`, { characterId });
+      await api.post(`/api/encounters/${activeEncounter.id}/combatants/player`, { characterIds });
       await loadEncounter(activeEncounter.id);
       setShowAddPlayer(false);
     } catch (err: any) {
@@ -377,22 +377,12 @@ export default function CombatPage() {
       />
 
       {/* Add player modal */}
-      <Modal open={showAddPlayer} onClose={() => setShowAddPlayer(false)} title="Ajouter un personnage">
-        <div className="space-y-1 max-h-[60vh] overflow-y-auto">
-          {availableChars.map((c: CharacterSummary) => (
-            <button
-              key={c.id}
-              onClick={() => addPlayer(c.id)}
-              className="w-full text-left p-3 rounded-lg border border-parchment-200 hover:border-blood-300 hover:bg-blood-50 transition-colors"
-            >
-              <span className="font-medium">{c.name}</span>
-              {c.characterClass && (
-                <span className="text-sm text-ink-400 ml-2">{c.characterClass} N{c.level}</span>
-              )}
-            </button>
-          ))}
-        </div>
-      </Modal>
+      <AddPlayerModal
+        open={showAddPlayer}
+        onClose={() => setShowAddPlayer(false)}
+        characters={availableChars}
+        onAdd={addPlayers}
+      />
 
       {/* FAB: create new encounter (GM only, encounter list only) */}
       {!activeEncounter && isGM && (
