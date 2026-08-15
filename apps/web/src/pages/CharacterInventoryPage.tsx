@@ -43,6 +43,7 @@ import CharacterDescriptionTab from './CharacterDescriptionTab';
 import NpcPage from './NpcPage';
 import CharacterNotesTab from './CharacterNotesTab';
 import ConcentrationAlert from '../components/ConcentrationAlert';
+import MonsterStatBlock from '../components/MonsterStatBlock';
 
 type CharacterTab = 'inventory' | 'survival' | 'stats' | 'spells' | 'skills' | 'features' | 'description' | 'npcs' | 'notes';
 
@@ -2157,6 +2158,7 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
   const [shapeForms, setShapeForms] = useState<WildShapeFormSummary[]>([]);
   const [shapeSearch, setShapeSearch] = useState('');
   const [shapeSeenOnly, setShapeSeenOnly] = useState(true);
+  const [shapeStatBlock, setShapeStatBlock] = useState<string | null>(null);
 
   // Count available food/water from tagged inventory items
   // Water: skip items marked 'empty' in notes
@@ -2434,9 +2436,19 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
               </div>
               {shaped ? (
                 <>
-                  <div className="text-xs text-green-800">
-                    Forme actuelle : <strong>{shapeForms.find((f) => f.slug === character.wildShapeSlug)?.nameFr ?? character.wildShapeSlug}</strong>
-                    {' '}· {wildShapeDurationHours(character.level ?? 2)} h max
+                  <div className="text-xs text-green-800 flex items-center gap-1.5 flex-wrap">
+                    <span>
+                      Forme actuelle : <strong>{shapeForms.find((f) => f.slug === character.wildShapeSlug)?.nameFr ?? character.wildShapeSlug}</strong>
+                      {' '}· {wildShapeDurationHours(character.level ?? 2)} h max
+                    </span>
+                    <button
+                      onClick={() => setShapeStatBlock(character.wildShapeSlug)}
+                      className="w-7 h-7 rounded-lg bg-white/70 hover:bg-white text-ink-600 border border-green-200 text-sm flex items-center justify-center transition-colors"
+                      aria-label="Voir le bloc de stats de la forme"
+                      title="Bloc de stats de la forme actuelle"
+                    >
+                      📜
+                    </button>
                   </div>
                   <div className="h-3 bg-green-100 rounded-full overflow-hidden border border-green-200">
                     <div
@@ -2536,6 +2548,14 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
                         ❤ {f.hitPoints ?? '—'}<br />🛡 {f.armorClass ?? '—'}
                       </span>
                       <button
+                        onClick={() => setShapeStatBlock(f.slug)}
+                        className="shrink-0 w-8 h-8 rounded-lg bg-parchment-100 hover:bg-gold-100 text-ink-500 hover:text-gold-600 border border-parchment-200 text-sm flex items-center justify-center transition-colors"
+                        aria-label={`Voir le bloc de stats de ${f.nameFr ?? f.name}`}
+                        title="Bloc de stats"
+                      >
+                        📜
+                      </button>
+                      <button
                         onClick={() => toggleShapeSeen(f.slug, !!f.seen)}
                         className={`shrink-0 w-8 h-8 rounded-lg text-base flex items-center justify-center transition-colors ${
                           f.seen
@@ -2563,6 +2583,12 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
           </div>,
           document.body,
         )}
+        <MonsterStatBlock
+          open={!!shapeStatBlock}
+          slug={shapeStatBlock}
+          onClose={() => setShapeStatBlock(null)}
+        />
+
         {(() => {
           const u = computeUnarmedStats(character);
                 const abilityLabel = u.ability === 'dexterity' ? 'DEX' : 'FOR';
