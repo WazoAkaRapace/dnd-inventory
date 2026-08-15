@@ -1,7 +1,7 @@
 /**
  * Sorts tab — spell slots tracker, known/prepared spells, spell catalog browser.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api';
 import { BottomSheet } from '../components/ui';
 import CastSpellSheet from '../components/CastSpellSheet';
@@ -407,9 +407,15 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                       const spell = cs.spell;
                       const isExpanded = expandedId === cs.id;
                       const name = spell.nameFr ?? spell.name;
+                      const canRemove = !domainIds.has(cs.spell.id);
                       return (
-                        <li key={cs.id} className="bg-parchment-50 rounded-lg border border-parchment-200 overflow-hidden">
-                          <div className="flex items-center gap-2 p-2.5">
+                        <li key={cs.id} className="rounded-lg overflow-hidden">
+                        <SwipeToReveal
+                          reveal={canRemove}
+                          onAction={() => removeSpell(cs.id)}
+                          actionLabel={`Oublier ${name}`}
+                        >
+                          <div className="bg-parchment-50 border border-parchment-200 rounded-lg flex items-center gap-2 p-2.5">
                             {domainIds.has(cs.spell.id) ? (
                               <span
                                 className="text-lg shrink-0 text-gold-500"
@@ -456,18 +462,9 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                             >
                               🪄
                             </button>
-                            {!domainIds.has(cs.spell.id) && (
-                              <button
-                                onClick={() => removeSpell(cs.id)}
-                                className="text-ink-300 hover:text-red-500 text-sm shrink-0 px-1"
-                                aria-label={`Oublier ${name}`}
-                              >
-                                ×
-                              </button>
-                            )}
                           </div>
                           {isExpanded && (
-                            <div className="px-3 pb-3 pt-1 border-t border-parchment-200 text-xs text-ink-600 space-y-1.5">
+                            <div className="px-3 pb-3 pt-1 border-t border-parchment-200 text-xs text-ink-600 space-y-1.5 bg-parchment-50">
                               {spell.descriptionFr ?? spell.description}
                               {spell.higherLevelFr && (
                                 <p className="text-ink-400 italic"><strong>Aux niveaux supérieurs :</strong> {spell.higherLevelFr}</p>
@@ -517,6 +514,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                               )}
                             </div>
                           )}
+                        </SwipeToReveal>
                         </li>
                       );
                     })}
@@ -883,6 +881,98 @@ function SpellCatalog({
           )}
         </>
       )}
+    </div>
+  );
+}
+
+
+// ---------- Swipe-to-reveal row action (mobile pattern) ----------
+
+/**
+ * Wraps a row so swiping it left reveals a destructive action on the right.
+ * Uses pointer capture once horizontal travel exceeds ~8px, so drags work
+ * anywhere on the row (including over its buttons) while plain taps and
+ * vertical scrolling pass through untouched. Tapping an open row closes it.
+ */
+function SwipeToReveal({ reveal, onAction, actionLabel, children }: {
+  reveal: boolean;
+  onAction: () => void;
+  actionLabel: string;
+  children: React.ReactNode;
+}) {
+  const WIDTH = 76; // revealed action width in px
+  const [dx, setDx] = useState(0);
+  const [open, setOpen] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const drag = useRef<{ x0: number; base: number; captured: boolean; pid: number } | null>(null);
+
+  if (!reveal) return <>{children}</>;
+
+  const swallowClick = (el: HTMLElement) => {
+    const swallow = (ev: Event) => { ev.stopPropagation(); ev.preventDefault(); };
+    el.addEventListener('click', swallow, { capture: true, once: true });
+    setTimeout(() => el.removeEventListener('click', swallow, true), 100);
+  };
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    drag.current = { x0: e.clientX, base: open ? -WIDTH : 0, captured: false, pid: e.pointerId };
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d || d.pid !== e.pointerId) return;
+    const delta = e.clientX - d.x0;
+    if (!d.captured) {
+      if (Math.abs(delta) < 8) return; // taps/vertical scrolls pass through
+      d.captured = true;
+      setDragging(true);
+      try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
+    }
+    const base = Math.min(0, d.base + delta);
+    setDx(Math.max(-WIDTH - 24, base));
+  };
+  const onPointerUp = (e: React.PointerEvent) => {
+    const d = drag.current;
+    drag.current = null;
+    setDragging(false);
+    if (!d || d.pid !== e.pointerId) return;
+    const el = e.currentTarget as HTMLElement;
+    if (d.captured) {
+      const nowOpen = dx < -WIDTH / 2;
+      setOpen(nowOpen);
+      setDx(nowOpen ? -WIDTH : 0);
+      swallowClick(el); // a drag must not trigger the row's buttons
+    } else if (open) {
+      // Plain tap on an open row closes it instead of activating content
+      setOpen(false);
+      setDx(0);
+      swallowClick(el);
+    }
+  };
+
+  return (
+    <div className="relative">
+      {/* Action underneath */}
+      <button
+        onClick={() => { setOpen(false); setDx(0); onAction(); }}
+        className="absolute inset-y-0 right-0 w-[76px] rounded-r-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold flex flex-col items-center justify-center gap-0.5"
+        aria-label={actionLabel}
+        tabIndex={open ? 0 : -1}
+      >
+        <span className="text-base leading-none">🗑</span>
+        Oublier
+      </button>
+      {/* Row content — draggable anywhere */}
+      <div
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        className={`relative touch-pan-y select-none ${dragging ? '' : 'transition-transform duration-200'}`}
+        style={{ transform: `translateX(${dx}px)` }}
+        title="Glisser vers la gauche pour oublier le sort"
+      >
+        {children}
+      </div>
     </div>
   );
 }
