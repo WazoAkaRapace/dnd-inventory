@@ -712,7 +712,7 @@ export default function CharacterInventoryPage() {
               </button>
             </h1>
           </div>
-              </div>          <div className="mt-3">
+          <div className="mt-3">
             <EncumbranceBar encumbrance={encumbrance} />
           </div>
         </div>
