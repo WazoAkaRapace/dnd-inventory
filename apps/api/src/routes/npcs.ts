@@ -149,20 +149,25 @@ export async function npcRoutes(app: FastifyInstance) {
       const body = req.body || {};
       const sets: string[] = [];
       const vals: any[] = [];
-      const fieldMap: Record<string, string> = { isShared: 'is_shared' };
-
-      for (const [key, val] of Object.entries(body)) {
+      const editable: Array<[keyof PatchNpcPayload, string]> = [
+        ['name', 'name'],
+        ['role', 'role'],
+        ['location', 'location'],
+        ['faction', 'faction'],
+        ['disposition', 'disposition'],
+        ['status', 'status'],
+        ['description', 'description'],
+        ['secret', 'secret'],
+      ];
+      for (const [key, col] of editable) {
+        const val = (body as Record<string, unknown>)[key];
         if (val === undefined) continue;
-        const col = fieldMap[key] || key;
-        if (key === 'isShared') {
-          sets.push('is_shared = ?');
-          vals.push(val ? 1 : 0);
-        } else if (key === 'conditions') {
-          // not for NPCs
-        } else {
-          sets.push(`${col} = ?`);
-          vals.push(val);
-        }
+        sets.push(`${col} = ?`);
+        vals.push(val);
+      }
+      if (body.isShared !== undefined) {
+        sets.push('is_shared = ?');
+        vals.push(body.isShared ? 1 : 0);
       }
 
       if (sets.length === 0) return reply.code(400).send({ error: 'no fields to update' });

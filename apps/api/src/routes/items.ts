@@ -4,7 +4,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
-import { requireUser, mapItem, isPartyGM } from './helpers.ts';
+import { requireUser, mapItem, isPartyGM, isPartyMember } from './helpers.ts';
 import type { ItemCategory, Rarity, CreateCustomItem } from '@dnd-inventory/shared';
 
 interface ItemQuery {
@@ -33,6 +33,9 @@ export async function itemRoutes(app: FastifyInstance) {
     // If filtering by a specific party (e.g. GM dashboard custom items),
     // return only that party's items — no SRD items.
     if (partyIdFilter) {
+      if (!isPartyMember(Number(partyIdFilter), userId)) {
+        return reply.code(403).send({ error: 'not a member' });
+      }
       where.push('party_id = ?');
       params.push(Number(partyIdFilter));
     } else {
@@ -104,9 +107,13 @@ export async function itemRoutes(app: FastifyInstance) {
     const userId = requireUser(req, reply);
     if (userId === null) return;
     const db = getDb();
-    const row = db.prepare('SELECT * FROM items WHERE id = ?').get(Number(req.params.id));
-    if (!row) return reply.code(404).send({ error: 'item not found' });
-    return reply.send({ item: mapItem(row) });
+      const row = db.prepare('SELECT * FROM items WHERE id = ?').get(Number(req.params.id)) as any;
+      if (!row) return reply.code(404).send({ error: 'item not found' });
+      // Custom items are only visible to members of the owning party (SRD items have party_id NULL).
+      if (row.party_id != null && !isPartyMember(row.party_id, userId)) {
+        return reply.code(403).send({ error: 'not a member' });
+      }
+      return reply.send({ item: mapItem(row) });
   });
 
   // ---------- GM: create custom item for a party ----------
@@ -120,6 +127,9 @@ export async function itemRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const partyId = Number(req.params.partyId);
+      if (!isPartyGM(partyId, userId)) {
+        return reply.code(403).send({ error: 'only the GM can create custom items' });
+      }
       const body = req.body || ({} as CreateCustomItem);
 
       if (!body.name || !body.name.trim()) {

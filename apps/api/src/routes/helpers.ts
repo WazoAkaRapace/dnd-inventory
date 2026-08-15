@@ -2,6 +2,7 @@
  * Helpers shared across route modules: membership checks, item/character shaping.
  */
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { randomInt } from 'node:crypto';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
 import type {
@@ -65,11 +66,16 @@ export function isPartyGM(partyId: number, userId: number): boolean {
   return !!row;
 }
 
-/** Generate a 6-char invite code (uppercase, unambiguous chars). */
+/** Can this user mutate the character's inventory (sheet owner or party GM)? */
+export function isOwnerOrGM(char: any, userId: number): boolean {
+  return char.owner_id === userId || isPartyGM(char.party_id, userId);
+}
+
+/** Generate a 6-char invite code (uppercase, unambiguous chars, crypto-random). */
 export function generateInviteCode(): string {
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   let out = '';
-  for (let i = 0; i < 6; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  for (let i = 0; i < 6; i++) out += chars[randomInt(chars.length)];
   return out;
 }
 

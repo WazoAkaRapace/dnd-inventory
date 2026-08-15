@@ -34,7 +34,9 @@ function getUserPartyIds(userId: number): Set<number> {
 export async function registerWsRoutes(app: FastifyInstance) {
   // In @fastify/websocket v11, the handler receives (socket, req) — socket IS the WebSocket
   app.get('/ws', { websocket: true }, (socket: WebSocket, req: FastifyRequest) => {
-    const token = (req.query as any)?.token;
+    // Prefer the Sec-WebSocket-Protocol header (keeps tokens out of URLs/proxy logs);
+    // the ?token= query param still works for older clients.
+    const token = (req.headers['sec-websocket-protocol'] as string) || (req.query as any)?.token;
     let userId: number | null = null;
 
     if (token) {
@@ -69,6 +71,16 @@ export async function registerWsRoutes(app: FastifyInstance) {
 
   // Listen to the event bus and fan out to relevant clients
   bus.on('change', (event: SyncEvent) => {
+    // Membership may have changed (join/leave) — refresh the cached party sets
+    if (event.type === 'party:change') {
+      const refreshed = new Set<number>();
+      for (const client of clients) {
+        if (!refreshed.has(client.userId)) {
+          client.partyIds = getUserPartyIds(client.userId);
+          refreshed.add(client.userId);
+        }
+      }
+    }
     const message = JSON.stringify(event);
     for (const client of clients) {
       if (client.ws.readyState !== 1) { // OPEN

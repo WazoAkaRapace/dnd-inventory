@@ -137,6 +137,8 @@ export default function CharacterInventoryPage() {
   const [data, setData] = useState<CharacterInventory | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // Party role: the GM can edit any sheet in their party
+  const [isGM, setIsGM] = useState(false);
 
   // Editable capacity multiplier
   const [multDraft, setMultDraft] = useState('1');
@@ -220,6 +222,18 @@ export default function CharacterInventoryPage() {
     setShowTour(false);
     localStorage.setItem('dnd-inv-tour-seen', '1');
   };
+
+  // GM status: from the party members list (mirrors the server's isPartyGM check)
+  useEffect(() => {
+    if (!partyId || !user) return;
+    let alive = true;
+    api.get<PartyDetail>(`/api/parties/${partyId}`)
+      .then((res) => {
+        if (alive) setIsGM(res.data.members.some((m) => m.userId === user.id && m.role === 'gm'));
+      })
+      .catch(() => { if (alive) setIsGM(false); });
+    return () => { alive = false; };
+  }, [partyId, user]);
 
   // ---------- Load inventory ----------
   const load = useCallback(async () => {
@@ -573,14 +587,10 @@ export default function CharacterInventoryPage() {
 
   const dismissError = () => setError('');
 
-  // ---------- Render guards ----------
-  if (loading) return <LoadingSpinner label="Chargement du sac à dos…" />;
-  if (error && !data) return <ErrorMsg message={error} />;
-  if (!data) return <ErrorMsg message="Personnage introuvable" />;
-
-  const { character, encumbrance, locations, locationWeights } = data;
-
-  // Combat sync listener must come before the effect that depends on its counter
+  // ---------- Combat indicator hooks ----------
+  // MUST stay above the render guards: hooks after a conditional return
+  // change the hook count between renders and crash React (#310).
+  // The sync listener bumps a counter that re-runs the effect below.
   const [combatRefresh, setCombatRefresh] = useState(0);
   useSyncEvent((event) => {
     if (event.partyId === Number(partyId) && event.type === 'combat:change') {
@@ -634,6 +644,16 @@ export default function CharacterInventoryPage() {
     return () => { alive = false; };
   }, [user, partyId, charId, data?.character?.ownerId, combatRefresh]);
 
+  // ---------- Render guards ----------
+  if (loading) return <LoadingSpinner label="Chargement du sac à dos…" />;
+  if (error && !data) return <ErrorMsg message={error} />;
+  if (!data) return <ErrorMsg message="Personnage introuvable" />;
+
+  const { character, encumbrance, locations, locationWeights } = data;
+
+  // Only the sheet owner or the party GM can edit (the API enforces the same rule)
+  const canEdit = data.character.ownerId === user?.id || isGM;
+
   // Non-casters never open Sorts: Traits takes its dock slot, Sorts moves to the hub
   const isCasterClass = !!findClass(character.characterClass) && findClass(character.characterClass)!.spellcasting !== 'none';
   const dockPrimaryList: CharacterTab[] = isCasterClass
@@ -675,6 +695,7 @@ export default function CharacterInventoryPage() {
       loading={catalogLoading}
       addingItemId={addingItemId}
       offset={catalogOffset}
+      readOnly={!canEdit}
       onAdd={addFromCatalog}
       onLoadMore={() => fetchCatalog(catalogOffset + CATALOG_PAGE_SIZE, true)}
     />
@@ -707,7 +728,7 @@ export default function CharacterInventoryPage() {
                   }}
                   autoFocus
                 />
-              ) : (
+              ) : canEdit ? (
                 <button
                   onClick={() => { setNameDraft(character.name); setEditingName(true); }}
                   className="hover:text-blood-600 transition-colors truncate"
@@ -715,20 +736,24 @@ export default function CharacterInventoryPage() {
                 >
                   {character.name}
                 </button>
+              ) : (
+                <span className="truncate">{character.name}</span>
               )}
               {character.concentrating && (
                 <span className="shrink-0 text-base" title="Concentration en cours" aria-label="En concentration">
                   🌀
                 </span>
               )}
-              <button
-                onClick={() => setShowCarryModal(true)}
-                className="ml-auto shrink-0 text-ink-400 hover:text-blood-600 transition-colors"
-                aria-label="Portage"
-                title="Portage"
-              >
-                <SettingsIcon className="w-5 h-5" />
-              </button>
+              {canEdit && (
+                <button
+                  onClick={() => setShowCarryModal(true)}
+                  className="ml-auto shrink-0 text-ink-400 hover:text-blood-600 transition-colors"
+                  aria-label="Portage"
+                  title="Portage"
+                >
+                  <SettingsIcon className="w-5 h-5" />
+                </button>
+              )}
             </h1>
           </div>
           <div className="mt-3">
@@ -957,6 +982,7 @@ export default function CharacterInventoryPage() {
           character={character}
           charId={Number(charId)}
           entries={entries}
+          canEdit={canEdit}
           markLocalMutation={markLocalMutation}
           onSaved={refreshInventory}
           onError={(msg) => pushToast(msg, 'error')}
@@ -1051,7 +1077,7 @@ export default function CharacterInventoryPage() {
                   </span>
                 </button>
                 {/* Delete button for non-carried locations */}
-                {loc.type !== 'carried' && isActive && (
+                {loc.type !== 'carried' && isActive && canEdit && (
                   <button
                     onClick={() => {
                       if (isConfirming) {
@@ -1077,14 +1103,16 @@ export default function CharacterInventoryPage() {
             );
           })}
           {/* Add new transport */}
-          <button
-            onClick={() => setShowNewLocationModal(true)}
-            className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium border border-dashed border-parchment-300 text-ink-500 hover:border-blood-400 hover:text-blood-600 transition-colors"
-            aria-label="Ajouter un transport"
-            title="Ajouter un transport"
-          >
-            <span aria-hidden="true">+</span> Transport
-          </button>
+          {canEdit && (
+            <button
+              onClick={() => setShowNewLocationModal(true)}
+              className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium border border-dashed border-parchment-300 text-ink-500 hover:border-blood-400 hover:text-blood-600 transition-colors"
+              aria-label="Ajouter un transport"
+              title="Ajouter un transport"
+            >
+              <span aria-hidden="true">+</span> Transport
+            </button>
+          )}
         </div>
 
         {/* Per-location weight bar (non-carried only — carried uses the header bar) */}
@@ -1151,6 +1179,7 @@ export default function CharacterInventoryPage() {
                   confirmDeleteId={confirmDeleteId}
                   locations={locations}
                   activeLocationId={activeLocationResolvedId}
+                  canEdit={canEdit}
                   onToggleExpand={(id) => setExpandedId(expandedId === id ? null : id)}
                   onStep={stepQuantity}
                   onSetQuantity={setQuantity}
@@ -1176,6 +1205,7 @@ export default function CharacterInventoryPage() {
       <section className="card p-4 sm:p-5">
         <CoinPurse
           coins={coins}
+          readOnly={!canEdit}
           onChange={(key, val) => {
             setCoins((c) => ({ ...c, [key]: Math.max(0, val) }));
             setCoinsDirty(true);
@@ -1187,7 +1217,7 @@ export default function CharacterInventoryPage() {
       )}
 
       {/* ---------- Mobile FAB: open catalog as bottom sheet (inventory tab only) ---------- */}
-      {activeTab === 'inventory' && (
+      {activeTab === 'inventory' && canEdit && (
       <button
         onClick={() => setCatalogOpen(true)}
         className="lg:hidden fab-enter fixed bottom-24 right-5 z-30 w-14 h-14 rounded-full bg-blood-600 text-white shadow-lg flex items-center justify-center text-2xl font-light hover:bg-blood-700 active:scale-95 transition-all"
@@ -1273,6 +1303,7 @@ interface CategoryGroupProps {
   confirmDeleteId: number | null;
   locations: StorageLocation[];
   activeLocationId: number | null;
+  canEdit: boolean;
   onToggleExpand: (id: number) => void;
   onStep: (entry: InventoryEntry, delta: number) => void;
   onSetQuantity: (entry: InventoryEntry, n: number) => void;
@@ -1293,6 +1324,7 @@ function CategoryGroup({
   confirmDeleteId,
   locations,
   activeLocationId,
+  canEdit,
   onToggleExpand,
   onStep,
   onSetQuantity,
@@ -1340,6 +1372,7 @@ function CategoryGroup({
                 confirmingDelete={confirmDeleteId === entry.id}
                 locations={locations}
                 activeLocationId={activeLocationId}
+                canEdit={canEdit}
                 onToggleExpand={() => onToggleExpand(entry.id)}
                 onStep={(d) => onStep(entry, d)}
                 onSetQuantity={(n) => onSetQuantity(entry, n)}
@@ -1368,6 +1401,7 @@ interface InventoryRowProps {
   confirmingDelete: boolean;
   locations: StorageLocation[];
   activeLocationId: number | null;
+  canEdit: boolean;
   onToggleExpand: () => void;
   onStep: (delta: number) => void;
   onSetQuantity: (n: number) => void;
@@ -1387,6 +1421,7 @@ function InventoryRow({
   confirmingDelete,
   locations,
   activeLocationId,
+  canEdit,
   onToggleExpand,
   onStep,
   onSetQuantity,
@@ -1413,7 +1448,7 @@ function InventoryRow({
   const otherLocations = locations.filter((l) => l.id !== activeLocationId);
   const canMove = otherLocations.length > 0;
   // Row is expandable if it has details OR if there's a move action to reveal
-  const canExpand = hasDetails || canMove;
+  const canExpand = hasDetails || (canMove && canEdit);
 
   const [draftQty, setDraftQty] = useState<string>(String(quantity));
   useEffect(() => {
@@ -1456,20 +1491,29 @@ function InventoryRow({
             {/* Row 1: star toggle + item name (full width on mobile) */}
             <div className="flex items-start gap-2 sm:gap-3">
               {/* Equipped toggle — star icon */}
-              <button
-                onClick={onToggleEquipped}
-                disabled={busy}
-                className={`shrink-0 mt-0.5 text-lg leading-none transition-colors ${
-                  entry.equipped
-                    ? 'text-gold-400'
-                    : 'text-ink-400/40 hover:text-ink-400'
-                }`}
-                aria-label={`${entry.equipped ? 'Déséquiper' : 'Équiper'} ${itemName}`}
-                aria-pressed={entry.equipped}
-                title={entry.equipped ? 'Équipé' : 'Non équipé'}
-              >
-                {entry.equipped ? '★' : '☆'}
-              </button>
+              {canEdit ? (
+                <button
+                  onClick={onToggleEquipped}
+                  disabled={busy}
+                  className={`shrink-0 mt-0.5 text-lg leading-none transition-colors ${
+                    entry.equipped
+                      ? 'text-gold-400'
+                      : 'text-ink-400/40 hover:text-ink-400'
+                  }`}
+                  aria-label={`${entry.equipped ? 'Déséquiper' : 'Équiper'} ${itemName}`}
+                  aria-pressed={entry.equipped}
+                  title={entry.equipped ? 'Équipé' : 'Non équipé'}
+                >
+                  {entry.equipped ? '★' : '☆'}
+                </button>
+              ) : (
+                <span
+                  className={`shrink-0 mt-0.5 text-lg leading-none ${entry.equipped ? 'text-gold-400' : 'text-ink-400/40'}`}
+                  title={entry.equipped ? 'Équipé' : 'Non équipé'}
+                >
+                  {entry.equipped ? '★' : '☆'}
+                </span>
+              )}
 
               {/* Main content — click to expand details */}
               <button
@@ -1489,30 +1533,34 @@ function InventoryRow({
               </button>
 
               {/* On desktop, stepper stays inline on the right */}
-              <div className="hidden sm:flex items-center gap-1 shrink-0">
-                <button
-                  onClick={() => onStep(-1)}
-                  disabled={busy}
-                  className="w-8 h-8 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-sm font-medium flex items-center justify-center transition-colors"
-                  aria-label={`Diminuer ${itemName}`}
-                >−</button>
-                <input
-                  type="number" min={1}
-                  className="w-10 h-8 text-center text-sm bg-white border border-parchment-300 rounded-md focus:outline-none focus:border-blood-500"
-                  value={draftQty}
-                  disabled={busy}
-                  onChange={(e) => setDraftQty(e.target.value)}
-                  onBlur={commitDraft}
-                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                  aria-label={`Quantité de ${itemName}`}
-                />
-                <button
-                  onClick={() => onStep(1)}
-                  disabled={busy}
-                  className="w-8 h-8 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-sm font-medium flex items-center justify-center transition-colors"
-                  aria-label={`Augmenter ${itemName}`}
-                >+</button>
-              </div>
+              {canEdit ? (
+                <div className="hidden sm:flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => onStep(-1)}
+                    disabled={busy}
+                    className="w-8 h-8 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-sm font-medium flex items-center justify-center transition-colors"
+                    aria-label={`Diminuer ${itemName}`}
+                  >−</button>
+                  <input
+                    type="number" min={1}
+                    className="w-10 h-8 text-center text-sm bg-white border border-parchment-300 rounded-md focus:outline-none focus:border-blood-500"
+                    value={draftQty}
+                    disabled={busy}
+                    onChange={(e) => setDraftQty(e.target.value)}
+                    onBlur={commitDraft}
+                    onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                    aria-label={`Quantité de ${itemName}`}
+                  />
+                  <button
+                    onClick={() => onStep(1)}
+                    disabled={busy}
+                    className="w-8 h-8 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-sm font-medium flex items-center justify-center transition-colors"
+                    aria-label={`Augmenter ${itemName}`}
+                  >+</button>
+                </div>
+              ) : (
+                <span className="hidden sm:inline text-sm text-ink-500 shrink-0">× {quantity}</span>
+              )}
             </div>
 
             {/* Row 2 (mobile only): weight info + transfer + stepper side by side */}
@@ -1522,34 +1570,40 @@ function InventoryRow({
                 {totalWeight !== null && quantity > 1 && (
                   <span className="text-ink-400">× {quantity} = {totalWeight.toFixed(1)} kg</span>
                 )}
-                <button onClick={onTransfer} disabled={busy} className="text-ink-400 hover:text-blood-600 text-xs underline" aria-label={`Transférer ${itemName}`}>
-                  ↗
-                </button>
+                {canEdit && (
+                  <button onClick={onTransfer} disabled={busy} className="text-ink-400 hover:text-blood-600 text-xs underline" aria-label={`Transférer ${itemName}`}>
+                    ↗
+                  </button>
+                )}
               </div>
-              <div className="flex items-center gap-0.5 shrink-0">
-                <button
-                  onClick={() => onStep(-1)}
-                  disabled={busy}
-                  className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-sm font-medium flex items-center justify-center transition-colors"
-                  aria-label={`Diminuer ${itemName}`}
-                >−</button>
-                <input
-                  type="number" min={1}
-                  className="w-8 h-7 text-center text-sm bg-white border border-parchment-300 rounded-md focus:outline-none focus:border-blood-500"
-                  value={draftQty}
-                  disabled={busy}
-                  onChange={(e) => setDraftQty(e.target.value)}
-                  onBlur={commitDraft}
-                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                  aria-label={`Quantité de ${itemName}`}
-                />
-                <button
-                  onClick={() => onStep(1)}
-                  disabled={busy}
-                  className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-sm font-medium flex items-center justify-center transition-colors"
-                  aria-label={`Augmenter ${itemName}`}
-                >+</button>
-              </div>
+              {canEdit ? (
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button
+                    onClick={() => onStep(-1)}
+                    disabled={busy}
+                    className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-sm font-medium flex items-center justify-center transition-colors"
+                    aria-label={`Diminuer ${itemName}`}
+                  >−</button>
+                  <input
+                    type="number" min={1}
+                    className="w-8 h-7 text-center text-sm bg-white border border-parchment-300 rounded-md focus:outline-none focus:border-blood-500"
+                    value={draftQty}
+                    disabled={busy}
+                    onChange={(e) => setDraftQty(e.target.value)}
+                    onBlur={commitDraft}
+                    onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                    aria-label={`Quantité de ${itemName}`}
+                  />
+                  <button
+                    onClick={() => onStep(1)}
+                    disabled={busy}
+                    className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-sm font-medium flex items-center justify-center transition-colors"
+                    aria-label={`Augmenter ${itemName}`}
+                  >+</button>
+                </div>
+              ) : (
+                <span className="text-sm text-ink-500 shrink-0">× {quantity}</span>
+              )}
             </div>
 
             {/* Desktop: weight info + transfer stays under the name */}
@@ -1558,9 +1612,11 @@ function InventoryRow({
               {totalWeight !== null && quantity > 1 && (
                 <span className="text-ink-400">× {quantity} = {totalWeight.toFixed(1)} kg</span>
               )}
-              <button onClick={onTransfer} disabled={busy} className="text-ink-400 hover:text-blood-600 underline" aria-label={`Transférer ${itemName}`}>
-                ↗ Transférer
-              </button>
+              {canEdit && (
+                <button onClick={onTransfer} disabled={busy} className="text-ink-400 hover:text-blood-600 underline" aria-label={`Transférer ${itemName}`}>
+                  ↗ Transférer
+                </button>
+              )}
             </div>
 
             {/* Expanded: details + secondary actions (progressive disclosure) */}
@@ -1654,7 +1710,7 @@ function InventoryRow({
                       <p className="text-xs text-ink-500 italic">Note : {entry.notes}</p>
                     )}
                     {/* Move to another storage location */}
-                    {canMove && (
+                    {canMove && canEdit && (
                       <label className="flex items-center gap-2 pt-1 text-sm text-ink-600">
                         <span className="shrink-0">Déplacer vers :</span>
                         <select
@@ -1679,16 +1735,18 @@ function InventoryRow({
                       </label>
                     )}
                     {/* Secondary action: remove (destructive, stays in expanded panel) */}
-                    <div className="flex items-center gap-2 pt-1">
-                      <button
-                        onClick={() => onStep(-1)}
-                        disabled={busy}
-                        className="btn-ghost text-sm text-red-600 hover:bg-red-50"
-                        aria-label={`Retirer ${itemName}`}
-                      >
-                        Retirer du sac
-                      </button>
-                    </div>
+                    {canEdit && (
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          onClick={() => onStep(-1)}
+                          disabled={busy}
+                          className="btn-ghost text-sm text-red-600 hover:bg-red-50"
+                          aria-label={`Retirer ${itemName}`}
+                        >
+                          Retirer du sac
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1714,6 +1772,8 @@ interface CatalogSearchProps {
   loading: boolean;
   addingItemId: number | null;
   offset: number;
+  /** When true (viewer mode), hide the add buttons — catalog is browse-only. */
+  readOnly?: boolean;
   onAdd: (item: Item) => void;
   onLoadMore: () => void;
 }
@@ -1730,6 +1790,7 @@ function CatalogSearch({
   loading,
   addingItemId,
   offset,
+  readOnly = false,
   onAdd,
   onLoadMore,
 }: CatalogSearchProps) {
@@ -1798,14 +1859,16 @@ function CatalogSearch({
                     </p>
                   )}
                 </div>
-                <button
-                  onClick={() => onAdd(item)}
-                  disabled={addingItemId === item.id}
-                  className="btn-primary text-sm px-3 py-2 shrink-0"
-                  aria-label={`Ajouter ${item.nameFr || item.name}`}
-                >
-                  {addingItemId === item.id ? '…' : '+ Ajouter'}
-                </button>
+                {!readOnly && (
+                  <button
+                    onClick={() => onAdd(item)}
+                    disabled={addingItemId === item.id}
+                    className="btn-primary text-sm px-3 py-2 shrink-0"
+                    aria-label={`Ajouter ${item.nameFr || item.name}`}
+                  >
+                    {addingItemId === item.id ? '…' : '+ Ajouter'}
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -1827,10 +1890,13 @@ function CatalogSearch({
 
 function CoinPurse({
   coins,
+  readOnly = false,
   onChange,
   onBlur,
 }: {
   coins: { copper: number; silver: number; electrum: number; gold: number; platinum: number };
+  /** Viewer mode: display amounts without inputs. */
+  readOnly?: boolean;
   onChange: (key: keyof typeof coins, val: number) => void;
   onBlur: () => void;
 }) {
@@ -1869,18 +1935,28 @@ function CoinPurse({
                     />
                     {COIN_LABELS_FR[unit]}
                   </span>
-                  <input
-                    type="number"
-                    min={0}
-                    className="input"
-                    value={coins[key] === 0 ? '' : coins[key]}
-                    onChange={(e) => onChange(key, e.target.value === '' ? 0 : (Number(e.target.value) || 0))}
-                    onBlur={(e) => {
-                      if (e.target.value === '' || e.target.value === '0') onChange(key, 0);
-                      onBlur();
-                    }}
-                    aria-label={`Quantité de ${COIN_LABELS_FR[unit]}`}
-                  />
+                  {readOnly ? (
+                    <div
+                      className="input bg-parchment-100 text-ink-700 flex items-center justify-between"
+                      aria-label={`Quantité de ${COIN_LABELS_FR[unit]}`}
+                    >
+                      <span>{coins[key]}</span>
+                      <span className="text-xs text-ink-400">{unit}</span>
+                    </div>
+                  ) : (
+                    <input
+                      type="number"
+                      min={0}
+                      className="input"
+                      value={coins[key] === 0 ? '' : coins[key]}
+                      onChange={(e) => onChange(key, e.target.value === '' ? 0 : (Number(e.target.value) || 0))}
+                      onBlur={(e) => {
+                        if (e.target.value === '' || e.target.value === '0') onChange(key, 0);
+                        onBlur();
+                      }}
+                      aria-label={`Quantité de ${COIN_LABELS_FR[unit]}`}
+                    />
+                  )}
                 </label>
               ))}
             </div>
@@ -2237,13 +2313,15 @@ interface SurvivalPanelProps {
   character: Character;
   charId: number;
   entries: InventoryEntry[];
+  /** Only the sheet owner or GM can use the survival actions. */
+  canEdit: boolean;
   markLocalMutation: () => void;
   onSaved: () => Promise<void>;
   onError: (msg: string) => void;
   onNotice?: (msg: string) => void;
 }
 
-function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved, onError, onNotice }: SurvivalPanelProps) {
+function SurvivalPanel({ character, charId, entries, canEdit, markLocalMutation, onSaved, onError, onNotice }: SurvivalPanelProps) {
   const [exhaustion, setExhaustion] = useState(character.exhaustion);
   const [conditions, setConditions] = useState<string[]>(character.conditions);
   const [foodDays, setFoodDays] = useState(character.foodDays);
@@ -2998,7 +3076,7 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
             icon="🍖"
             onStep={(d) => stepDays('foodDays', d)}
           />
-          {foodCount > 0 && (
+          {foodCount > 0 && canEdit && (
             <button
               onClick={() => consume('food')}
               className="text-xs px-2 py-1 rounded-lg bg-green-100 text-green-800 hover:bg-green-200 transition-colors"
@@ -3014,7 +3092,7 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
             icon="💧"
             onStep={(d) => stepDays('waterDays', d)}
           />
-          {fullWaterCount > 0 && (
+          {fullWaterCount > 0 && canEdit && (
             <button
               onClick={() => consume('water')}
               className="text-xs px-2 py-1 rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
@@ -3022,7 +3100,7 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
               💧 Boire (×{fullWaterCount} pleines)
             </button>
           )}
-          {emptyWaterCount > 0 && (
+          {emptyWaterCount > 0 && canEdit && (
             <button
               onClick={refillWater}
               className="text-xs px-2 py-1 rounded-lg bg-cyan-100 text-cyan-800 hover:bg-cyan-200 transition-colors"

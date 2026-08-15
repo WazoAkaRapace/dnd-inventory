@@ -127,6 +127,7 @@ export async function partyRoutes(app: FastifyInstance) {
   // ---------- Join party via invite code ----------
   app.post(
     '/parties/join',
+    { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
     async (req: FastifyRequest<{ Body: JoinPartyPayload }>, reply: FastifyReply) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;

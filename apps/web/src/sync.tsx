@@ -35,16 +35,16 @@ const SyncContext = createContext<SyncState>(null!);
 
 // ---------- Helpers ----------
 
-function buildWsUrl(token: string): string {
+function buildWsUrl(): string {
   const apiBase = import.meta.env.VITE_API_URL || '';
   if (apiBase) {
     // Explicit API URL (e.g. Docker or production)
     const httpUrl = apiBase.replace(/^http/, 'ws');
-    return `${httpUrl}/ws?token=${encodeURIComponent(token)}`;
+    return `${httpUrl}/ws`;
   }
   // Dev: same origin (Vite proxy handles /ws)
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${proto}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
+  return `${proto}//${window.location.host}/ws`;
 }
 
 // ---------- Provider ----------
@@ -79,8 +79,9 @@ export function SyncProvider({ user, children }: { user: User | null; children: 
     }
 
     setStatus('connecting');
-    const url = buildWsUrl(token);
-    const ws = new WebSocket(url);
+    const url = buildWsUrl();
+    // Auth via subprotocol header keeps the JWT out of URLs and proxy logs.
+    const ws = new WebSocket(url, [token]);
     wsRef.current = ws;
 
     ws.onopen = () => {

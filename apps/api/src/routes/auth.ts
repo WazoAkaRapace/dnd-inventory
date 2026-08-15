@@ -26,7 +26,7 @@ function sanitizeUser(row: any): User {
 
 export async function authRoutes(app: FastifyInstance) {
   // ---------- Register ----------
-  app.post('/register', async (req: FastifyRequest<{ Body: AuthBody }>, reply: FastifyReply) => {
+  app.post('/register', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (req: FastifyRequest<{ Body: AuthBody }>, reply: FastifyReply) => {
     const { username, password, displayName } = req.body || {};
     if (!username || !password || !displayName) {
       return reply.code(400).send({ error: 'username, password, and displayName are required' });
@@ -49,7 +49,7 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   // ---------- Login ----------
-  app.post('/login', async (req: FastifyRequest<{ Body: AuthBody }>, reply: FastifyReply) => {
+  app.post('/login', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (req: FastifyRequest<{ Body: AuthBody }>, reply: FastifyReply) => {
     const { username, password } = req.body || {};
     if (!username || !password) return reply.code(400).send({ error: 'username and password required' });
 

@@ -9,6 +9,7 @@ import {
   requireUser,
   isPartyMember,
   isPartyGM,
+  isOwnerOrGM,
   mapInventoryEntry,
   mapCharacter,
 } from './helpers.ts';
@@ -205,7 +206,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
       const db = getDb();
       const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(Number(req.params.id)) as any;
       if (!char) return reply.code(404).send({ error: 'character not found' });
-      if (!isPartyMember(char.party_id, userId)) return reply.code(403).send({ error: 'not a member' });
+      if (!isOwnerOrGM(char, userId)) return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
 
       const body = req.body || ({} as AddInventoryPayload);
       if (!body.itemId) return reply.code(400).send({ error: 'itemId is required' });
@@ -268,7 +269,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
       const inv = db.prepare('SELECT * FROM inventory WHERE id = ?').get(Number(req.params.invId)) as any;
       if (!inv) return reply.code(404).send({ error: 'inventory entry not found' });
       const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(inv.character_id) as any;
-      if (!isPartyMember(char.party_id, userId)) return reply.code(403).send({ error: 'not a member' });
+      if (!isOwnerOrGM(char, userId)) return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
 
       const body = req.body || {};
       const sets: string[] = [];
@@ -343,7 +344,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
       const inv = db.prepare('SELECT * FROM inventory WHERE id = ?').get(Number(req.params.invId)) as any;
       if (!inv) return reply.code(404).send({ error: 'inventory entry not found' });
       const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(inv.character_id) as any;
-      if (!isPartyMember(char.party_id, userId)) return reply.code(403).send({ error: 'not a member' });
+      if (!isOwnerOrGM(char, userId)) return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
 
       const itemRow = db.prepare('SELECT COALESCE(name_fr, name) AS name FROM items WHERE id = ?').get(inv.item_id) as any;
       db.prepare(`
@@ -377,8 +378,8 @@ export async function inventoryRoutes(app: FastifyInstance) {
       if (fromChar.party_id !== toChar.party_id) {
         return reply.code(400).send({ error: 'characters must be in the same party' });
       }
-      if (!isPartyMember(fromChar.party_id, userId)) {
-        return reply.code(403).send({ error: 'not a member' });
+      if (!isOwnerOrGM(fromChar, userId)) {
+        return reply.code(403).send({ error: 'only the owner or GM can transfer from this character' });
       }
 
       const inv = db.prepare('SELECT * FROM inventory WHERE id = ?').get(inventoryId) as any;
@@ -387,6 +388,14 @@ export async function inventoryRoutes(app: FastifyInstance) {
       }
       if (qty > inv.quantity) return reply.code(400).send({ error: 'not enough quantity to transfer' });
 
+      const itemRow = db.prepare('SELECT COALESCE(name_fr, name) AS name FROM items WHERE id = ?').get(inv.item_id) as any;
+      const itemName = itemRow?.name || 'item';
+
+      // Destination upsert must target the carried location to match the
+      // UNIQUE(character_id, item_id, storage_location_id) constraint.
+      const { ensureCarriedLocation } = await import('./locations.ts');
+      const destLocId = ensureCarriedLocation(db, toCharacterId);
+
       const tx = db.transaction(() => {
         // Remove from source
         if (qty >= inv.quantity) {
@@ -394,15 +403,13 @@ export async function inventoryRoutes(app: FastifyInstance) {
         } else {
           db.prepare('UPDATE inventory SET quantity = quantity - ? WHERE id = ?').run(qty, inv.id);
         }
-        // Add to destination
+        // Add to destination (lands in carried, merging with an existing stack)
         db.prepare(`
-          INSERT INTO inventory (character_id, item_id, quantity, equipped, notes)
-          VALUES (?, ?, ?, 0, NULL)
-          ON CONFLICT(character_id, item_id) DO UPDATE SET quantity = quantity + excluded.quantity
-        `).run(toCharacterId, inv.item_id, qty);
+          INSERT INTO inventory (character_id, item_id, quantity, equipped, notes, storage_location_id)
+          VALUES (?, ?, ?, 0, NULL, ?)
+          ON CONFLICT(character_id, item_id, storage_location_id) DO UPDATE SET quantity = quantity + excluded.quantity
+        `).run(toCharacterId, inv.item_id, qty, destLocId);
 
-        const itemRow = db.prepare('SELECT COALESCE(name_fr, name) AS name FROM items WHERE id = ?').get(inv.item_id) as any;
-        const itemName = itemRow?.name || 'item';
         db.prepare(`
           INSERT INTO transactions (party_id, character_id, item_id, item_name, delta_qty, reason, actor_user_id)
           VALUES (?, ?, ?, ?, ?, 'transfer-out', ?)
@@ -430,7 +437,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
       const db = getDb();
       const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(Number(req.params.id)) as any;
       if (!char) return reply.code(404).send({ error: 'character not found' });
-      if (!isPartyMember(char.party_id, userId)) return reply.code(403).send({ error: 'not a member' });
+      if (!isOwnerOrGM(char, userId)) return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
 
       const type = req.body?.type;
       if (type !== 'food' && type !== 'water') return reply.code(400).send({ error: 'type must be food or water' });
@@ -529,7 +536,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
       const db = getDb();
       const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(Number(req.params.id)) as any;
       if (!char) return reply.code(404).send({ error: 'character not found' });
-      if (!isPartyMember(char.party_id, userId)) return reply.code(403).send({ error: 'not a member' });
+      if (!isOwnerOrGM(char, userId)) return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
 
       // Find all empty waterskins
       const empties = db.prepare(`

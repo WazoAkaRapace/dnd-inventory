@@ -5,6 +5,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
+import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import { migrate } from './db/index.ts';
 import { seedItems, seedSpells, seedMonsters } from './db/seed.ts';
@@ -27,18 +28,49 @@ import { registerWsRoutes } from './sync/ws.ts';
 
 const PORT = parseInt(process.env.PORT || '4000', 10);
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-change-me-in-production';
+if (JWT_SECRET === 'dev-only-change-me-in-production') {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET must be set to a strong random value in production');
+  }
+  console.warn('[server] WARNING: using dev JWT secret — set JWT_SECRET outside local dev');
+}
+// CORS allowlist (comma-separated). Empty = reflect any origin (local dev only).
+const CORS_ORIGINS = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 async function buildServer() {
-  const app = Fastify({ logger: true });
+  const app = Fastify({
+    logger: {
+      serializers: {
+        // Strip the WS auth token (?token=<JWT>) from logged URLs.
+        req(req: any) {
+          const url = typeof req.url === 'string'
+            ? req.url.replace(/([?&])token=[^&]*/, '$1token=***')
+            : req.url;
+          return {
+            method: req.method,
+            url,
+            remoteAddress: req.remoteAddress,
+            remotePort: req.remotePort,
+          };
+        },
+      },
+    },
+  });
 
   // Plugins
-  await app.register(cors, {
-    origin: true, // reflect origin (dev-friendly)
-    credentials: true,
-  });
+  await app.register(cors, CORS_ORIGINS.length > 0 ? { origin: CORS_ORIGINS } : { origin: true });
   await app.register(jwt, {
     secret: JWT_SECRET,
     sign: { expiresIn: '7d' },
+  });
+  // Global per-IP rate limit; auth and join routes override with tighter buckets.
+  await app.register(rateLimit, {
+    global: true,
+    max: 100,
+    timeWindow: '1 minute',
   });
   await app.register(websocket);
 

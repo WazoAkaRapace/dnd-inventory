@@ -5,7 +5,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
-import { requireUser, isPartyMember, mapCharacterSummary } from './helpers.ts';
+import { requireUser, isPartyMember, isOwnerOrGM, mapCharacterSummary } from './helpers.ts';
 import type { CreateStorageLocationPayload } from '@dnd-inventory/shared';
 
 /** Ensure a character has a default "carried" location. Returns its ID. */
@@ -70,7 +70,7 @@ export async function locationRoutes(app: FastifyInstance) {
       const db = getDb();
       const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(Number(req.params.id)) as any;
       if (!char) return reply.code(404).send({ error: 'character not found' });
-      if (!isPartyMember(char.party_id, userId)) return reply.code(403).send({ error: 'not a member' });
+      if (!isOwnerOrGM(char, userId)) return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
 
       const body = req.body || ({} as CreateStorageLocationPayload);
       if (!body.name || !body.name.trim()) return reply.code(400).send({ error: 'name is required' });
@@ -129,7 +129,7 @@ export async function locationRoutes(app: FastifyInstance) {
       if (loc.type === 'carried') return reply.code(400).send({ error: 'cannot delete carried location' });
 
       const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(loc.character_id) as any;
-      if (!isPartyMember(char.party_id, userId)) return reply.code(403).send({ error: 'not a member' });
+      if (!isOwnerOrGM(char, userId)) return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
 
       // Move items back to carried (merge with existing entries to avoid UNIQUE constraint)
       const carriedId = ensureCarriedLocation(db, char.id);
