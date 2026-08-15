@@ -153,6 +153,24 @@ check('Dé arts martiaux : 1d4/1d6/1d8/1d10',
 u = computeUnarmedStats(mkChar({ strength: 10, dexterity: 18, characterClass: 'Roublard', level: 5 }));
 check('Non-moine avec DEX 18 → FOR quand même (SRD)', { ability: u.ability, dmg: u.damageStr }, { ability: 'strength', dmg: '1' });
 
+// --- Monk weapons & martial arts die ---
+const epeeCourte = mkWeapon({ name: 'Shortsword', nameFr: 'Épée courte', damageDice: '1d6', damageType: 'Piercing', properties: ['finesse', 'light'] });
+s = computeWeaponStats(epeeCourte, mkChar({ strength: 8, dexterity: 16, level: 11, characterClass: 'Moine' }));
+check('Moine niv 11 épée courte → dé d\'arts martiaux 1d8', s && { dmg: s.damageStr, ability: s.ability, martial: s.martialArtsDie }, { dmg: '1d8+3', ability: 'dexterity', martial: true });
+
+s = computeWeaponStats(epeeCourte, mkChar({ strength: 8, dexterity: 16, level: 10, characterClass: 'Moine' }));
+check('Moine niv 10 épée courte → garde 1d6 (d6 = d6)', s && { dmg: s.damageStr, martial: s.martialArtsDie }, { dmg: '1d6+3', martial: false });
+
+s = computeWeaponStats(epeeCourte, mkChar({ strength: 8, dexterity: 16, level: 1, characterClass: 'Moine' }));
+check('Moine niv 1 épée courte → garde 1d6 (d4 < d6)', s && { dmg: s.damageStr, martial: s.martialArtsDie }, { dmg: '1d6+3', martial: false });
+
+const dague = mkWeapon({ name: 'Dagger', nameFr: 'Dague', damageDice: '1d4', damageType: 'Piercing', properties: ['finesse', 'light', 'thrown'] });
+s = computeWeaponStats(dague, mkChar({ strength: 8, dexterity: 16, level: 5, characterClass: 'Moine' }));
+check('Moine niv 5 dague (1d4) → 1d6', s && { dmg: s.damageStr, martial: s.martialArtsDie }, { dmg: '1d6+3', martial: true });
+
+s = computeWeaponStats(epeeCourte, mkChar({ strength: 8, dexterity: 16, level: 10, characterClass: 'Roublard' }));
+check('Roublard niv 10 épée courte → inchangé 1d6+3', s && { dmg: s.damageStr, martial: s.martialArtsDie }, { dmg: '1d6+3', martial: false });
+
 // --- Fighting styles ---
 const rodeur5 = mkChar({ dexterity: 16, level: 5, characterClass: 'Rôdeur', fightingStyle: 'archery' });
 s = computeWeaponStats(arcLong, rodeur5);

@@ -1088,6 +1088,8 @@ export interface WeaponAttackStats {
   magicBonus: number;
   /** True when the base weapon was inferred from a family (magic items). */
   presumedBase: boolean;
+  /** Moine: the martial arts die replaced the weapon's damage die (SRD). */
+  martialArtsDie: boolean;
   ranged: boolean;
   finesse: boolean;
 }
@@ -1117,7 +1119,7 @@ export function computeWeaponStats(
   if (item.category !== 'weapon') return null;
 
   // Magic weapons: resolve base weapon + bonus
-  let dice = item.damageDice;
+  let dice: string | null = item.damageDice;
   let damageType = item.damageType;
   let props = item.properties;
   let magicBonus = 0;
@@ -1142,6 +1144,21 @@ export function computeWeaponStats(
   // Monk weapons (martial arts): STR or DEX for Monks
   const monkWeapon = props.includes('monk') || isMonkWeaponName(nameEn, item.nameFr);
   const isMonk = findClass(character.characterClass)?.name === 'Moine';
+
+  // Martial arts: the monk's damage die replaces the weapon's when larger
+  // ("You can roll a d4 in place of the normal damage of your unarmed
+  // strike or monk weapon") — monk weapons are all single-die.
+  let martialDieApplied = false;
+  if (isMonk && monkWeapon && dice) {
+    const mDie = martialArtsDie(character.level ?? 1);
+    const w = dice.match(/^(\d+)d(\d+)$/);
+    const m = mDie.match(/^(\d+)d(\d+)$/);
+    if (w && m && parseInt(w[1], 10) === 1 && parseInt(m[1], 10) === 1
+      && parseInt(m[2], 10) > parseInt(w[2], 10)) {
+      dice = mDie;
+      martialDieApplied = true;
+    }
+  }
 
   let ability: 'strength' | 'dexterity';
   if (finesse || (isMonk && monkWeapon)) {
@@ -1182,6 +1199,7 @@ export function computeWeaponStats(
     versatileDamageStr,
     magicBonus,
     presumedBase,
+    martialArtsDie: martialDieApplied,
     ranged,
     finesse,
   };
