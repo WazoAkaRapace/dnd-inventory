@@ -928,7 +928,7 @@ function SwipeToReveal({ reveal, onAction, actionLabel, children }: {
       try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
     }
     const base = Math.min(0, d.base + delta);
-    setDx(Math.max(-WIDTH - 24, base));
+    setDx(Math.max(-WIDTH, base));
   };
   const onPointerUp = (e: React.PointerEvent) => {
     const d = drag.current;
