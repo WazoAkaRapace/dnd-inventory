@@ -95,9 +95,11 @@ function Nav() {
           )}
           <span className="text-sm text-parchment-200 hidden sm:inline">{user.displayName}</span>
           <SyncIndicator />
-          <button onClick={logout} className="btn-ghost text-parchment-50 hover:bg-ink-700 text-sm">
-            Déconnexion
-          </button>
+          {loc.pathname === '/parties' && (
+            <button onClick={logout} className="btn-ghost text-parchment-50 hover:bg-ink-700 text-lg leading-none px-2" title="Déconnexion" aria-label="Déconnexion">
+              ⏻
+            </button>
+          )}
         </div>
       </div>
     </header>
