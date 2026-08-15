@@ -290,6 +290,8 @@ export interface CharacterSummary {
   wildShapeUses: number;
   // Hit dice: level dice of the class die; spent on short rests to heal
   hitDiceUsed: number;
+  // Wild Shape: beast slugs the druid has seen (SRD requirement)
+  wildShapeSeen: string[];
 }
 
 /** A Constitution save required to maintain concentration after taking damage. */
@@ -382,6 +384,7 @@ export interface PatchCharacterPayload {
   wildShapeMaxHp?: number | null;
   wildShapeUses?: number;
   hitDiceUsed?: number;
+  wildShapeSeen?: string[];
 }
 
 // ---------- D&D 5e Abilities (Caractéristiques) ----------
@@ -1410,6 +1413,8 @@ export interface WildShapeFormSummary {
   hitDice: string | null;
   fly: boolean;
   swim: boolean;
+  /** The druid has seen this beast before (SRD requirement). */
+  seen?: boolean;
 }
 
 /**

@@ -96,6 +96,13 @@ export async function wildShapeRoutes(app: FastifyInstance) {
         ORDER BY challenge_rating, name_fr COLLATE NOCASE
       `).all() as BeastRow[];
 
+      // SRD: only beasts the druid has seen before
+      let seen: string[] = [];
+      try {
+        const parsed = JSON.parse(char.wild_shape_seen_json ?? '[]');
+        if (Array.isArray(parsed)) seen = parsed;
+      } catch { /* default empty */ }
+
       const forms = rows
         .map((r) => ({ row: r, speed: parseSpeed(r.speed_json) }))
         .filter(({ row, speed }) =>
@@ -114,6 +121,7 @@ export async function wildShapeRoutes(app: FastifyInstance) {
           hitDice: row.hit_dice,
           fly: speed.fly,
           swim: speed.swim,
+          seen: seen.includes(row.slug),
         }));
 
       return reply.send({
@@ -148,6 +156,16 @@ export async function wildShapeRoutes(app: FastifyInstance) {
       const beast = db.prepare('SELECT * FROM monsters WHERE slug = ?').get(req.body?.slug ?? '') as any;
       // monsters are French-only in the catalog
       if (!beast) return reply.code(404).send({ error: 'Forme introuvable dans le bestiaire' });
+
+      // SRD: the druid must have seen the beast before
+      let seenList: string[] = [];
+      try {
+        const parsed = JSON.parse(char.wild_shape_seen_json ?? '[]');
+        if (Array.isArray(parsed)) seenList = parsed;
+      } catch { /* default empty */ }
+      if (!seenList.includes(beast.slug)) {
+        return reply.code(400).send({ error: 'Vous n\'avez jamais vu cette bête' });
+      }
 
       const level = char.level ?? 1;
       const maxCR = wildShapeMaxCR(level);

@@ -2156,6 +2156,7 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
   const [shapePickerOpen, setShapePickerOpen] = useState(false);
   const [shapeForms, setShapeForms] = useState<WildShapeFormSummary[]>([]);
   const [shapeSearch, setShapeSearch] = useState('');
+  const [shapeSeenOnly, setShapeSeenOnly] = useState(true);
 
   // Count available food/water from tagged inventory items
   // Water: skip items marked 'empty' in notes
@@ -2248,6 +2249,19 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
       setShapePickerOpen(true);
     } catch {
       onError('Erreur du bestiaire');
+    }
+  };
+
+  const toggleShapeSeen = async (slug: string, seen: boolean) => {
+    markLocalMutation();
+    try {
+      const current = character.wildShapeSeen ?? [];
+      const next = seen ? current.filter((x) => x !== slug) : [...current, slug];
+      await api.patch(`/api/characters/${charId}`, { wildShapeSeen: next });
+      setShapeForms((prev) => prev.map((f) => (f.slug === slug ? { ...f, seen: !seen } : f)));
+      await onSaved();
+    } catch {
+      onError('Erreur de mise à jour');
     }
   };
 
@@ -2473,38 +2487,76 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
                 <h3 className="font-display text-lg font-semibold">🐾 Choisir une forme</h3>
                 <button onClick={() => setShapePickerOpen(false)} className="text-ink-400 hover:text-ink-700 text-lg leading-none px-1" aria-label="Fermer">✕</button>
               </div>
-              <input
-                type="text"
-                className="input mb-2"
-                placeholder="Rechercher une bête…"
-                value={shapeSearch}
-                onChange={(e) => setShapeSearch(e.target.value)}
-                autoFocus
-              />
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  className="input flex-1"
+                  placeholder="Rechercher une bête…"
+                  value={shapeSearch}
+                  onChange={(e) => setShapeSearch(e.target.value)}
+                  autoFocus
+                />
+                <button
+                  onClick={() => setShapeSeenOnly((v) => !v)}
+                  className={`shrink-0 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+                    shapeSeenOnly
+                      ? 'bg-green-100 text-green-800 border-green-300'
+                      : 'bg-parchment-100 text-ink-500 border-parchment-300'
+                  }`}
+                  aria-pressed={shapeSeenOnly}
+                  title="Filtrer sur les bêtes déjà vues (SRD)"
+                >
+                  👁 Vues
+                </button>
+              </div>
               <div className="flex-1 overflow-y-auto space-y-1.5 -mx-1 px-1">
                 {shapeForms
-                  .filter((f) => !shapeSearch.trim()
-                    || (f.nameFr ?? f.name).toLowerCase().includes(shapeSearch.toLowerCase()))
+                  .filter((f) => (!shapeSeenOnly || f.seen)
+                    && (!shapeSearch.trim()
+                      || (f.nameFr ?? f.name).toLowerCase().includes(shapeSearch.toLowerCase())))
                   .map((f) => (
-                    <button
+                    <div
                       key={f.slug}
-                      onClick={() => takeShape(f.slug)}
-                      className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-parchment-200 bg-parchment-50 hover:border-blood-400 transition-colors text-left"
+                      className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-parchment-200 ${f.seen ? 'bg-parchment-50' : 'bg-parchment-50/40'} transition-colors`}
                     >
-                      <div className="min-w-0">
-                        <span className="text-sm font-medium text-ink-800 block truncate">{f.nameFr ?? f.name}</span>
+                      <button
+                        onClick={() => f.seen && takeShape(f.slug)}
+                        disabled={!f.seen}
+                        className={`min-w-0 flex-1 text-left ${f.seen ? 'hover:opacity-80' : 'cursor-not-allowed'}`}
+                        title={f.seen ? 'Prendre cette forme' : 'Bête non vue — marquez-la 👁 pour pouvoir vous transformer'}
+                      >
+                        <span className={`text-sm font-medium block truncate ${f.seen ? 'text-ink-800' : 'text-ink-400'}`}>{f.nameFr ?? f.name}</span>
                         <span className="text-[10px] text-ink-400">
                           DD {f.challengeRating === 0.125 ? '1/8' : f.challengeRating === 0.25 ? '1/4' : f.challengeRating === 0.5 ? '1/2' : f.challengeRating}
                           {f.size ? ` · ${f.size}` : ''}{f.fly ? ' · 🦅 vol' : ''}{f.swim ? ' · 🏊 nage' : ''}
+                          {!f.seen && ' · non vue'}
                         </span>
-                      </div>
+                      </button>
                       <span className="text-xs text-ink-500 shrink-0 text-right">
                         ❤ {f.hitPoints ?? '—'}<br />🛡 {f.armorClass ?? '—'}
                       </span>
-                    </button>
+                      <button
+                        onClick={() => toggleShapeSeen(f.slug, !!f.seen)}
+                        className={`shrink-0 w-8 h-8 rounded-lg text-base flex items-center justify-center transition-colors ${
+                          f.seen
+                            ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                            : 'bg-parchment-200 text-ink-400 hover:bg-parchment-300'
+                        }`}
+                        aria-label={f.seen ? `Marquer ${f.nameFr ?? f.name} comme non vue` : `Marquer ${f.nameFr ?? f.name} comme vue`}
+                        aria-pressed={f.seen}
+                        title={f.seen ? 'Déjà vue — cliquer pour retirer' : 'Marquer comme vue'}
+                      >
+                        {f.seen ? '👁' : '⊘'}
+                      </button>
+                    </div>
                   ))}
                 {shapeForms.length === 0 && (
                   <p className="text-sm text-ink-400 italic text-center py-4">Aucune forme disponible à ce niveau.</p>
+                )}
+                {shapeForms.length > 0 && shapeForms.every((f) => !f.seen) && shapeSeenOnly && (
+                  <p className="text-xs text-ink-400 italic text-center py-3">
+                    Aucune bête marquée comme vue — désactivez « Vues » et marquez-en avec 👁 (formes déjà rencontrées par votre druide).
+                  </p>
                 )}
               </div>
             </div>

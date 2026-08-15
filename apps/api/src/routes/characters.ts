@@ -130,7 +130,7 @@ export async function characterRoutes(app: FastifyInstance) {
         'portraitUrl', 'personalityTraits', 'ideals', 'bonds', 'flaws', 'appearance',
         'armorClassOverride',
         'deathSaveSuccesses', 'deathSaveFailures', 'inspiration', 'concentrating',
-        'wildShapeHp', 'wildShapeUses', 'hitDiceUsed',
+        'wildShapeHp', 'wildShapeUses', 'hitDiceUsed', 'wildShapeSeen',
       ];
       const sets: string[] = [];
       const vals: any[] = [];
@@ -155,6 +155,7 @@ export async function characterRoutes(app: FastifyInstance) {
         wildShapeHp: 'wild_shape_hp',
         wildShapeUses: 'wild_shape_uses',
         hitDiceUsed: 'hit_dice_used',
+        wildShapeSeen: 'wild_shape_seen_json',
       };
       // Fields stored as JSON arrays — serialize on write
       const jsonFields = new Set([
@@ -163,6 +164,7 @@ export async function characterRoutes(app: FastifyInstance) {
         'savingThrowProficiencies',
         'weaponProficiencies',
         'spellSlotsUsed',
+        'wildShapeSeen',
       ]);
       for (const key of allowed) {
         if (body[key] !== undefined) {
