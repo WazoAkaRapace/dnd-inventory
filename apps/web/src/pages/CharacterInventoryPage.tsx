@@ -830,6 +830,28 @@ export default function CharacterInventoryPage() {
 
       {/* ---------- Tab navigation — floating mobile dock with sliding indicator ---------- */}
       <div className="lg:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-30 max-w-[calc(100vw-2rem)]">
+        {/* Combat status card — always visible, attached to the top of the dock */}
+        {hubCombat && (
+          <Link
+            to={`/party/${hubCombat.partyId}/combat`}
+            className={`block mb-[-6px] mx-auto w-fit max-w-full px-3 py-1.5 rounded-t-xl rounded-b-md text-xs font-semibold shadow-md border border-b-0 transition-colors ${
+              hubCombat.isMyTurn
+                ? 'bg-blood-600 text-parchment-50 border-blood-700'
+                : hubCombat.needsInitiative
+                  ? 'bg-yellow-400 text-ink-900 border-yellow-500'
+                  : 'bg-ink-900 text-parchment-200 border-ink-700'
+            }`}
+            aria-label="Combat en cours — ouvrir le traqueur"
+          >
+            {hubCombat.isMyTurn
+              ? '⚔ À toi de jouer !'
+              : hubCombat.needsInitiative
+                ? '🎲 Lance ton initiative !'
+                : hubCombat.currentCombatantName
+                  ? `⚔ ${hubCombat.currentCombatantName}`
+                  : '⚔ Combat en préparation'}
+          </Link>
+        )}
         {(() => {
           const dockPrimary = dockPrimaryList;
           const primaries = dockPrimary.map((k) => CHARACTER_TABS.find((t) => t.key === k)!);
@@ -913,35 +935,7 @@ export default function CharacterInventoryPage() {
             };
             const p = activeIdx >= 0 ? indPos(activeIdx) : null;
             return (
-              <div className="lg:hidden fixed z-50 bottom-24 left-1/2 -translate-x-1/2 space-y-2">
-              {hubCombat && (
-                <div className="rounded-xl border-2 p-3 space-y-1.5 bg-white shadow-lg border-blood-300">
-                  {hubCombat.isMyTurn && (
-                    <div className="text-center py-1.5 rounded-lg bg-blood-600 text-parchment-50 text-sm font-bold">
-                      ⚔ À toi de jouer !
-                    </div>
-                  )}
-                  {hubCombat.needsInitiative && (
-                    <div className="text-center py-1.5 rounded-lg bg-yellow-400 text-ink-900 text-sm font-bold">
-                      🎲 Lance ton initiative !
-                    </div>
-                  )}
-                  {!hubCombat.isMyTurn && !hubCombat.needsInitiative && hubCombat.currentCombatantName && (
-                    <div className="text-xs text-ink-600">
-                      Au tour de : <strong>{hubCombat.currentCombatantName}</strong>
-                    </div>
-                  )}
-                  {hubCombat.status === 'setup' && (
-                    <div className="text-[10px] text-ink-400">Combat en préparation</div>
-                  )}
-                  <Link
-                    to={"/party/" + hubCombat.partyId + "/combat"}
-                    className="block text-center text-xs text-blood-600 hover:text-blood-700 font-medium pt-0.5"
-                  >
-                    Voir le combat →
-                  </Link>
-                </div>
-              )}
+              <div className="lg:hidden fixed z-50 bottom-24 left-1/2 -translate-x-1/2">
               <div className="w-[296px] grid grid-cols-2 gap-2">
                 {p && (
                   <span
