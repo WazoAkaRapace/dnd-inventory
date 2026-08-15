@@ -895,7 +895,7 @@ export default function CharacterInventoryPage() {
           </div>
         ) : hubCombat && (
           <Link
-            to={`/party/${hubCombat.partyId}/combat`}
+            to={`/party/${hubCombat.partyId}/combat?enc=${hubCombat.encounterId}`}
             className={`block mb-[-6px] mx-auto w-fit max-w-full px-3 py-1.5 rounded-t-xl rounded-b-md text-xs font-semibold shadow-md border border-b-0 transition-colors ${
               hubCombat.isMyTurn
                 ? 'bg-blood-600 text-parchment-50 border-blood-700'

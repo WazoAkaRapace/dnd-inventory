@@ -6,7 +6,7 @@
  * initiative entry + turn notifications.
  */
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../auth';
 import { useSyncEvent } from '../sync';
@@ -66,6 +66,23 @@ export default function CombatPage() {
   }, [partyId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Deep link: /combat?enc=ID opens the encounter directly
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinked = useRef(false);
+  useEffect(() => {
+    if (deepLinked.current || loading || encounters.length === 0) return;
+    const encParam = searchParams.get('enc');
+    if (encParam) {
+      const id = Number(encParam);
+      if (encounters.some(e => e.id === id)) {
+        deepLinked.current = true;
+        selectEncounter(id);
+        searchParams.delete('enc');
+        setSearchParams(searchParams, { replace: true });
+      }
+    }
+  }, [searchParams, setSearchParams, loading, encounters, selectEncounter]);
 
   // Real-time sync
   useSyncEvent((event) => {
