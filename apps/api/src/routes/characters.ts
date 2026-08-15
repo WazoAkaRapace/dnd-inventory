@@ -12,7 +12,7 @@ import {
   mapCharacterSummary,
   mirrorConditionsToCombatants,
 } from './helpers.ts';
-import { CONCENTRATION_BREAKING_CONDITIONS_FR } from '@dnd-inventory/shared';
+import { CONCENTRATION_BREAKING_CONDITIONS_FR, computeAC, abilityModifier } from '@dnd-inventory/shared';
 import type {
   CreateCharacterPayload,
   PatchCharacterPayload,
@@ -130,6 +130,7 @@ export async function characterRoutes(app: FastifyInstance) {
         'portraitUrl', 'personalityTraits', 'ideals', 'bonds', 'flaws', 'appearance',
         'armorClassOverride',
         'deathSaveSuccesses', 'deathSaveFailures', 'inspiration', 'concentrating',
+        'wildShapeHp', 'wildShapeUses',
       ];
       const sets: string[] = [];
       const vals: any[] = [];
@@ -151,6 +152,8 @@ export async function characterRoutes(app: FastifyInstance) {
         armorClassOverride: 'armor_class_override',
         deathSaveSuccesses: 'death_save_successes',
         deathSaveFailures: 'death_save_failures',
+        wildShapeHp: 'wild_shape_hp',
+        wildShapeUses: 'wild_shape_uses',
       };
       // Fields stored as JSON arrays — serialize on write
       const jsonFields = new Set([
@@ -179,6 +182,69 @@ export async function characterRoutes(app: FastifyInstance) {
         }
       }
       if (sets.length === 0) return reply.code(400).send({ error: 'no fields to update' });
+
+      // --- Wild Shape: while shaped, HP edits target the beast's bar.
+      // Hitting 0 reverts with excess damage carried over (SRD), and the
+      // tracker combatant follows the shape's bar (or the normal form back).
+      if (body.currentHp !== undefined && char.wild_shape_slug) {
+        const shapeHp = Math.max(0, body.currentHp);
+        const combatants = db.prepare(`
+          SELECT c.* FROM combatants c
+          JOIN encounters e ON e.id = c.encounter_id
+          WHERE c.character_id = ? AND c.type = 'player' AND e.status != 'ended'
+          ORDER BY e.created_at DESC, c.id DESC
+        `).all(char.id) as any[];
+
+        if (shapeHp <= 0) {
+          // Auto-revert with carry-over
+          const excess = -(body.currentHp);
+          const newHp = Math.max(0, (char.current_hp ?? 1) - excess);
+          db.prepare(`
+            UPDATE characters
+            SET wild_shape_slug = NULL, wild_shape_hp = NULL, wild_shape_max_hp = NULL, current_hp = ?
+            WHERE id = ?
+          `).run(newHp, char.id);
+          for (const combatant of combatants) {
+            const acRows = db.prepare(`
+              SELECT i.category AS category, i.ac_base AS ac_base, i.str_min AS str_min,
+                     i.name_fr AS name_fr, i.name AS name
+              FROM inventory inv JOIN items i ON i.id = inv.item_id
+              WHERE inv.character_id = ? AND inv.equipped = 1
+            `).all(char.id) as any[];
+            const acResult = computeAC(
+              acRows.map((r) => ({
+                item: { category: r.category, acBase: r.ac_base, strMin: r.str_min, nameFr: r.name_fr, name: r.name },
+                equipped: true,
+              })),
+              abilityModifier(char.dexterity ?? 10),
+              char.fighting_style === 'defense',
+              char,
+            );
+            db.prepare('UPDATE combatants SET name = ?, hit_points = ?, max_hit_points = ?, armor_class = ?, defeated = ? WHERE id = ?')
+              .run(char.name, newHp, char.max_hp ?? 1, char.armor_class_override ?? acResult.ac, newHp <= 0 ? 1 : 0, combatant.id);
+          }
+        } else {
+          db.prepare('UPDATE characters SET wild_shape_hp = ? WHERE id = ?').run(shapeHp, char.id);
+          for (const combatant of combatants) {
+            db.prepare('UPDATE combatants SET hit_points = ?, max_hit_points = ?, defeated = 0 WHERE id = ?')
+              .run(shapeHp, char.wild_shape_max_hp ?? shapeHp, combatant.id);
+          }
+        }
+        if (combatants.length > 0) {
+          bus.emitChange({ type: 'combat:change', partyId: char.party_id, action: 'hp', actorUserId: userId });
+        }
+        // The shape bar was written — currentHp must not be applied again below
+        (body as any).currentHp = undefined;
+        const remaining = Object.entries(body).filter(([, v]) => v !== undefined);
+        if (remaining.length === 0) {
+          const rowAfter = db.prepare(`
+            SELECT c.*, u.display_name AS owner_name
+            FROM characters c JOIN users u ON u.id = c.owner_id
+            WHERE c.id = ?
+          `).get(char.id);
+          return reply.send({ character: mapCharacter(rowAfter) });
+        }
+      }
 
       // --- Concentration: a CON save (DC 10 or half damage, highest) is
       // required when HP drops while concentrating on a spell.

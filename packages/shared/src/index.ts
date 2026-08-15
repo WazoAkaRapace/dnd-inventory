@@ -283,6 +283,11 @@ export interface CharacterSummary {
   deathSaveFailures: number;   // 0-3
   inspiration: boolean;
   concentrating: boolean;      // player is concentrating on a spell
+  // Wild Shape (Druide)
+  wildShapeSlug: string | null;
+  wildShapeHp: number | null;
+  wildShapeMaxHp: number | null;
+  wildShapeUses: number;
 }
 
 /** A Constitution save required to maintain concentration after taking damage. */
@@ -370,6 +375,10 @@ export interface PatchCharacterPayload {
   deathSaveFailures?: number;
   inspiration?: boolean;
   concentrating?: boolean;
+  wildShapeSlug?: string | null;
+  wildShapeHp?: number | null;
+  wildShapeMaxHp?: number | null;
+  wildShapeUses?: number;
 }
 
 // ---------- D&D 5e Abilities (Caractéristiques) ----------
@@ -1363,6 +1372,61 @@ export function spellDamageAtLevel(
   } catch {
     return { dice: null, typeFr: null };
   }
+}
+
+// ---------- Wild Shape (Druide, SRD) ----------
+
+/** Max beast CR by druid level: 1/4 (2-3), 1/2 (4-7), 1 (8+). */
+export function wildShapeMaxCR(level: number): number {
+  if (level >= 8) return 1;
+  if (level >= 4) return 0.5;
+  return 0.25;
+}
+
+export function wildShapeCanSwim(level: number): boolean {
+  return level >= 4;
+}
+
+export function wildShapeCanFly(level: number): boolean {
+  return level >= 8;
+}
+
+/** Wild Shape duration in hours (SRD: half the druid level, rounded down). */
+export function wildShapeDurationHours(level: number): number {
+  return Math.max(1, Math.floor(level / 2));
+}
+
+export interface WildShapeFormSummary {
+  slug: string;
+  nameFr: string | null;
+  name: string;
+  challengeRating: number;
+  size: string | null;
+  armorClass: number | null;
+  hitPoints: number | null;
+  hitDice: string | null;
+  fly: boolean;
+  swim: boolean;
+}
+
+/**
+ * Roll HP from a hit dice formula like "2d6+0" or "18d10+36".
+ * Each die is rolled individually, then the flat bonus is added
+ * (formulas already include the CON bonus in the flat part).
+ * Falls back to the average HP when the formula can't be parsed.
+ */
+export function rollHitPoints(hitDice: string | null, avgHp: number, _conMod = 0): number {
+  if (!hitDice) return Math.max(1, avgHp);
+  const match = hitDice.match(/^(\d+)d(\d+)(?:([+-]\d+))?$/);
+  if (!match) return Math.max(1, avgHp);
+  const numDice = parseInt(match[1], 10);
+  const dieSize = parseInt(match[2], 10);
+  const flatBonus = match[3] ? parseInt(match[3], 10) : 0;
+  let total = flatBonus;
+  for (let i = 0; i < numDice; i++) {
+    total += Math.floor(Math.random() * dieSize) + 1;
+  }
+  return Math.max(1, total);
 }
 
 // ---------- Sneak Attack & Extra Attack (SRD) ----------

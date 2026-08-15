@@ -107,6 +107,10 @@ const COLUMN_MIGRATIONS: Record<string, Array<{ name: string; ddl: string }>> = 
     { name: 'concentrating', ddl: 'INTEGER NOT NULL DEFAULT 0' },
     { name: 'weapon_proficiencies', ddl: 'TEXT' },
     { name: 'fighting_style', ddl: 'TEXT' },
+    { name: 'wild_shape_slug', ddl: 'TEXT' },
+    { name: 'wild_shape_hp', ddl: 'INTEGER' },
+    { name: 'wild_shape_max_hp', ddl: 'INTEGER' },
+    { name: 'wild_shape_uses', ddl: 'INTEGER NOT NULL DEFAULT 2' },
   ],
   items: [
     { name: 'survival_tags', ddl: "TEXT NOT NULL DEFAULT '[]'" },

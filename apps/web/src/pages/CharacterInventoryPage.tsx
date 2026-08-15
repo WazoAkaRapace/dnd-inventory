@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, Link } from 'react-router-dom';
 import api from '../api';
 import { useSyncEvent, useSync } from '../sync';
@@ -26,6 +27,9 @@ import {
   sneakAttackDice,
   extraAttacks,
   findClass,
+  wildShapeDurationHours,
+  wildShapeMaxCR,
+  type WildShapeFormSummary,
   WEAPON_PROPERTY_LABELS_FR,
   resolveMagicArmorBase,
   proficiencyBonus,
@@ -2149,6 +2153,9 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
   const [foodDays, setFoodDays] = useState(character.foodDays);
   const [waterDays, setWaterDays] = useState(character.waterDays);
   const [concCheck, setConcCheck] = useState<ConcentrationCheck | null>(null);
+  const [shapePickerOpen, setShapePickerOpen] = useState(false);
+  const [shapeForms, setShapeForms] = useState<WildShapeFormSummary[]>([]);
+  const [shapeSearch, setShapeSearch] = useState('');
 
   // Count available food/water from tagged inventory items
   // Water: skip items marked 'empty' in notes
@@ -2231,6 +2238,38 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
     const next = [...conditions, cond];
     setConditions(next);
     await patchCharacter({ conditions: next }, 'Erreur de mise à jour');
+  };
+
+  const openShapePicker = async () => {
+    try {
+      const res = await api.get(`/api/characters/${charId}/wild-shape/forms`);
+      setShapeForms(res.data.forms ?? []);
+      setShapeSearch('');
+      setShapePickerOpen(true);
+    } catch {
+      onError('Erreur du bestiaire');
+    }
+  };
+
+  const takeShape = async (slug: string) => {
+    markLocalMutation();
+    try {
+      await api.post(`/api/characters/${charId}/wild-shape`, { slug });
+      setShapePickerOpen(false);
+      await onSaved();
+    } catch (err: any) {
+      onError(err.response?.data?.error || 'Erreur de transformation');
+    }
+  };
+
+  const revertShape = async () => {
+    markLocalMutation();
+    try {
+      await api.post(`/api/characters/${charId}/wild-shape/revert`);
+      await onSaved();
+    } catch (err: any) {
+      onError(err.response?.data?.error || 'Erreur de retour à la normale');
+    }
   };
 
   const stepDays = async (kind: 'foodDays' | 'waterDays', delta: number) => {
@@ -2362,6 +2401,116 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
             );
           })()
         )}
+        {findClass(character.characterClass)?.name === 'Druide' && (character.level ?? 1) >= 2 && (() => {
+          const shaped = !!character.wildShapeSlug;
+          const shapePct = shaped && character.wildShapeMaxHp
+            ? Math.max(0, Math.min(100, ((character.wildShapeHp ?? 0) / character.wildShapeMaxHp) * 100))
+            : 0;
+          return (
+            <div className="rounded-xl border border-green-300 bg-green-50 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-semibold text-green-900 flex items-center gap-1.5">
+                  🐾 Forme sauvage
+                </span>
+                <span className="flex items-center gap-1" title="2 utilisations, récupérées après un repos court ou long">
+                  {[0, 1].map((i) => (
+                    <span key={i} className={`text-base leading-none ${i < (character.wildShapeUses ?? 2) ? 'opacity-100' : 'opacity-20'}`}>🐾</span>
+                  ))}
+                </span>
+              </div>
+              {shaped ? (
+                <>
+                  <div className="text-xs text-green-800">
+                    Forme actuelle : <strong>{shapeForms.find((f) => f.slug === character.wildShapeSlug)?.nameFr ?? character.wildShapeSlug}</strong>
+                    {' '}· {wildShapeDurationHours(character.level ?? 2)} h max
+                  </div>
+                  <div className="h-3 bg-green-100 rounded-full overflow-hidden border border-green-200">
+                    <div
+                      className={`h-full rounded-full transition-all ${(character.wildShapeHp ?? 0) <= 0 ? 'bg-red-600' : (character.wildShapeHp ?? 0) <= (character.wildShapeMaxHp ?? 1) * 0.3 ? 'bg-orange-500' : 'bg-green-600'}`}
+                      style={{ width: `${shapePct}%` }}
+                    />
+                  </div>
+                  <div className="text-xs text-green-700 font-medium">
+                    ❤ {Math.max(0, character.wildShapeHp ?? 0)}/{character.wildShapeMaxHp} — PV de la forme
+                  </div>
+                  <button onClick={revertShape} className="btn-secondary text-xs w-full py-1.5">
+                    ↩ Revenir à la forme normale (action bonus)
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-green-800">
+                    Bêtes jusqu'à DD {wildShapeMaxCR(character.level ?? 2) === 0.25 ? '1/4' : wildShapeMaxCR(character.level ?? 2) === 0.5 ? '1/2' : wildShapeMaxCR(character.level ?? 2)}
+                    {(character.level ?? 2) < 4 && ' · pas de nage'}{(character.level ?? 2) < 8 && ' · pas de vol'} — PV lancés aux dés de la forme.
+                  </p>
+                  <button
+                    onClick={openShapePicker}
+                    disabled={(character.wildShapeUses ?? 2) <= 0}
+                    className="btn-primary text-xs w-full py-1.5 disabled:opacity-40"
+                  >
+                    🐾 Prendre une forme
+                  </button>
+                </>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Beast picker sheet (portal) */}
+        {shapePickerOpen && createPortal(
+          <div
+            className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
+            onClick={() => setShapePickerOpen(false)}
+          >
+            <div
+              className="card w-full sm:max-w-md rounded-b-none sm:rounded-2xl p-4 sheet-enter bg-white max-h-[80vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Choisir une forme"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-display text-lg font-semibold">🐾 Choisir une forme</h3>
+                <button onClick={() => setShapePickerOpen(false)} className="text-ink-400 hover:text-ink-700 text-lg leading-none px-1" aria-label="Fermer">✕</button>
+              </div>
+              <input
+                type="text"
+                className="input mb-2"
+                placeholder="Rechercher une bête…"
+                value={shapeSearch}
+                onChange={(e) => setShapeSearch(e.target.value)}
+                autoFocus
+              />
+              <div className="flex-1 overflow-y-auto space-y-1.5 -mx-1 px-1">
+                {shapeForms
+                  .filter((f) => !shapeSearch.trim()
+                    || (f.nameFr ?? f.name).toLowerCase().includes(shapeSearch.toLowerCase()))
+                  .map((f) => (
+                    <button
+                      key={f.slug}
+                      onClick={() => takeShape(f.slug)}
+                      className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-parchment-200 bg-parchment-50 hover:border-blood-400 transition-colors text-left"
+                    >
+                      <div className="min-w-0">
+                        <span className="text-sm font-medium text-ink-800 block truncate">{f.nameFr ?? f.name}</span>
+                        <span className="text-[10px] text-ink-400">
+                          DD {f.challengeRating === 0.125 ? '1/8' : f.challengeRating === 0.25 ? '1/4' : f.challengeRating === 0.5 ? '1/2' : f.challengeRating}
+                          {f.size ? ` · ${f.size}` : ''}{f.fly ? ' · 🦅 vol' : ''}{f.swim ? ' · 🏊 nage' : ''}
+                        </span>
+                      </div>
+                      <span className="text-xs text-ink-500 shrink-0 text-right">
+                        ❤ {f.hitPoints ?? '—'}<br />🛡 {f.armorClass ?? '—'}
+                      </span>
+                    </button>
+                  ))}
+                {shapeForms.length === 0 && (
+                  <p className="text-sm text-ink-400 italic text-center py-4">Aucune forme disponible à ce niveau.</p>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
         {(() => {
           const u = computeUnarmedStats(character);
                 const abilityLabel = u.ability === 'dexterity' ? 'DEX' : 'FOR';
@@ -2402,15 +2551,59 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
 
       <div className="space-y-4">
           {/* Exhaustion tracker */}
-          {/* HP tracker */}
-      <HpTracker
-        character={character}
-        charId={charId}
-        markLocalMutation={markLocalMutation}
-        onSaved={onSaved}
-        onError={onError}
-        onConcentrationCheck={setConcCheck}
-      />
+          {/* HP tracker — while shaped it shows the beast's bar (routed server-side to wild_shape_hp) */}
+      {character.wildShapeSlug ? (
+        <div className="rounded-xl border border-green-300 bg-green-50 p-3 space-y-2">
+          <div className="text-xs font-semibold text-green-900">❤ PV — forme animale</div>
+          <div className="h-4 bg-green-100 rounded-full overflow-hidden border border-green-200">
+            <div
+              className={`h-full rounded-full transition-all ${(character.wildShapeHp ?? 0) <= 0 ? 'bg-red-600' : (character.wildShapeHp ?? 0) <= (character.wildShapeMaxHp ?? 1) * 0.3 ? 'bg-orange-500' : 'bg-green-600'}`}
+              style={{ width: `${character.wildShapeMaxHp ? Math.max(0, Math.min(100, ((character.wildShapeHp ?? 0) / character.wildShapeMaxHp) * 100)) : 0}%` }}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-bold text-green-900">
+              {Math.max(0, character.wildShapeHp ?? 0)} / {character.wildShapeMaxHp}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={async () => {
+                  const n = Math.max(0, (character.wildShapeHp ?? 0) - 1);
+                  markLocalMutation();
+                  try {
+                    await api.patch(`/api/characters/${charId}`, { currentHp: n });
+                    await onSaved();
+                  } catch { onError('Erreur'); }
+                }}
+                className="w-7 h-7 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 text-sm font-medium flex items-center justify-center"
+                aria-label="Blesser la forme"
+              >−</button>
+              <button
+                onClick={async () => {
+                  const n = (character.wildShapeHp ?? 0) + 1;
+                  markLocalMutation();
+                  try {
+                    await api.patch(`/api/characters/${charId}`, { currentHp: n });
+                    await onSaved();
+                  } catch { onError('Erreur'); }
+                }}
+                className="w-7 h-7 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 text-sm font-medium flex items-center justify-center"
+                aria-label="Soigner la forme"
+              >+</button>
+            </div>
+          </div>
+          <p className="text-[10px] text-green-700 italic">À 0 PV : retour automatique à la forme normale, les dégâts excédentaires s'appliquent.</p>
+        </div>
+      ) : (
+        <HpTracker
+          character={character}
+          charId={charId}
+          markLocalMutation={markLocalMutation}
+          onSaved={onSaved}
+          onError={onError}
+          onConcentrationCheck={setConcCheck}
+        />
+      )}
       {concCheck && (
         <ConcentrationAlert
           check={concCheck}

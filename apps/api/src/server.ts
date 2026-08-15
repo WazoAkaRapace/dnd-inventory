@@ -21,6 +21,7 @@ import { characterFeatureRoutes } from './routes/character-features.ts';
 import { characterNoteRoutes } from './routes/character-notes.ts';
 import { monsterRoutes } from './routes/monsters.ts';
 import { combatRoutes } from './routes/combat.ts';
+import { wildShapeRoutes } from './routes/wildshape.ts';
 import { registerWsRoutes } from './sync/ws.ts';
 
 const PORT = parseInt(process.env.PORT || '4000', 10);
@@ -87,6 +88,7 @@ async function buildServer() {
   await app.register(characterNoteRoutes, { prefix: '/api' });
   await app.register(monsterRoutes, { prefix: '/api' });
   await app.register(combatRoutes, { prefix: '/api' });
+  await app.register(wildShapeRoutes, { prefix: '/api' });
 
   // WebSocket (real-time sync)
   await registerWsRoutes(app);

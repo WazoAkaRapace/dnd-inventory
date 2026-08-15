@@ -12,7 +12,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
 import { requireUser, isPartyMember, isPartyGM, getUserId, mirrorConditionsToCharacter } from './helpers.ts';
-import { abilityModifier, computeAC, CONCENTRATION_BREAKING_CONDITIONS_FR } from '@dnd-inventory/shared';
+import { abilityModifier, computeAC, CONCENTRATION_BREAKING_CONDITIONS_FR, rollHitPoints } from '@dnd-inventory/shared';
 import type {
   Combatant,
   CombatantCondition,
@@ -106,26 +106,6 @@ function sortCombatants(combatants: Combatant[]): Combatant[] {
     // Final tie-break: name
     return a.name.localeCompare(b.name, 'fr');
   });
-}
-
-/**
- * Roll HP from a hit dice formula like "2d6+0" or "18d10+36".
- * Each die is rolled individually, then the flat bonus is added.
- * Falls back to the average HP if the formula can't be parsed.
- */
-function rollHitPoints(hitDice: string | null, avgHp: number, conMod: number): number {
-  if (!hitDice) return Math.max(1, avgHp);
-  // Parse "2d6+0", "18d10+36", "3d8-1", etc.
-  const match = hitDice.match(/^(\d+)d(\d+)(?:([+-]\d+))?$/);
-  if (!match) return Math.max(1, avgHp);
-  const numDice = parseInt(match[1], 10);
-  const dieSize = parseInt(match[2], 10);
-  const flatBonus = match[3] ? parseInt(match[3], 10) : 0;
-  let total = flatBonus;
-  for (let i = 0; i < numDice; i++) {
-    total += Math.floor(Math.random() * dieSize) + 1;
-  }
-  return Math.max(1, total);
 }
 
 /** Fetch encounter, verify party membership, return the encounter row or send error. */
@@ -582,19 +562,44 @@ export async function combatRoutes(app: FastifyInstance) {
 
       // --- HP sync: the tracker is the player's sheet HP — mirror PV/PV max
       // changes back to the character so both views stay identical.
+      // While the character is in Wild Shape, damage routes to the shape's
+      // bar; dropping it to 0 reverts with excess carried over (SRD).
       if (
         combatant.type === 'player' &&
         combatant.character_id &&
         (body.hitPoints !== undefined || body.maxHitPoints !== undefined)
       ) {
-        const setsC: string[] = [];
-        const valsC: any[] = [];
-        if (body.hitPoints !== undefined) { setsC.push('current_hp = ?'); valsC.push(Math.max(0, body.hitPoints)); }
-        if (body.maxHitPoints !== undefined) { setsC.push('max_hp = ?'); valsC.push(Math.max(1, body.maxHitPoints)); }
-        if (setsC.length > 0) {
-          valsC.push(combatant.character_id);
-          db.prepare(`UPDATE characters SET ${setsC.join(', ')} WHERE id = ?`).run(...valsC);
-          bus.emitChange({ type: 'character:change', partyId: enc.party_id, characterId: combatant.character_id, action: 'hp', actorUserId: userId });
+        const ch = db.prepare('SELECT id, name, current_hp, max_hp, wild_shape_slug, wild_shape_max_hp FROM characters WHERE id = ?')
+          .get(combatant.character_id) as any;
+
+        if (ch?.wild_shape_slug && body.hitPoints !== undefined) {
+          if (body.hitPoints > 0) {
+            db.prepare('UPDATE characters SET wild_shape_hp = ? WHERE id = ?')
+              .run(Math.max(0, body.hitPoints), ch.id);
+          } else {
+            // Shape dropped to 0 → auto-revert with carry-over
+            const excess = Math.max(0, -(body.hitPoints ?? 0));
+            const newHp = Math.max(0, (ch.current_hp ?? 1) - excess);
+            const revertName = combatant.name.replace(/ \([^)]*\)$/, '');
+            db.prepare(`
+              UPDATE characters
+              SET wild_shape_slug = NULL, wild_shape_hp = NULL, wild_shape_max_hp = NULL, current_hp = ?
+              WHERE id = ?
+            `).run(newHp, ch.id);
+            db.prepare('UPDATE combatants SET name = ?, hit_points = ?, max_hit_points = ?, defeated = ? WHERE id = ?')
+              .run(revertName, newHp, ch.max_hp ?? 1, newHp <= 0 ? 1 : 0, combatant.id);
+          }
+          bus.emitChange({ type: 'character:change', partyId: enc.party_id, characterId: ch.id, action: 'stats', actorUserId: userId });
+        } else {
+          const setsC: string[] = [];
+          const valsC: any[] = [];
+          if (body.hitPoints !== undefined) { setsC.push('current_hp = ?'); valsC.push(Math.max(0, body.hitPoints)); }
+          if (body.maxHitPoints !== undefined) { setsC.push('max_hp = ?'); valsC.push(Math.max(1, body.maxHitPoints)); }
+          if (setsC.length > 0) {
+            valsC.push(combatant.character_id);
+            db.prepare(`UPDATE characters SET ${setsC.join(', ')} WHERE id = ?`).run(...valsC);
+            bus.emitChange({ type: 'character:change', partyId: enc.party_id, characterId: combatant.character_id, action: 'hp', actorUserId: userId });
+          }
         }
       }
 

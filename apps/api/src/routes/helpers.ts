@@ -154,6 +154,10 @@ export function mapCharacterSummary(row: any): CharacterSummary {
     deathSaveFailures: row.death_save_failures ?? 0,
     inspiration: !!row.inspiration,
     concentrating: !!row.concentrating,
+    wildShapeSlug: row.wild_shape_slug ?? null,
+    wildShapeHp: row.wild_shape_hp ?? null,
+    wildShapeMaxHp: row.wild_shape_max_hp ?? null,
+    wildShapeUses: row.wild_shape_uses ?? 2,
   };
 }
 
