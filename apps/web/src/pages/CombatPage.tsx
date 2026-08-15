@@ -5,7 +5,7 @@
  * Players see a floating widget (CombatWidget) on other pages for their
  * initiative entry + turn notifications.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../auth';
@@ -67,23 +67,6 @@ export default function CombatPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Deep link: /combat?enc=ID opens the encounter directly
-  const [searchParams, setSearchParams] = useSearchParams();
-  const deepLinked = useRef(false);
-  useEffect(() => {
-    if (deepLinked.current || loading || encounters.length === 0) return;
-    const encParam = searchParams.get('enc');
-    if (encParam) {
-      const id = Number(encParam);
-      if (encounters.some(e => e.id === id)) {
-        deepLinked.current = true;
-        selectEncounter(id);
-        searchParams.delete('enc');
-        setSearchParams(searchParams, { replace: true });
-      }
-    }
-  }, [searchParams, setSearchParams, loading, encounters, selectEncounter]);
-
   // Real-time sync
   useSyncEvent((event) => {
     if (event.partyId === currentPartyId && event.type === 'combat:change') {
@@ -105,6 +88,23 @@ export default function CombatPage() {
   const selectEncounter = async (id: number) => {
     await loadEncounter(id);
   };
+
+  // Deep link: /combat?enc=ID opens the encounter directly
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinked = useRef(false);
+  useEffect(() => {
+    if (deepLinked.current || loading || encounters.length === 0) return;
+    const encParam = searchParams.get('enc');
+    if (encParam) {
+      const id = Number(encParam);
+      if (encounters.some(e => e.id === id)) {
+        deepLinked.current = true;
+        selectEncounter(id);
+        searchParams.delete('enc');
+        setSearchParams(searchParams, { replace: true });
+      }
+    }
+  }, [searchParams, setSearchParams, loading, encounters]);
 
   const createEncounter = async () => {
     if (!newName.trim()) return;
