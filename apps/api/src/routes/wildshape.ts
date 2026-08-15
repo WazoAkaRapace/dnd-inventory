@@ -13,6 +13,7 @@ import {
   wildShapeMaxCR,
   wildShapeCanSwim,
   wildShapeCanFly,
+  MOON_ELEMENTAL_SLUGS,
   abilityModifier,
   computeAC,
   rollHitPoints,
@@ -86,13 +87,18 @@ export async function wildShapeRoutes(app: FastifyInstance) {
       }
 
       const level = char.level ?? 1;
-      const maxCR = wildShapeMaxCR(level);
+      const circle = char.druid_circle ?? null;
+      const isMoon = circle === 'lune';
+      const maxCR = wildShapeMaxCR(level, circle);
       const canSwim = wildShapeCanSwim(level);
       const canFly = wildShapeCanFly(level);
+      // Circle of the Moon, level 10: Elemental Wild Shape
+      const includeElementals = isMoon && level >= 10;
 
       const rows = db.prepare(`
         SELECT slug, name_fr, challenge_rating, size, armor_class, hit_points, hit_dice, speed_json
         FROM monsters WHERE type = 'Bête'
+          ${includeElementals ? "OR slug IN ('elementaire-de-l-air','elementaire-de-l-eau','elementaire-de-la-terre','elementaire-du-feu')" : ''}
         ORDER BY challenge_rating, name_fr COLLATE NOCASE
       `).all() as BeastRow[];
 
@@ -105,10 +111,12 @@ export async function wildShapeRoutes(app: FastifyInstance) {
 
       const forms = rows
         .map((r) => ({ row: r, speed: parseSpeed(r.speed_json) }))
+        // Moon elementals are their own rule (CR 5), not gated by maxCR
         .filter(({ row, speed }) =>
-          row.challenge_rating <= maxCR
-          && (!speed.fly || canFly)
-          && (!speed.swim || canSwim),
+          (includeElementals && (MOON_ELEMENTAL_SLUGS as readonly string[]).includes(row.slug))
+          || (row.challenge_rating <= maxCR
+            && (!speed.fly || canFly)
+            && (!speed.swim || canSwim)),
         )
         .map(({ row, speed }) => ({
           slug: row.slug,
@@ -129,6 +137,9 @@ export async function wildShapeRoutes(app: FastifyInstance) {
         uses: char.wild_shape_uses ?? 2,
         shaped: char.wild_shape_slug ?? null,
         maxCR, canSwim, canFly,
+        circle: isMoon ? 'lune' : null,
+        bonusActionShape: isMoon,
+        elementals: includeElementals,
       });
     },
   );
@@ -168,10 +179,16 @@ export async function wildShapeRoutes(app: FastifyInstance) {
       }
 
       const level = char.level ?? 1;
-      const maxCR = wildShapeMaxCR(level);
+      const circle = char.druid_circle ?? null;
+      const maxCR = wildShapeMaxCR(level, circle);
       const speed = parseSpeed(beast.speed_json);
-      if (beast.type !== 'Bête' || beast.challenge_rating > maxCR
-        || (speed.fly && !wildShapeCanFly(level)) || (speed.swim && !wildShapeCanSwim(level))) {
+      const isMoonElemental = (MOON_ELEMENTAL_SLUGS as readonly string[]).includes(beast.slug)
+        && circle === 'lune' && level >= 10;
+      const eligible = isMoonElemental
+        || (beast.type === 'Bête' && beast.challenge_rating <= maxCR
+          && (!speed.fly || wildShapeCanFly(level))
+          && (!speed.swim || wildShapeCanSwim(level)));
+      if (!eligible) {
         return reply.code(400).send({ error: 'Forme non autorisée à ce niveau' });
       }
 

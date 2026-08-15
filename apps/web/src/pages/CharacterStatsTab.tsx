@@ -224,6 +224,24 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
             />
           </label>
         </div>
+        {findClass(character.characterClass)?.name === 'Druide' && (
+          <label className="flex items-center justify-between gap-3 max-w-xs">
+            <span className="label mb-0">Cercle druidique</span>
+            <select
+              className="input py-1.5 text-sm w-auto"
+              value={character.druidCircle ?? ''}
+              onChange={(e) => patchCharacter(
+                { druidCircle: e.target.value === '' ? null : e.target.value },
+                'Erreur de mise à jour',
+              )}
+              aria-label="Cercle druidique"
+            >
+              <option value="">—</option>
+              <option value="terre">Cercle de la Terre</option>
+              <option value="lune">Cercle de la Lune</option>
+            </select>
+          </label>
+        )}
       </section>
 
       {/* Weapon mastery */}

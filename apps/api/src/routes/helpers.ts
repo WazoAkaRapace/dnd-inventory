@@ -160,6 +160,7 @@ export function mapCharacterSummary(row: any): CharacterSummary {
     wildShapeUses: row.wild_shape_uses ?? 2,
     hitDiceUsed: row.hit_dice_used ?? 0,
     wildShapeSeen: parseJsonArray(row.wild_shape_seen_json, []),
+    druidCircle: row.druid_circle ?? null,
   };
 }
 

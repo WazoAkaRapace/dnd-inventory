@@ -292,6 +292,8 @@ export interface CharacterSummary {
   hitDiceUsed: number;
   // Wild Shape: beast slugs the druid has seen (SRD requirement)
   wildShapeSeen: string[];
+  // Druidic circle: 'terre' | 'lune' | null
+  druidCircle: string | null;
 }
 
 /** A Constitution save required to maintain concentration after taking damage. */
@@ -385,6 +387,7 @@ export interface PatchCharacterPayload {
   wildShapeUses?: number;
   hitDiceUsed?: number;
   wildShapeSeen?: string[];
+  druidCircle?: string | null;
 }
 
 // ---------- D&D 5e Abilities (Caractéristiques) ----------
@@ -1382,12 +1385,24 @@ export function spellDamageAtLevel(
 
 // ---------- Wild Shape (Druide, SRD) ----------
 
-/** Max beast CR by druid level: 1/4 (2-3), 1/2 (4-7), 1 (8+). */
-export function wildShapeMaxCR(level: number): number {
+/**
+ * Max beast CR by druid level: 1/4 (2-3), 1/2 (4-7), 1 (8+).
+ * Circle of the Moon: level ÷ 3 rounded down, minimum 1 (Circle Forms).
+ */
+export function wildShapeMaxCR(level: number, circle?: string | null): number {
+  if (circle === 'lune') return Math.max(1, Math.floor(level / 3));
   if (level >= 8) return 1;
   if (level >= 4) return 0.5;
   return 0.25;
 }
+
+/** Circle of the Moon, Elemental Wild Shape (level 10): the four SRD elementals. */
+export const MOON_ELEMENTAL_SLUGS: readonly string[] = [
+  'elementaire-de-l-air',
+  'elementaire-de-l-eau',
+  'elementaire-de-la-terre',
+  'elementaire-du-feu',
+];
 
 export function wildShapeCanSwim(level: number): boolean {
   return level >= 4;

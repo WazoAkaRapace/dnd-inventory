@@ -2482,9 +2482,18 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
               ) : (
                 <>
                   <p className="text-xs text-green-800">
-                    Bêtes jusqu'à DD {wildShapeMaxCR(character.level ?? 2) === 0.25 ? '1/4' : wildShapeMaxCR(character.level ?? 2) === 0.5 ? '1/2' : wildShapeMaxCR(character.level ?? 2)}
-                    {(character.level ?? 2) < 4 && ' · pas de nage'}{(character.level ?? 2) < 8 && ' · pas de vol'} — PV lancés aux dés de la forme.
+                    Bêtes jusqu'à DD {(() => { const cr = wildShapeMaxCR(character.level ?? 2, character.druidCircle); return cr === 0.25 ? '1/4' : cr === 0.5 ? '1/2' : cr; })()}
+                    {character.druidCircle !== 'lune' && (character.level ?? 2) < 4 && ' · pas de nage'}
+                    {character.druidCircle !== 'lune' && (character.level ?? 2) < 8 && ' · pas de vol'}
+                    {(character.level ?? 2) >= 4 && character.druidCircle !== 'lune' && ' · nage'}
+                    {(character.level ?? 2) >= 8 && character.druidCircle !== 'lune' && ' · vol'} — PV lancés aux dés de la forme.
                   </p>
+                  {character.druidCircle === 'lune' && (
+                    <p className="text-[10px] text-green-700">
+                      🌙 Lune : transformation et retour en action bonus{((character.level ?? 2) >= 10) ? ' · formes élémentaires disponibles' : ''}
+                      {((character.level ?? 2) >= 6) ? ' · attaques de bête magiques' : ''}.
+                    </p>
+                  )}
                   <button
                     onClick={openShapePicker}
                     disabled={(character.wildShapeUses ?? 2) <= 0}
