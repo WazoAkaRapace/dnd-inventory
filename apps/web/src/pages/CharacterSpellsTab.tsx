@@ -950,8 +950,8 @@ function SwipeToReveal({ reveal, onAction, actionLabel, children }: {
   };
 
   return (
-    <div className="relative">
-      {/* Action underneath */}
+    <div className="relative rounded-lg overflow-hidden">
+      {/* Action underneath — clipped to the row box so no red peeks out */}
       <button
         onClick={() => { setOpen(false); setDx(0); onAction(); }}
         className="absolute inset-y-0 right-0 w-[76px] rounded-r-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold flex flex-col items-center justify-center gap-0.5"
