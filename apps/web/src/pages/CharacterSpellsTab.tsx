@@ -506,6 +506,9 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
           spell={castingSpell}
           slots={slots}
           slotsUsed={slotsUsed}
+          castingMod={castingMod}
+          profBonus={profBonus}
+          charLevel={level}
           concentrating={!!character.concentrating}
           onClose={() => setCastingSpell(null)}
           onCast={castSpell}

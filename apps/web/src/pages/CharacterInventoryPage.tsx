@@ -23,6 +23,8 @@ import {
   DND_CONDITIONS_FR,
   computeWeaponStats,
   computeUnarmedStats,
+  sneakAttackDice,
+  extraAttacks,
   findClass,
   WEAPON_PROPERTY_LABELS_FR,
   resolveMagicArmorBase,
@@ -2265,6 +2267,7 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
                 }
                 const abilityLabel = stats.ability === 'dexterity' ? 'DEX' : 'FOR';
                 const profBonus = proficiencyBonus(character.level ?? 1);
+                const nAttacks = extraAttacks(character.characterClass, character.level ?? 1);
                 const archery = character.fightingStyle === 'archery' && stats.ranged ? 2 : 0;
                 const breakdown = `d20 ${formatModifier(stats.attackBonus - (stats.proficient ? profBonus : 0) - stats.magicBonus - archery)} (${abilityLabel})`
                   + (stats.proficient ? ` + ${profBonus} (maîtrise)` : '')
@@ -2289,6 +2292,14 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
                       >
                         🎯 {formatModifier(stats.attackBonus)}
                       </span>
+                      {nAttacks > 1 && (
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blood-50 text-blood-800 text-[11px] font-semibold border border-blood-200"
+                          title={`${nAttacks} attaques par action d'attaque`}
+                        >
+                          ×{nAttacks}
+                        </span>
+                      )}
                       {stats.damageStr && (
                         <span
                           className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50 text-orange-800 text-[11px] font-medium border border-orange-200"
@@ -2325,6 +2336,31 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
           <p className="text-xs text-ink-400 italic -mb-1">
             Aucune arme équipée — la frappe sans arme reste disponible.
           </p>
+        )}
+        {findClass(character.characterClass)?.name === 'Roublard' && (
+          (() => {
+            const hasFinesseWeapon = entries.some((e) => e.equipped && e.item.category === 'weapon'
+              && (e.item.properties?.includes('finesse') || e.item.properties?.includes('ammunition')));
+            return (
+              <div className="bg-parchment-100 rounded-lg px-3 py-2 border border-parchment-200 space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-ink-800 truncate">☠ Attaque furtive</span>
+                  {!hasFinesseWeapon && (
+                    <span className="text-[10px] text-ink-400 shrink-0">arme de finesse ou à distance requise</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50 text-orange-800 text-[11px] font-medium border border-orange-200"
+                    title="Une fois par tour, avec avantage ou un allié adjacent à la cible — dégâts du type de l'arme"
+                  >
+                    ⚔ {sneakAttackDice(character.level ?? 1)} dégâts de l'arme
+                  </span>
+                  <span className="text-[10px] text-ink-400">une fois par tour</span>
+                </div>
+              </div>
+            );
+          })()
         )}
         {(() => {
           const u = computeUnarmedStats(character);

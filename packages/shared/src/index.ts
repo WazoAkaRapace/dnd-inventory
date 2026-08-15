@@ -1227,12 +1227,12 @@ export function unarmoredMovementBonus(level: number): number {
 }
 
 export interface SpeedResult {
-  /** Effective speed in meters (base + class bonus). */
+  /** Effective speed in meters (base + modifiers). */
   speed: number;
-  /** Bonus applied, 0 when none (meters). */
+  /** Net bonus applied, 0 when none (meters). */
   bonus: number;
-  /** Human-readable source of the bonus. */
-  source: string | null;
+  /** Human-readable modifier sources (class bonus, armor penalty…). */
+  sources: string[];
 }
 
 /**
@@ -1241,7 +1241,7 @@ export interface SpeedResult {
  *  - Barbare, Déplacement rapide (level 5+): +3 m unless wearing heavy armor
  */
 export function computeSpeed(
-  character: { characterClass?: string | null; level?: number; speed?: number },
+  character: { characterClass?: string | null; level?: number; speed?: number; strength?: number },
   entries: Array<{ item: { category: string; acBase: number | null; strMin: number | null; nameFr: string | null; name: string; description?: string | null }; equipped: boolean }>,
 ): SpeedResult {
   const base = character.speed ?? 9;
@@ -1272,16 +1272,120 @@ export function computeSpeed(
     return false;
   });
 
+  const sources: string[] = [];
+  let speed = base;
+
   if (cls === 'Moine' && !wearingArmor && !hasShield) {
     const bonus = unarmoredMovementBonus(level);
     if (bonus > 0) {
-      return { speed: base + bonus, bonus, source: `Déplacement sans armure +${bonus} m` };
+      speed += bonus;
+      sources.push(`Déplacement sans armure +${bonus} m`);
     }
+  } else if (cls === 'Barbare' && level >= 5 && !wearingHeavy) {
+    speed += 3;
+    sources.push('Déplacement rapide +3 m');
   }
-  if (cls === 'Barbare' && level >= 5 && !wearingHeavy) {
-    return { speed: base + 3, bonus: 3, source: 'Déplacement rapide +3 m' };
+
+  // SRD: heavy armor worn below its STR minimum costs 3 m of speed
+  const heavyWorn = entries.filter((e) => {
+    if (!e.equipped || e.item.category !== 'armor') return false;
+    const name = (e.item.nameFr ?? e.item.name).toLowerCase();
+    if (name.includes('bouclier') || name.includes('shield')) return false;
+    if (e.item.acBase !== null && e.item.acBase !== 0) {
+      const base = findMundaneArmorByName(e.item.name, e.item.nameFr);
+      return base ? base.armorType === 'heavy' : (e.item.strMin !== null && e.item.strMin >= 13);
+    }
+    return resolveMagicArmorBase(e.item).base?.armorType === 'heavy';
+  });
+  const strScore = character.strength ?? 10;
+  const underStrMin = heavyWorn.some((e) => {
+    if (e.item.acBase !== null && e.item.acBase !== 0) {
+      return (e.item.strMin ?? 0) > strScore;
+    }
+    return (resolveMagicArmorBase(e.item).base?.strMin ?? 0) > strScore;
+  });
+  if (underStrMin) {
+    speed -= 3;
+    sources.push('Armure lourde −3 m (FOR insuffisante)');
   }
-  return { speed: base, bonus: 0, source: null };
+
+  return { speed, bonus: speed - base, sources };
+}
+
+// ---------- Spell damage at slot level (SRD scaling) ----------
+
+/** Scaled damage for a spell at a chosen slot level (cantrips: character level). */
+export interface SpellDamagePreview {
+  /** Dice string, e.g. "9d6". Null when the spell has no damage data. */
+  dice: string | null;
+  /** French damage type, e.g. "de feu". */
+  typeFr: string | null;
+}
+
+/** Lowercase English damage types from spell damageJson → French. */
+const SPELL_DAMAGE_TYPE_FR: Record<string, string> = {
+  fire: 'de feu', cold: 'de froid', lightning: 'de foudre', thunder: 'de tonnerre',
+  acid: "d'acide", poison: 'de poison', necrotic: 'nécrotiques', radiant: 'radiants',
+  force: 'de force', psychic: 'psychiques', bludgeoning: 'contondants',
+  piercing: 'perforants', slashing: 'tranchants',
+};
+
+/**
+ * Damage a spell deals at the chosen slot level (slotted spells) or the
+ * character's level (cantrips), from damageJson's damage_at_slot_level /
+ * damage_at_character_level tables. Picks the highest known key at or
+ * below the requested level.
+ */
+export function spellDamageAtLevel(
+  spell: { level: number; damageJson: string | null },
+  slotLevel: number,
+  charLevel: number,
+): SpellDamagePreview {
+  if (!spell.damageJson) return { dice: null, typeFr: null };
+  try {
+    const dmg = JSON.parse(spell.damageJson) as {
+      damage_type?: { index?: string };
+      damage_at_slot_level?: Record<string, string>;
+      damage_at_character_level?: Record<string, string>;
+    };
+    const table = spell.level === 0
+      ? dmg.damage_at_character_level
+      : dmg.damage_at_slot_level;
+    if (!table) return { dice: null, typeFr: null };
+    const wanted = spell.level === 0 ? charLevel : slotLevel;
+    const keys = Object.keys(table).map(Number).sort((a, b) => a - b);
+    const best = [...keys].reverse().find((k) => k <= Math.max(wanted, keys[0]));
+    const typeEn = dmg.damage_type?.index ?? '';
+    return {
+      dice: best !== undefined ? table[String(best)] ?? null : null,
+      typeFr: SPELL_DAMAGE_TYPE_FR[typeEn] ?? null,
+    };
+  } catch {
+    return { dice: null, typeFr: null };
+  }
+}
+
+// ---------- Sneak Attack & Extra Attack (SRD) ----------
+
+/** Rogue Sneak Attack dice: one d6 per 2 levels (ceil). */
+export function sneakAttackDice(level: number): string {
+  return `${Math.ceil(level / 2)}d6`;
+}
+
+/**
+ * Extra Attack: attacks per Attack action.
+ * Guerrier 2/3/4 at levels 5/11/20; Barbare, Paladin, Rôdeur 2 at level 5.
+ */
+export function extraAttacks(characterClass: string | null | undefined, level: number): number {
+  const cls = findClass(characterClass)?.name;
+  if (cls === 'Guerrier') {
+    if (level >= 20) return 4;
+    if (level >= 11) return 3;
+    if (level >= 5) return 2;
+  } else if ((cls === 'Barbare' || cls === 'Paladin' || cls === 'Rôdeur') && level >= 5) {
+    return 2;
+  }
+  return 1;
 }
 
 // ---------- Unarmed strikes (SRD) ----------

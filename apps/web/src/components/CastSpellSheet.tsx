@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { spellDamageAtLevel, spellSaveDC, formatModifier } from '@dnd-inventory/shared';
 import type { Spell } from '@dnd-inventory/shared';
 
 /**
@@ -9,12 +10,16 @@ import type { Spell } from '@dnd-inventory/shared';
  *
  * Portaled to body — .card's backdrop-filter would break fixed positioning.
  */
-export default function CastSpellSheet({ spell, slots, slotsUsed, concentrating, onClose, onCast }: {
+export default function CastSpellSheet({ spell, slots, slotsUsed, concentrating, castingMod, profBonus, charLevel, onClose, onCast }: {
   spell: Spell;
   /** Max slots per level 1-9 (index 0 = level 1). */
   slots: number[];
   slotsUsed: number[];
   concentrating: boolean;
+  /** For the DD / attack preview chips. */
+  castingMod?: number;
+  profBonus?: number;
+  charLevel?: number;
   onClose: () => void;
   /** Called with the chosen slot level (0 = cantrip, no slot) and whether it's a ritual cast (no slot either). */
   onCast: (level: number, ritual?: boolean) => Promise<void> | void;
@@ -128,6 +133,35 @@ export default function CastSpellSheet({ spell, slots, slotsUsed, concentrating,
             })}
           </div>
         )}
+
+        {/* Damage / DD preview at the chosen level */}
+        {(() => {
+          const dmg = spellDamageAtLevel(spell, chosen, charLevel ?? 1);
+          const hasPreview = dmg.dice || spell.dcJson || spell.attackType;
+          if (!hasPreview || (chosen < 0 && !isCantrip)) return null;
+          return (
+            <div className="flex flex-wrap items-center gap-1.5 mt-3">
+              {!isCantrip && chosen > 0 && (
+                <span className="text-xs text-ink-400">Au niveau {chosen} :</span>
+              )}
+              {dmg.dice && (
+                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50 text-orange-800 text-[11px] font-medium border border-orange-200">
+                  ⚔ {dmg.dice}{dmg.typeFr ? ` dégâts ${dmg.typeFr}` : ''}
+                </span>
+              )}
+              {spell.dcJson && castingMod !== undefined && profBonus !== undefined && (
+                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-50 text-blue-800 text-[11px] font-medium border border-blue-200">
+                  🛡 DD {spellSaveDC(castingMod, profBonus)}
+                </span>
+              )}
+              {spell.attackType && castingMod !== undefined && profBonus !== undefined && (
+                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-red-50 text-red-800 text-[11px] font-medium border border-red-200">
+                  🎯 {formatModifier(castingMod + profBonus)}
+                </span>
+              )}
+            </div>
+          );
+        })()}
 
         <button
           onClick={() => cast(chosen)}

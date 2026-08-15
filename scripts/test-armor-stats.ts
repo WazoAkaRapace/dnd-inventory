@@ -121,7 +121,7 @@ check('Non-classe sans armure → 10 + DEX (inchangé)',
 
 // Speed
 check('Moine niv 10 sans armure → +6 m (9 → 15)',
-  computeSpeed({ characterClass: 'Moine', level: 10, speed: 9 }, []), { speed: 15, bonus: 6, source: 'Déplacement sans armure +6 m' });
+  computeSpeed({ characterClass: 'Moine', level: 10, speed: 9 }, []), { speed: 15, bonus: 6, sources: ['Déplacement sans armure +6 m'] });
 check('Moine niv 10 avec bouclier → pas de bonus',
   computeSpeed({ characterClass: 'Moine', level: 10, speed: 9 }, [entry(mkArmor({ name: 'Shield', nameFr: 'Bouclier', rarity: 'none' as any, acBase: 2, strMin: 0, description: '' }))].map(e => e)).bonus, 0);
 check('Moine niv 1 → pas de bonus (niveau 2 requis)',
@@ -130,14 +130,38 @@ check('Barbare niv 5 sans armure → +3 m',
   computeSpeed({ characterClass: 'Barbare', level: 5, speed: 9 }, []).bonus, 3);
 check('Barbare niv 5 en armure légère → +3 m quand même',
   computeSpeed({ characterClass: 'Barbare', level: 5, speed: 9 }, [entry(cuir)]).bonus, 3);
-check('Barbare niv 5 en armure lourde → pas de bonus',
-  computeSpeed({ characterClass: 'Barbare', level: 5, speed: 9 }, [entry(harnois)]).bonus, 0);
-check('Barbare niv 5 en armure lourde MAGIQUE → pas de bonus',
-  computeSpeed({ characterClass: 'Barbare', level: 5, speed: 9 }, [entry(mkArmor({ name: 'Dwarven Plate', nameFr: 'Harnois nain', description: 'Armure (plates) … bonus de +2 à la CA.' }))]).bonus, 0);
+check('Barbare niv 5 en armure lourde (FOR 20) → pas de bonus',
+  computeSpeed({ characterClass: 'Barbare', level: 5, speed: 9, strength: 20 }, [entry(harnois)]).bonus, 0);
+check('Barbare niv 5 en armure lourde MAGIQUE (FOR 20) → pas de bonus',
+  computeSpeed({ characterClass: 'Barbare', level: 5, speed: 9, strength: 20 }, [entry(mkArmor({ name: 'Dwarven Plate', nameFr: 'Harnois nain', description: 'Armure (plates) … bonus de +2 à la CA.' }))]).bonus, 0);
 check('Guerrier → pas de bonus',
   computeSpeed({ characterClass: 'Guerrier', level: 20, speed: 9 }, []).bonus, 0);
 
 console.log('class rules: done');
+
+
+// --- Heavy armor STR-minimum speed penalty (SRD) ---
+const cuirasse_armor = cuirasse; // alias for clarity
+check('Cotte de mailles (min 13) avec FOR 12 → −3 m',
+  computeSpeed({ characterClass: 'Guerrier', level: 10, speed: 9, strength: 12 },
+    [entry(mkArmor({ name: 'Chain Mail', nameFr: 'Cotte de mailles', rarity: 'none' as any, acBase: 16, strMin: 13, description: '' }))]),
+  { speed: 6, bonus: -3, sources: ['Armure lourde −3 m (FOR insuffisante)'] });
+
+check('Cotte de mailles avec FOR 13 → pas de pénalité',
+  computeSpeed({ characterClass: 'Guerrier', level: 10, speed: 9, strength: 13 },
+    [entry(mkArmor({ name: 'Chain Mail', nameFr: 'Cotte de mailles', rarity: 'none' as any, acBase: 16, strMin: 13, description: '' }))]).bonus, 0);
+
+check('Harnois nain magique (min 15) avec FOR 14 → −3 m',
+  computeSpeed({ characterClass: 'Guerrier', level: 10, speed: 9, strength: 14 },
+    [entry(mkArmor({ name: 'Dwarven Plate', nameFr: 'Harnois nain', description: 'Armure (plates) … bonus de +2 à la CA.' }))]).bonus, -3);
+
+check('Armure légère avec FOR 6 → pas de pénalité',
+  computeSpeed({ characterClass: 'Guerrier', level: 10, speed: 9, strength: 6 }, [entry(cuirasse_armor)]).bonus, 0);
+
+check('Barbare FOR 12 en cotte de mailles → lourd : pas de déplacement rapide, −3',
+  computeSpeed({ characterClass: 'Barbare', level: 5, speed: 9, strength: 12 },
+    [entry(mkArmor({ name: 'Chain Mail', nameFr: 'Cotte de mailles', rarity: 'none' as any, acBase: 16, strMin: 13, description: '' }))]),
+  { speed: 6, bonus: -3, sources: ['Armure lourde −3 m (FOR insuffisante)'] });
 
 console.log(failures === 0 ? '\n✅ All armor stats checks pass' : `\n❌ ${failures} failure(s)`);
 process.exit(failures === 0 ? 0 : 1);

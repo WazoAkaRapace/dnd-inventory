@@ -171,6 +171,29 @@ check('Moine niv 5 dague (1d4) → 1d6', s && { dmg: s.damageStr, martial: s.mar
 s = computeWeaponStats(epeeCourte, mkChar({ strength: 8, dexterity: 16, level: 10, characterClass: 'Roublard' }));
 check('Roublard niv 10 épée courte → inchangé 1d6+3', s && { dmg: s.damageStr, martial: s.martialArtsDie }, { dmg: '1d6+3', martial: false });
 
+// --- Sneak Attack / Extra Attack / spell damage ---
+import { sneakAttackDice, extraAttacks, spellDamageAtLevel } from '@dnd-inventory/shared';
+check('Attaque furtive : 1d6/3d6/10d6 (niv 1/5/20)',
+  [sneakAttackDice(1), sneakAttackDice(5), sneakAttackDice(20)], ['1d6', '3d6', '10d6']);
+check('Extra Attack : Guerrier 1/5/11/20 → 1/2/3/4',
+  [extraAttacks('Guerrier', 1), extraAttacks('Guerrier', 5), extraAttacks('Guerrier', 11), extraAttacks('Guerrier', 20)],
+  [1, 2, 3, 4]);
+check('Extra Attack : Barbare 5 → 2, Moine 10 → 1, Magicien 20 → 1',
+  [extraAttacks('Barbare', 5), extraAttacks('Moine', 10), extraAttacks('Magicien', 20)], [2, 1, 1]);
+
+const bouleDeFeu: any = { level: 3, damageJson: JSON.stringify({ damage_type: { index: 'fire' }, damage_at_slot_level: { '3': '8d6', '4': '9d6', '6': '12d6', '8': '14d6', '9': '15d6', '10': '16d6', '11': '17d6', '12': '18d6', '13': '19d6', '14': '20d6', '15': '21d6', '16': '22d6', '17': '23d6', '18': '24d6', '19': '25d6', '20': '26d6' } }) };
+check('Boule de feu niveau 3 → 8d6 de feu',
+  spellDamageAtLevel(bouleDeFeu, 3, 10), { dice: '8d6', typeFr: 'de feu' });
+check('Boule de feu niveau 4 → 9d6 (upcast)',
+  spellDamageAtLevel(bouleDeFeu, 4, 10).dice, '9d6');
+check('Boule de feu niveau 5 → reste 9d6 (palier suivant à 6)',
+  spellDamageAtLevel(bouleDeFeu, 5, 10).dice, '9d6');
+const rayonFeu: any = { level: 0, damageJson: JSON.stringify({ damage_type: { index: 'fire' }, damage_at_character_level: { '1': '1d10', '5': '2d10', '11': '3d10', '17': '4d10' } }) };
+check('Sort mineur niveau 10 → 2d10 (palier 5)',
+  spellDamageAtLevel(rayonFeu, 0, 10).dice, '2d10');
+check('Sort sans dégâts → null',
+  spellDamageAtLevel({ level: 1, damageJson: null } as any, 1, 10), { dice: null, typeFr: null });
+
 // --- Fighting styles ---
 const rodeur5 = mkChar({ dexterity: 16, level: 5, characterClass: 'Rôdeur', fightingStyle: 'archery' });
 s = computeWeaponStats(arcLong, rodeur5);

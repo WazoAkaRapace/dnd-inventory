@@ -309,7 +309,7 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
             draftValue={speedDraft}
             onChange={setSpeedDraft}
             onBlur={commitSpeed}
-            hint={speedResult.source ? `→ ${speedResult.speed} m · ${speedResult.source}` : undefined}
+            hint={speedResult.sources.length > 0 ? `→ ${speedResult.speed} m · ${speedResult.sources.join(' · ')}` : undefined}
           />
           {isSpellcaster && (
             <>
