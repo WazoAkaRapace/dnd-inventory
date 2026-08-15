@@ -87,7 +87,7 @@ function Nav() {
           )}
         </div>
         <div className="flex items-center gap-2 sm:gap-4">
-          {(loc.pathname.startsWith('/party/') || loc.pathname === '/parties') && !routeTitle?.backTo && (
+          {loc.pathname.startsWith('/party/') && !routeTitle?.backTo && (
             <Link to="/parties" className="btn-ghost text-parchment-50 hover:bg-ink-700 text-sm">
               <span className="hidden sm:inline">Mes groupes</span>
               <span className="sm:hidden">🏠</span>
