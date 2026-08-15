@@ -2428,9 +2428,25 @@ function SurvivalPanel({ character, charId, entries, markLocalMutation, onSaved,
                 <span className="text-sm font-semibold text-green-900 flex items-center gap-1.5">
                   🐾 Forme sauvage
                 </span>
-                <span className="flex items-center gap-1" title="2 utilisations, récupérées après un repos court ou long">
-                  {[0, 1].map((i) => (
-                    <span key={i} className={`text-base leading-none ${i < (character.wildShapeUses ?? 2) ? 'opacity-100' : 'opacity-20'}`}>🐾</span>
+                <span className="flex items-center gap-0.5" role="group" aria-label="Utilisations de forme sauvage">
+                  {[1, 2].map((n) => (
+                    <button
+                      key={n}
+                      onClick={async () => {
+                        if ((character.wildShapeUses ?? 2) === n) return;
+                        markLocalMutation();
+                        try {
+                          await api.patch(`/api/characters/${charId}`, { wildShapeUses: n });
+                          await onSaved();
+                        } catch { onError('Erreur de mise à jour'); }
+                      }}
+                      className={`text-base leading-none px-0.5 transition-opacity ${(character.wildShapeUses ?? 2) >= n ? 'opacity-100' : 'opacity-25 hover:opacity-60'}`}
+                      aria-pressed={(character.wildShapeUses ?? 2) >= n}
+                      aria-label={`${n} utilisation${n > 1 ? 's' : ''} de forme sauvage`}
+                      title={`Régler à ${n} utilisation${n > 1 ? 's' : ''} (récupérées après un repos court ou long)`}
+                    >
+                      🐾
+                    </button>
                   ))}
                 </span>
               </div>
