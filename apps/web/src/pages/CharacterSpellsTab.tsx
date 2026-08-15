@@ -32,6 +32,8 @@ interface Props {
   onError: (msg: string) => void;
 }
 
+type DomainSpell = Spell & { domainLevel: number };
+
 const PAGE_SIZE = 30;
 
 // School colors for badges
@@ -49,6 +51,7 @@ const SCHOOL_COLORS: Record<string, string> = {
 export default function CharacterSpellsTab({ character, charId, onSaved, onError }: Props) {
   const [charSpells, setCharSpells] = useState<CharacterSpell[]>([]);
   const [loadingSpells, setLoadingSpells] = useState(true);
+  const [domainSpells, setDomainSpells] = useState<DomainSpell[]>([]);
 
   // Catalog browser
   const [catalogOpen, setCatalogOpen] = useState(false);
@@ -87,7 +90,9 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
   const preparedLimit = classInfo && castingAbility
     ? computePreparedSpellsLimit(classInfo, level, (character[castingAbility as keyof Character] as number) ?? 10)
     : null;
-  const preparedCount = charSpells.filter((cs) => cs.prepared).length;
+  // Domain spells are always prepared and don't count against the limit
+  const domainIds = new Set(domainSpells.map((sp) => sp.id));
+  const preparedCount = charSpells.filter((cs) => cs.prepared && !domainIds.has(cs.spell.id)).length;
 
   // Fetch character's known spells
   const fetchCharSpells = useCallback(async () => {
@@ -106,6 +111,18 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
   useEffect(() => {
     fetchCharSpells();
   }, [fetchCharSpells]);
+
+  // Divine domain spells (always prepared, derived — refetched with the character)
+  const isCleric = findClass(character.characterClass)?.name === 'Clerc';
+  const divineDomain = character.divineDomain ?? null;
+  useEffect(() => {
+    if (!isCleric || !divineDomain) { setDomainSpells([]); return; }
+    let alive = true;
+    api.get(`/api/characters/${charId}/domain-spells`)
+      .then((res) => { if (alive) setDomainSpells(res.data.spells ?? []); })
+      .catch(() => { if (alive) setDomainSpells([]); });
+    return () => { alive = false; };
+  }, [isCleric, divineDomain, charId, character.level]);
 
   // Debounce search input (same pattern as items catalog)
   useEffect(() => {
@@ -242,10 +259,22 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
     setCastingSpell(null);
   };
 
-  // Group known spells by level — prepared spells first, then alphabetical
+  // Group spells by level — prepared spells first, then alphabetical.
+  // Domain spells (not already in the spellbook) join as always-prepared rows.
+  const knownIds = new Set(charSpells.map((cs) => cs.spell.id));
+  const domainOnly: CharacterSpell[] = domainSpells
+    .filter((sp) => !knownIds.has(sp.id))
+    .map((sp) => ({
+      id: 1_000_000 + sp.id, // synthetic link id, never in the DB
+      characterId: Number(charId),
+      spell: sp,
+      prepared: true,
+      sortOrder: 0,
+      addedAt: '',
+    }));
   const spellsByLevel = [0,1,2,3,4,5,6,7,8,9].map((lvl) => ({
     level: lvl,
-    spells: charSpells.filter((cs) => cs.spell.level === lvl)
+    spells: [...charSpells, ...domainOnly].filter((cs) => cs.spell.level === lvl)
       .sort((a, b) =>
         Number(b.prepared) - Number(a.prepared) ||
         (a.spell.nameFr ?? a.spell.name).localeCompare(b.spell.nameFr ?? b.spell.name, 'fr'),
@@ -381,14 +410,24 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                       return (
                         <li key={cs.id} className="bg-parchment-50 rounded-lg border border-parchment-200 overflow-hidden">
                           <div className="flex items-center gap-2 p-2.5">
-                            <button
-                              onClick={() => togglePrepared(cs.id, cs.prepared)}
-                              className={`text-lg shrink-0 ${cs.prepared ? 'text-gold-400' : 'text-parchment-300 hover:text-parchment-400'}`}
-                              aria-label={cs.prepared ? 'Sort préparé' : 'Sort non préparé'}
-                              title={cs.prepared ? 'Préparé' : 'Non préparé'}
-                            >
-                              {cs.prepared ? '★' : '☆'}
-                            </button>
+                            {domainIds.has(cs.spell.id) ? (
+                              <span
+                                className="text-lg shrink-0 text-gold-500"
+                                title="Sort de domaine — toujours préparé, ne compte pas dans la limite"
+                                aria-label="Sort de domaine toujours préparé"
+                              >
+                                ◆
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => togglePrepared(cs.id, cs.prepared)}
+                                className={`text-lg shrink-0 ${cs.prepared ? 'text-gold-400' : 'text-parchment-300 hover:text-parchment-400'}`}
+                                aria-label={cs.prepared ? 'Sort préparé' : 'Sort non préparé'}
+                                title={cs.prepared ? 'Préparé' : 'Non préparé'}
+                              >
+                                {cs.prepared ? '★' : '☆'}
+                              </button>
+                            )}
                             <button
                               onClick={() => setExpandedId(isExpanded ? null : cs.id)}
                               className="min-w-0 flex-1 text-left"
@@ -417,13 +456,15 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                             >
                               🪄
                             </button>
-                            <button
-                              onClick={() => removeSpell(cs.id)}
-                              className="text-ink-300 hover:text-red-500 text-sm shrink-0 px-1"
-                              aria-label={`Oublier ${name}`}
-                            >
-                              ×
-                            </button>
+                            {!domainIds.has(cs.spell.id) && (
+                              <button
+                                onClick={() => removeSpell(cs.id)}
+                                className="text-ink-300 hover:text-red-500 text-sm shrink-0 px-1"
+                                aria-label={`Oublier ${name}`}
+                              >
+                                ×
+                              </button>
+                            )}
                           </div>
                           {isExpanded && (
                             <div className="px-3 pb-3 pt-1 border-t border-parchment-200 text-xs text-ink-600 space-y-1.5">

@@ -294,6 +294,8 @@ export interface CharacterSummary {
   wildShapeSeen: string[];
   // Druidic circle: 'terre' | 'lune' | null
   druidCircle: string | null;
+  // Divine domain (Clerc): 'savoir' | 'vie' | … | null
+  divineDomain: string | null;
 }
 
 /** A Constitution save required to maintain concentration after taking damage. */
@@ -388,6 +390,7 @@ export interface PatchCharacterPayload {
   hitDiceUsed?: number;
   wildShapeSeen?: string[];
   druidCircle?: string | null;
+  divineDomain?: string | null;
 }
 
 // ---------- D&D 5e Abilities (Caractéristiques) ----------
@@ -1381,6 +1384,104 @@ export function spellDamageAtLevel(
   } catch {
     return { dice: null, typeFr: null };
   }
+}
+
+// ---------- Divine domains (Clerc, SRD) ----------
+
+export interface DivineDomainInfo {
+  key: string;
+  label: string;
+  /** Spell level 1-5 → two English spell names (matched against the catalog). */
+  spells: Record<number, [string, string]>;
+}
+
+/** The seven SRD cleric domains. Domain spells are always prepared and
+ *  don't count against the prepared-spells limit. */
+export const DIVINE_DOMAINS: DivineDomainInfo[] = [
+  {
+    key: 'savoir', label: 'Savoir',
+    spells: {
+      1: ['Command', 'Identify'],
+      2: ['Augury', 'Suggestion'],
+      3: ['Nondetection', 'Speak with Dead'],
+      4: ['Arcane Eye', 'Confusion'],
+      5: ['Legend Lore', 'Scrying'],
+    },
+  },
+  {
+    key: 'vie', label: 'Vie',
+    spells: {
+      1: ['Bless', 'Cure Wounds'],
+      2: ['Lesser Restoration', 'Spiritual Weapon'],
+      3: ['Beacon of Hope', 'Revivify'],
+      4: ['Death Ward', 'Guardian of Faith'],
+      5: ['Mass Cure Wounds', 'Raise Dead'],
+    },
+  },
+  {
+    key: 'lumiere', label: 'Lumière',
+    spells: {
+      1: ['Burning Hands', 'Faerie Fire'],
+      2: ['Flaming Sphere', 'Scorching Ray'],
+      3: ['Daylight', 'Fireball'],
+      4: ['Guardian of Faith', 'Wall of Fire'],
+      5: ['Flame Strike', 'Scrying'],
+    },
+  },
+  {
+    key: 'nature', label: 'Nature',
+    spells: {
+      1: ['Animal Friendship', 'Speak with Animals'],
+      2: ['Barkskin', 'Spike Growth'],
+      3: ['Plant Growth', 'Wind Wall'],
+      4: ['Dominate Beast', 'Grasping Vine'],
+      5: ['Insect Plague', 'Tree Stride'],
+    },
+  },
+  {
+    key: 'tempete', label: 'Tempête',
+    spells: {
+      1: ['Fog Cloud', 'Thunderwave'],
+      2: ['Gust of Wind', 'Shatter'],
+      3: ['Call Lightning', 'Sleet Storm'],
+      4: ['Control Water', 'Ice Storm'],
+      5: ['Destructive Wave', 'Insect Plague'],
+    },
+  },
+  {
+    key: 'tromperie', label: 'Tromperie',
+    spells: {
+      1: ['Charm Person', 'Disguise Self'],
+      2: ['Mirror Image', 'Pass Without Trace'],
+      3: ['Blink', 'Dispel Magic'],
+      4: ['Dimension Door', 'Polymorph'],
+      5: ['Dominate Person', 'Modify Memory'],
+    },
+  },
+  {
+    key: 'guerre', label: 'Guerre',
+    spells: {
+      1: ['Divine Favor', 'Shield of Faith'],
+      2: ['Magic Weapon', 'Spiritual Weapon'],
+      3: ['Crusader s mantle', 'Spirit Guardians'], // OCR: apostrophe lost in the catalog
+      4: ['Freedom of Movement', 'Stoneskin'],
+      5: ['Flame Strike', 'Hold Monster'],
+    },
+  },
+];
+
+/** Domain spell names unlocked at the given cleric level (spell level L unlocks at 2L−1). */
+export function domainSpellsFor(domain: string | null | undefined, level: number): Array<{ level: number; names: string[] }> {
+  if (!domain) return [];
+  const info = DIVINE_DOMAINS.find((d) => d.key === domain);
+  if (!info) return [];
+  const out: Array<{ level: number; names: string[] }> = [];
+  for (const lvl of [1, 2, 3, 4, 5]) {
+    if (level >= 2 * lvl - 1) {
+      out.push({ level: lvl, names: [...info.spells[lvl]] });
+    }
+  }
+  return out;
 }
 
 // ---------- Wild Shape (Druide, SRD) ----------

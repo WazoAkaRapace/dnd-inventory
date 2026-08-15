@@ -161,6 +161,7 @@ export function mapCharacterSummary(row: any): CharacterSummary {
     hitDiceUsed: row.hit_dice_used ?? 0,
     wildShapeSeen: parseJsonArray(row.wild_shape_seen_json, []),
     druidCircle: row.druid_circle ?? null,
+    divineDomain: row.divine_domain ?? null,
   };
 }
 

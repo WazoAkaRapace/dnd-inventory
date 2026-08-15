@@ -21,6 +21,7 @@ import {
   findClass,
   effectiveWeaponProficiencies,
   classWeaponProficiencies,
+  DIVINE_DOMAINS,
   computeSpeed,
   MUNDANE_WEAPONS,
   FIGHTING_STYLE_LABELS_FR,
@@ -224,6 +225,25 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
             />
           </label>
         </div>
+        {findClass(character.characterClass)?.name === 'Clerc' && (
+          <label className="flex items-center justify-between gap-3 max-w-xs">
+            <span className="label mb-0">Domaine divin</span>
+            <select
+              className="input py-1.5 text-sm w-auto"
+              value={character.divineDomain ?? ''}
+              onChange={(e) => patchCharacter(
+                { divineDomain: e.target.value === '' ? null : e.target.value },
+                'Erreur de mise à jour',
+              )}
+              aria-label="Domaine divin"
+            >
+              <option value="">—</option>
+              {DIVINE_DOMAINS.map((d) => (
+                <option key={d.key} value={d.key}>{d.label}</option>
+              ))}
+            </select>
+          </label>
+        )}
         {findClass(character.characterClass)?.name === 'Druide' && (
           <label className="flex items-center justify-between gap-3 max-w-xs">
             <span className="label mb-0">Cercle druidique</span>
