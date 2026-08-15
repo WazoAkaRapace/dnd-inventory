@@ -131,6 +131,28 @@ check('Druide: gourdin qualifié',
 check('Liste explicite martial only → épée longue qualifiée, gourdin non',
   effectiveWeaponProficiencies(mkChar({ weaponProficiencies: ['martial'] })), { simple: false, martial: true, specific: [] });
 
+// --- Unarmed strikes ---
+import { computeUnarmedStats, martialArtsDie } from '@dnd-inventory/shared';
+let u = computeUnarmedStats(mkChar({ strength: 18, level: 5, characterClass: 'Guerrier' }));
+check('Frappe sans arme Guerrier FOR 18 → +7, 1+4 contondants',
+  { ab: u.attackBonus, dmg: u.damageStr, ability: u.ability, monk: u.monk },
+  { ab: 7, dmg: '1+4', ability: 'strength', monk: false });
+
+u = computeUnarmedStats(mkChar({ strength: 8, dexterity: 16, level: 1, characterClass: 'Moine' }));
+check('Moine niv 1 DEX 16 → +5, 1d4+3, action bonus',
+  { ab: u.attackBonus, dmg: u.damageStr, ability: u.ability, monk: u.monk, bonus: u.bonusActionAttack },
+  { ab: 5, dmg: '1d4+3', ability: 'dexterity', monk: true, bonus: true });
+
+u = computeUnarmedStats(mkChar({ strength: 18, dexterity: 10, level: 1, characterClass: 'Moine' }));
+check('Moine FOR 18 > DEX → FOR utilisé', u.ability, 'strength');
+
+check('Dé arts martiaux : 1d4/1d6/1d8/1d10',
+  [martialArtsDie(1), martialArtsDie(5), martialArtsDie(11), martialArtsDie(17)],
+  ['1d4', '1d6', '1d8', '1d10']);
+
+u = computeUnarmedStats(mkChar({ strength: 10, dexterity: 18, characterClass: 'Roublard', level: 5 }));
+check('Non-moine avec DEX 18 → FOR quand même (SRD)', { ability: u.ability, dmg: u.damageStr }, { ability: 'strength', dmg: '1' });
+
 // --- Fighting styles ---
 const rodeur5 = mkChar({ dexterity: 16, level: 5, characterClass: 'Rôdeur', fightingStyle: 'archery' });
 s = computeWeaponStats(arcLong, rodeur5);

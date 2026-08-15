@@ -1182,6 +1182,57 @@ function isMonkWeaponName(nameEn: string, nameFr: string | null): boolean {
   return !m.properties.includes('ammunition') && !m.properties.includes('two-handed');
 }
 
+// ---------- Unarmed strikes (SRD) ----------
+
+/** Monk martial arts damage die by level (d4 → d6 at 5 → d8 at 11 → d10 at 17). */
+export function martialArtsDie(level: number): string {
+  if (level >= 17) return '1d10';
+  if (level >= 11) return '1d8';
+  if (level >= 5) return '1d6';
+  return '1d4';
+}
+
+/** Computed unarmed-strike stats (everyone can punch; monks use martial arts). */
+export interface UnarmedStats {
+  /** d20 attack bonus (ability mod + proficiency — everyone is proficient with unarmed strikes). */
+  attackBonus: number;
+  ability: 'strength' | 'dexterity';
+  /** e.g. "1+2", or "1d4+3" for monks. */
+  damageStr: string;
+  damageTypeFr: string;
+  /** True when the character is a Monk (martial arts die + DEX option). */
+  monk: boolean;
+  /** Monks: one extra unarmed strike as a bonus action after attacking. */
+  bonusActionAttack: boolean;
+}
+
+/**
+ * Unarmed strike, SRD rules: attack = ability mod + proficiency, damage
+ * 1 + mod bludgeoning. Monks (Arts martiaux) use DEX if better and roll
+ * their martial arts die (martialArtsDie) instead of the flat 1, and can
+ * make one unarmed strike as a bonus action.
+ */
+export function computeUnarmedStats(
+  character: Pick<Character, 'strength' | 'dexterity' | 'level' | 'characterClass'>,
+): UnarmedStats {
+  const strMod = abilityModifier(character.strength ?? 10);
+  const dexMod = abilityModifier(character.dexterity ?? 10);
+  const isMonk = findClass(character.characterClass)?.name === 'Moine';
+  // Monks may use DEX for unarmed strikes; everyone else uses STR
+  const ability: 'strength' | 'dexterity' = isMonk && dexMod >= strMod ? 'dexterity' : 'strength';
+  const mod = ability === 'dexterity' ? dexMod : strMod;
+  const prof = proficiencyBonus(character.level ?? 1);
+  const dice = isMonk ? martialArtsDie(character.level ?? 1) : '1';
+  return {
+    attackBonus: mod + prof,
+    ability,
+    damageStr: formatDiceWithMod(dice, mod) ?? dice,
+    damageTypeFr: 'contondants',
+    monk: isMonk,
+    bonusActionAttack: isMonk,
+  };
+}
+
 // ---------- Magic armor base resolution (SRD) ----------
 
 /** One SRD mundane armor (names match the item catalog). strMin: 0 = no minimum. */
