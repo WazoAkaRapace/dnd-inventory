@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useParams, Link } from 'react-router-dom';
 import api from '../api';
 import { useSyncEvent, useSync } from '../sync';
+import { useAuth } from '../auth';
 import type {
   CharacterInventory,
   InventoryEntry,
@@ -129,6 +130,7 @@ function findCarriedLocation(locations: StorageLocation[]): StorageLocation | un
 // ---------- Main component ----------
 
 export default function CharacterInventoryPage() {
+  const { user } = useAuth();
   const { partyId, charId } = useParams<{ partyId: string; charId: string }>();
 
   // Inventory / character state
