@@ -5,10 +5,10 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
-import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import { migrate } from './db/index.ts';
 import { seedItems, seedSpells, seedMonsters } from './db/seed.ts';
+import { errorRateLimit } from './rateLimit.ts';
 import { authRoutes } from './routes/auth.ts';
 import { partyRoutes } from './routes/parties.ts';
 import { characterRoutes } from './routes/characters.ts';
@@ -66,12 +66,11 @@ async function buildServer() {
     secret: JWT_SECRET,
     sign: { expiresIn: '7d' },
   });
-  // Global per-IP rate limit; auth and join routes override with tighter buckets.
-  await app.register(rateLimit, {
-    global: true,
-    max: 100,
-    timeWindow: '1 minute',
-  });
+  // Error-scoped rate limiting: only failed responses consume budget, so a
+  // whole table sharing one IP (or one nginx proxy IP) is never blocked by
+  // normal successful usage. Installed as plain root-level hooks (not a
+  // registered plugin) so they apply to every /api route below.
+  await errorRateLimit(app);
   await app.register(websocket);
 
   // Health check (public)
