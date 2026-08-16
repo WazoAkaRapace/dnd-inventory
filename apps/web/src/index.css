@@ -518,3 +518,41 @@ input[type="number"] {
     box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.45);
   }
 }
+
+/* ---------- Bandeau d'état (CharacterStateBand) ---------- */
+
+/* The band's one authored moment: the Agir row (or initiative call) rises
+   into place the instant it becomes yours. State-change motion only. */
+@keyframes band-rise {
+  from {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+}
+.band-rise {
+  animation: band-rise 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .band-rise {
+    animation: none;
+  }
+}
+
+/* Pinned state twin — drops in from under the app header once the static
+   band has scrolled away. Transform-only entrance: no layout change. */
+@keyframes band-drop {
+  from {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+}
+.band-drop {
+  animation: band-drop 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .band-drop {
+    animation: none;
+  }
+}

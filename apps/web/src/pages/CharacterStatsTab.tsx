@@ -11,6 +11,7 @@ import {
   type Character,
   classWeaponProficiencies,
   computeAC,
+  computeEncumbrance,
   computeSpeed,
   DIVINE_DOMAINS,
   DND_CLASSES,
@@ -159,6 +160,28 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
   const effectiveAC = acOverride ?? acResult.ac;
   const [acDraft, setAcDraft] = useState('');
   const [editingAC, setEditingAC] = useState(false);
+
+  // Portage multiplier — the manual input behind the derived max-carry stat
+  // (moved from the old cog modal; same input, same help)
+  const [multDraft, setMultDraft] = useState('');
+  const [editingMult, setEditingMult] = useState(false);
+  const [showMultHelp, setShowMultHelp] = useState(false);
+  const capacityMult = character.capacityMultiplier ?? 1;
+  const portageMaxKg = computeEncumbrance(
+    0,
+    character.strength ?? 10,
+    'variant',
+    0,
+    capacityMult,
+  ).maxCarryKg;
+  const commitMult = () => {
+    setEditingMult(false);
+    const parsed = Number(multDraft);
+    if (!Number.isFinite(parsed) || parsed <= 0) return;
+    const newMult = Math.round(parsed * 100) / 100;
+    if (newMult === capacityMult) return;
+    patchCharacter({ capacityMultiplier: newMult }, 'Erreur de mise à jour');
+  };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: armorClassOverride is a deliberate dep — collapse the inline AC editor when the override changes (e.g. synced from another device).
   useEffect(() => {
@@ -429,6 +452,79 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
                 : undefined
             }
           />
+          {/* Portage max — derived from FOR × 15 × the multiplier (editable) */}
+          <div className="bg-parchment-100 rounded-xl p-3 text-center">
+            <div className="text-xs font-medium text-ink-500 mb-1">Portage max</div>
+            {editingMult ? (
+              <input
+                type="number"
+                min={1}
+                step={0.5}
+                className="w-14 text-center text-xl font-bold text-ink-800 bg-white border border-parchment-300 rounded-md py-0.5 focus:outline-none focus:border-blood-500"
+                value={multDraft}
+                onChange={(e) => setMultDraft(e.target.value)}
+                onBlur={commitMult}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                  if (e.key === 'Escape') setEditingMult(false);
+                }}
+                placeholder={`×${capacityMult}`}
+                autoFocus
+                aria-label="Multiplicateur de portage"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setMultDraft('');
+                  setEditingMult(true);
+                }}
+                className="text-2xl font-bold text-ink-800 hover:text-blood-600 transition-colors"
+                title="Cliquer pour modifier le multiplicateur de portage"
+              >
+                {portageMaxKg} kg
+              </button>
+            )}
+            <div className="text-[10px] text-ink-400 mt-0.5 flex items-center justify-center gap-1">
+              <span title="Règle métrique : FOR × 7,5 kg par point de Force (FOR × 15 lb en impérial), multiplié par le multiplicateur de portage.">
+                FOR {character.strength ?? 10} × 7,5 kg{' '}
+                <span className="font-semibold text-ink-600">×{capacityMult}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowMultHelp((s) => !s)}
+                className="text-ink-400 hover:text-blood-600 leading-none"
+                aria-label="Aide sur le multiplicateur de portage"
+                aria-expanded={showMultHelp}
+                title="Aide"
+              >
+                ?
+              </button>
+            </div>
+          </div>
+          {showMultHelp && (
+            <div className="col-span-2 sm:col-span-4 text-left text-xs text-ink-600 bg-parchment-50 border border-parchment-200 rounded-lg p-3 space-y-1.5">
+              <p>
+                <strong>×1 (défaut)</strong> : créature de taille M sans capacité spéciale.
+              </p>
+              <p>
+                <strong>×2</strong> : Construction massive (Goliath, Firbolg, Demi-Orc, Bugbear,
+                Orc, Loxodon) ou créature de taille G. Le personnage compte comme une catégorie de
+                taille supérieure pour le calcul du poids transportable.
+              </p>
+              <p>
+                <strong>×3</strong> : Créature de taille TG.
+              </p>
+              <p>
+                <strong>×4</strong> : Créature de taille Gig.
+              </p>
+              <p className="text-ink-400">
+                Ce multiplicateur s'applique aux trois paliers (encombré, lourdement encombré, max).
+                Modifie-le si ton personnage a un trait qui augmente sa capacité de portage. La
+                barre d'encombrement du bandeau suit automatiquement.
+              </p>
+            </div>
+          )}
           {isSpellcaster && (
             <>
               <DerivedStat label="DD de sauvegarde" value={String(spellDC)} />

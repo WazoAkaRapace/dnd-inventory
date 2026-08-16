@@ -98,7 +98,8 @@ EST la hiérarchie : I Ton personnage, II La table, III Outils & annexes.
 | `Fab` | bouton d'action flottant `+` | `mobileOnly`, `raised` (au-dessus du dock) |
 | `HpBar` | barre de PV partout (fiche, combat, forme animale) | paliers unifiés : ≤0 `red-700`, ≤25 % `red-500`, ≤50 % `yellow-500`, sinon `green-500` ; `size` xs/sm/md, `showText`, `trackClassName` ; `role="progressbar"` |
 | `Chip` | pastille de stat (attaque 🎯, dégâts ⚔, DD 🛡, ×N, +magique ✨) | `tone` (orange/red/blood/blue/amber/gold/indigo), `soft`, `title` = info-bulle de décomposition |
-| `EncumbranceBar` | portage et paliers | affiche conséquences de règle au moment où elles s'appliquent |
+| `EncumbranceBar` | portage et paliers | affiche conséquences de règle au moment où elles s'appliquent ; `compact` = variante une-ligne du bandeau (barre fine + lecture mono + palier, conséquence conservée) |
+| `CharacterStateBand` | bandeau d'état de la fiche joueur (`components/CharacterStateBand.tsx`) | rail réglé épinglé sous l'en-tête : identité (renomme inline) + phrase d'état (PV, CA, sorts, états) + ligne de combat (`CombatLine` : appel d'initiative / Agir / tour quiet, `aria-live` sur la copie statique) + encombrement compact ; panneau dépliable (états, emplacements par niveau, PV ±1/±5 — debouncés 700 ms en UN patch pour le jet de concentration sur le total) ; jumeau fixe compact au défilement (`band-drop`, IntersectionObserver — le flux ne change jamais de hauteur) ; le multiplicateur de portage vit dans l'onglet Caractéristiques (tuile « Portage max » des Statistiques dérivées) |
 | `ConfirmButton` | suppression en deux temps | arme 4 s puis confirme ; n'bulle pas au parent |
 | `ToastStack` / `Toast` | retours d'action | bas d'écran, `aria-live` |
 | `RarityBadge` `CategoryBadge` `WeightBadge` `CostBadge` | métadonnées d'objet | |
@@ -111,7 +112,11 @@ Une seule courbe de sortie : `cubic-bezier(0.16, 1, 0.3, 1)`. Entrées courtes
 sheet-up, register-rise). Le registre arrive par `.register-rise` : montée de
 12 px + fondu, 0.35 s, remplissage `backwards`, stagger inline plafonné
 (≤ 5 blocs × 60 ms) — les entrées se posent sous la règle de tête l'une après
-l'autre, puis plus rien ne bouge. Tout est coupé sous
+l'autre, puis plus rien ne bouge. Sur la fiche, la ligne Agir (ou l'appel
+d'initiative) monte par `.band-rise` (6 px + fondu, 0.2 s) à l'instant où le
+tour devient tien ; le jumeau épinglé descend par `.band-drop` (−8 px, 0.2 s,
+transform seul — jamais de changement de hauteur dans le flux au défilement).
+Tout est coupé sous
 `prefers-reduced-motion: reduce`, avec un état statique lisible quand le
 mouvement porte l'information (anneau « à toi de jouer » sans animation).
 

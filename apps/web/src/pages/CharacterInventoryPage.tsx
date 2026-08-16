@@ -35,6 +35,7 @@ import { createPortal } from 'react-dom';
 import { Link, useParams } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../auth';
+import CharacterStateBand from '../components/CharacterStateBand';
 import ConcentrationAlert from '../components/ConcentrationAlert';
 import MonsterStatBlock from '../components/MonsterStatBlock';
 import TurnSlash, { combatVibrate, useTurnSlash } from '../components/TurnSlash';
@@ -58,7 +59,9 @@ type CharacterTab =
   | 'npcs'
   | 'notes';
 
-/** Character sheet tabs (shared by the desktop top bar and the mobile bottom dock). */
+/** Character sheet tabs (shared by the desktop top bar and the mobile bottom dock).
+ *  Play-first order: the state tabs a player opens mid-session lead; the bag
+ *  and the record tabs follow. */
 const CHARACTER_TABS: {
   key: CharacterTab;
   label: string;
@@ -66,11 +69,11 @@ const CHARACTER_TABS: {
   primary: boolean;
   short?: string;
 }[] = [
-  { key: 'inventory', label: 'Inventaire', icon: '🎒', primary: false },
   { key: 'survival', label: 'Survie', icon: '🩸', primary: true, short: 'Survie' },
   { key: 'stats', label: 'Caractéristiques', icon: '⚔️', primary: true, short: 'Caract.' },
   { key: 'spells', label: 'Sorts', icon: '✨', primary: true, short: 'Sorts' },
   { key: 'skills', label: 'Compétences', icon: '🎯', primary: true, short: 'Comp.' },
+  { key: 'inventory', label: 'Inventaire', icon: '🎒', primary: false },
   { key: 'features', label: 'Traits', icon: '📋', primary: false, short: 'Traits' },
   { key: 'description', label: 'Description', icon: '👤', primary: false },
   { key: 'npcs', label: 'PNJ', icon: '🎭', primary: false },
@@ -83,7 +86,6 @@ import {
   Chip,
   CostBadge,
   EmptyState,
-  EncumbranceBar,
   ErrorMsg,
   Fab,
   HpBar,
@@ -94,20 +96,6 @@ import {
   ToastStack,
   WeightBadge,
 } from '../components/ui';
-
-// ---------- Icons ----------
-
-function SettingsIcon({ className = '' }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M11.49 3.17a.75.75 0 0 0-1.48 0l-.13 1.02a6.5 6.5 0 0 0-1.4.57l-.82-.62a.75.75 0 0 0-.98.06l-.7.7a.75.75 0 0 0-.06.98l.62.82a6.5 6.5 0 0 0-.57 1.4l-1.02.13a.75.75 0 0 0 0 1.48l1.02.13c.14.49.33.96.57 1.4l-.62.82a.75.75 0 0 0 .06.98l.7.7c.28.28.72.31 1.04.06l.76-.57c.44.24.91.43 1.4.57l.13 1.02a.75.75 0 0 0 1.48 0l.13-1.02c.49-.14.96-.33 1.4-.57l.76.57c.32.25.76.22 1.04-.06l.7-.7a.75.75 0 0 0 .06-.98l-.62-.82c.24-.44.43-.91.57-1.4l1.02-.13a.75.75 0 0 0 0-1.48l-1.02-.13a6.5 6.5 0 0 0-.57-1.4l.62-.82a.75.75 0 0 0-.06-.98l-.7-.7a.75.75 0 0 0-.98-.06l-.82.62a6.5 6.5 0 0 0-1.4-.57l-.13-1.02ZM10 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"
-      />
-    </svg>
-  );
-}
 
 // ---------- Filter option sets ----------
 
@@ -167,14 +155,8 @@ export default function CharacterInventoryPage() {
   // Party role: the GM can edit any sheet in their party
   const [isGM, setIsGM] = useState(false);
 
-  // Editable capacity multiplier
-  const [multDraft, setMultDraft] = useState('1');
-  const [showMultHelp, setShowMultHelp] = useState(false);
-  const [showCarryModal, setShowCarryModal] = useState(false);
-  // Inline-editable character name
-  const [nameDraft, setNameDraft] = useState('');
-  const [editingName, setEditingName] = useState(false);
-
+  // Inline-editable character name lives in the state band; the portage
+  // multiplier too (a derived stat of the encumbrance line).
   // Toast system — errors linger longer than successes (noisy table)
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastId = useRef(0);
@@ -249,8 +231,8 @@ export default function CharacterInventoryPage() {
   // First-run tour
   const [showTour, setShowTour] = useState(false);
 
-  // Active tab (inventory / stats / spells / skills)
-  const [activeTab, setActiveTab] = useState<CharacterTab>('inventory');
+  // Active tab — the fiche opens on state (Survie), not on the bag
+  const [activeTab, setActiveTab] = useState<CharacterTab>('survival');
   useEffect(() => {
     const seen = localStorage.getItem('dnd-inv-tour-seen');
     if (!seen && !loading) {
@@ -295,7 +277,7 @@ export default function CharacterInventoryPage() {
         gold: res.data.character.gold,
         platinum: res.data.character.platinum,
       });
-      setMultDraft(String(res.data.character.capacityMultiplier ?? 1)); // Default the active tab to the carried location
+      // Default the active tab to the carried location
       setActiveLocationId((prev) => {
         const stillExists = prev !== null && res.data.locations.some((l) => l.id === prev);
         if (stillExists) return prev;
@@ -612,44 +594,6 @@ export default function CharacterInventoryPage() {
     }
   }, [charId, coins, coinsDirty, pushToast, refreshInventory, markLocalMutation]);
 
-  // Commit capacity multiplier change on blur
-  const commitMult = async () => {
-    const parsed = Number(multDraft);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      setMultDraft(String(data?.character.capacityMultiplier ?? 1));
-      return;
-    }
-    const newMult = Math.round(parsed * 100) / 100;
-    if (newMult === data?.character.capacityMultiplier) return;
-    markLocalMutation();
-    try {
-      await api.patch(`/api/characters/${charId}`, { capacityMultiplier: newMult });
-      await refreshInventory();
-      pushToast(`Capacité de portage mise à jour : ×${newMult}`);
-    } catch (err: any) {
-      pushToast(err.response?.data?.error || 'Erreur', 'error');
-      setMultDraft(String(data?.character.capacityMultiplier ?? 1));
-    }
-  };
-
-  const commitName = async () => {
-    const trimmed = nameDraft.trim();
-    if (!trimmed || trimmed === character.name) {
-      setEditingName(false);
-      return;
-    }
-    try {
-      await api.patch(`/api/characters/${charId}`, { name: trimmed });
-      markLocalMutation();
-      await refreshInventory();
-      pushToast('Nom mis à jour');
-    } catch (err: any) {
-      pushToast(err.response?.data?.error || 'Erreur', 'error');
-    } finally {
-      setEditingName(false);
-    }
-  };
-
   const dismissError = () => setError('');
 
   // ---------- Combat indicator hooks ----------
@@ -792,139 +736,25 @@ export default function CharacterInventoryPage() {
 
   return (
     <div className="space-y-4 pb-16 lg:pb-0">
-      {/* Character header + encumbrance */}
-      <div>
-        <div className="card p-4 sm:p-5">
-          <div className="flex items-center justify-between gap-3">
-            <h1 className="font-display text-xl sm:text-2xl font-bold truncate flex items-center gap-2">
-              {character.portraitUrl && (
-                <img
-                  src={character.portraitUrl}
-                  alt={character.name}
-                  className="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover border-2 border-parchment-300 shrink-0"
-                />
-              )}
-              {editingName ? (
-                <input
-                  type="text"
-                  className="font-display text-xl sm:text-2xl font-bold bg-transparent border-b-2 border-blood-500 outline-none min-w-0 flex-1"
-                  value={nameDraft}
-                  onChange={(e) => setNameDraft(e.target.value)}
-                  onBlur={commitName}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                    if (e.key === 'Escape') {
-                      setEditingName(false);
-                    }
-                  }}
-                  autoFocus
-                />
-              ) : canEdit ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNameDraft(character.name);
-                    setEditingName(true);
-                  }}
-                  className="hover:text-blood-600 transition-colors truncate"
-                  title="Cliquer pour renommer"
-                >
-                  {character.name}
-                </button>
-              ) : (
-                <span className="truncate">{character.name}</span>
-              )}
-              {character.concentrating && (
-                <span
-                  className="shrink-0 text-base"
-                  title="Concentration en cours"
-                  role="img"
-                  aria-label="En concentration"
-                >
-                  🌀
-                </span>
-              )}
-              {canEdit && (
-                <button
-                  type="button"
-                  onClick={() => setShowCarryModal(true)}
-                  className="ml-auto shrink-0 text-ink-400 hover:text-blood-600 transition-colors"
-                  aria-label="Portage"
-                  title="Portage"
-                >
-                  <SettingsIcon className="w-5 h-5" />
-                </button>
-              )}
-            </h1>
-          </div>
-          <div className="mt-3">
-            <EncumbranceBar encumbrance={encumbrance} />
-          </div>
-        </div>
-      </div>
-
-      {/* ---------- Portage modal ---------- */}
-      <Modal open={showCarryModal} onClose={() => setShowCarryModal(false)} title="Portage">
-        <div className="space-y-4">
-          {/* Editable capacity multiplier */}
-          <div>
-            <label className="flex items-center justify-between gap-3">
-              <span className="text-sm font-medium text-ink-700">Multiplicateur de portage</span>
-              <span className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={1}
-                  step={0.5}
-                  className="w-20 text-center text-sm font-semibold bg-white border border-parchment-300 rounded-md py-1.5 focus:outline-none focus:border-blood-500"
-                  value={multDraft}
-                  onChange={(e) => setMultDraft(e.target.value)}
-                  onBlur={commitMult}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                  }}
-                  aria-label="Multiplicateur de capacité de portage"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowMultHelp((s) => !s)}
-                  className="text-ink-400 hover:text-blood-600 text-sm w-6 h-6 flex items-center justify-center rounded-full hover:bg-parchment-100"
-                  aria-label="Aide sur le multiplicateur de portage"
-                  title="Aide"
-                >
-                  ?
-                </button>
-              </span>
-            </label>
-            {showMultHelp && (
-              <div className="mt-2 text-xs text-ink-600 bg-parchment-100 rounded-lg p-3 space-y-1.5">
-                <p>
-                  <strong>×1 (défaut)</strong> : créature de taille M sans capacité spéciale.
-                </p>
-                <p>
-                  <strong>×2</strong> : Construction massive (Goliath, Firbolg, Demi-Orc, Bugbear,
-                  Orc, Loxodon) ou créature de taille G. Le personnage compte comme une catégorie de
-                  taille supérieure pour le calcul du poids transportable.
-                </p>
-                <p>
-                  <strong>×3</strong> : Créature de taille TG.
-                </p>
-                <p>
-                  <strong>×4</strong> : Créature de taille Gig.
-                </p>
-                <p className="text-ink-400">
-                  Ce multiplicateur s'applique aux trois paliers (encombré, lourdement encombré,
-                  max). Modifie-le si ton personnage a un trait qui augmente sa capacité de portage.
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Encumbrance recap inside the modal */}
-          <div className="pt-2 border-t border-parchment-200">
-            <EncumbranceBar encumbrance={encumbrance} />
-          </div>
-        </div>
-      </Modal>
+      {/* Bandeau d'état — pinned state masthead above every tab */}
+      <CharacterStateBand
+        character={character}
+        entries={data.entries}
+        encumbrance={encumbrance}
+        canEdit={canEdit}
+        combat={hubCombat}
+        combatHref={
+          hubCombat ? `/party/${hubCombat.partyId}/combat?enc=${hubCombat.encounterId}` : null
+        }
+        onNavigate={(tab) => {
+          setActiveTab(tab);
+          window.scrollTo(0, 0);
+        }}
+        onOpenInitiative={() => setHubInitOpen(true)}
+        onSaved={refreshInventory}
+        onError={(msg) => pushToast(msg, 'error')}
+        onNotice={(msg) => pushToast(msg)}
+      />
 
       {/* ---------- Tab navigation — desktop top bar ---------- */}
       <div className="-mx-4 px-4 sm:mx-0 sm:px-0 hidden lg:block">

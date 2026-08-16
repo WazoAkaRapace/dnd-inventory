@@ -180,13 +180,65 @@ export function CostBadge({ qty, unit }: { qty: number | null; unit: CostUnit | 
   );
 }
 
-export function EncumbranceBar({ encumbrance }: { encumbrance: EncumbranceState }) {
+export function EncumbranceBar({
+  encumbrance,
+  compact = false,
+}: {
+  encumbrance: EncumbranceState;
+  /** Slim one-line variant for the state band: bar + reading + tier label. */
+  compact?: boolean;
+}) {
   const { totalWeightKg, coinWeightKg, encumberedKg, heavilyEncumberedKg, maxCarryKg, tier, pct } =
     encumbrance;
   const barColor = `bar-${tier}`;
   const encPos = Math.min(100, (encumberedKg / maxCarryKg) * 100);
   const heavyPos = Math.min(100, (heavilyEncumberedKg / maxCarryKg) * 100);
   const itemWeightKg = totalWeightKg - coinWeightKg;
+
+  if (compact) {
+    return (
+      <div
+        className="space-y-1"
+        role="progressbar"
+        aria-valuenow={Math.round(totalWeightKg * 100) / 100}
+        aria-valuemin={0}
+        aria-valuemax={maxCarryKg}
+        aria-valuetext={`${totalWeightKg.toFixed(1)} kg sur ${maxCarryKg} kg, ${ENCUMBRANCE_LABELS_FR[tier]}`}
+      >
+        <div className="flex items-center gap-2">
+          <div className="relative h-1.5 flex-1 bg-parchment-200 rounded-full overflow-hidden">
+            <div
+              className={`h-full ${barColor} transition-all duration-300 rounded-full`}
+              style={{ width: `${Math.min(100, pct)}%` }}
+            />
+            {encPos > 0 && encPos < 100 && (
+              <div
+                className="absolute top-0 h-full w-0.5 bg-yellow-700/40"
+                style={{ left: `${encPos}%` }}
+              />
+            )}
+            {heavyPos > 0 && heavyPos < 100 && (
+              <div
+                className="absolute top-0 h-full w-0.5 bg-orange-700/40"
+                style={{ left: `${heavyPos}%` }}
+              />
+            )}
+          </div>
+          <span className="text-[11px] font-mono text-ink-600 shrink-0">
+            {totalWeightKg.toFixed(1)} / {maxCarryKg} kg
+          </span>
+          <span className={`text-[11px] font-medium shrink-0 ${tierColor(tier)}`}>
+            {ENCUMBRANCE_LABELS_FR[tier]}
+          </span>
+        </div>
+        {tier !== 'unencumbered' && (
+          <div className={`text-[11px] px-2 py-1 rounded-lg ${tierBadge(tier)}`}>
+            {tierConsequence(tier)}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -397,7 +449,7 @@ export function ToastStack({
 }) {
   return (
     <div
-      className="fixed bottom-24 lg:bottom-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 items-center pointer-events-none"
+      className="fixed bottom-32 lg:bottom-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 items-center pointer-events-none"
       aria-live="polite"
       aria-atomic="true"
     >
