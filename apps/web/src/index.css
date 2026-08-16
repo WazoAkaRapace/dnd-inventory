@@ -46,10 +46,16 @@
 }
 
 html,
-body,
-#root {
+body {
   height: 100%;
   margin: 0;
+}
+
+/* min-height, never height: a 100vh #root caps the sticky app header's
+   containing block at one viewport, releasing it past ~one screen of scroll
+   (the header scrolls away on long pages). */
+#root {
+  min-height: 100%;
 }
 
 body {
