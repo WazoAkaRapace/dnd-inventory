@@ -19,31 +19,9 @@ import { Link } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../auth';
 import { ErrorMsg, LoadingSpinner, Modal } from '../components/ui';
+import { copyText, plural, toRoman } from '../utils';
 
 // ---------- Small helpers ----------
-
-function plural(n: number, word: string): string {
-  return `${n} ${word}${n > 1 ? 's' : ''}`;
-}
-
-function toRoman(n: number): string {
-  const table: Array<[number, string]> = [
-    [10, 'X'],
-    [9, 'IX'],
-    [5, 'V'],
-    [4, 'IV'],
-    [1, 'I'],
-  ];
-  let out = '';
-  let rest = n;
-  for (const [value, glyph] of table) {
-    while (rest >= value) {
-      out += glyph;
-      rest -= value;
-    }
-  }
-  return out || 'I';
-}
 
 /** SQLite timestamps are space-separated; Safari rejects those in Date(). */
 function formatSince(createdAt: string): string {
@@ -52,28 +30,6 @@ function formatSince(createdAt: string): string {
   if (Number.isNaN(d.getTime())) return '';
   const fmt = new Intl.DateTimeFormat('fr-FR', { month: 'short', year: 'numeric' });
   return `depuis ${fmt.format(d)}`;
-}
-
-/** Clipboard write with a legacy fallback — embedded browsers often deny the async API. */
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    try {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.select();
-      const ok = document.execCommand('copy');
-      ta.remove();
-      return ok;
-    } catch {
-      return false;
-    }
-  }
 }
 
 function RoleBadge({ role, large = false }: { role: PartyRole; large?: boolean }) {

@@ -47,7 +47,7 @@ comme décoration.
 - `.rarity-*` — badges de rareté (teinte par rareté, jamais gris).
 - `.bar-*` — remplissage des barres d'encombrance.
 
-## Surfaces réglées — le registre (`src/pages/PartiesPage.tsx`)
+## Surfaces réglées — le registre & la table des matières
 
 Alternative légitime à `.card` sur les pages-liste pleine largeur : pas de
 fond, pas d'ombre, pas de grille de cartes — les entrées sont posées à même
@@ -73,6 +73,21 @@ existe, créer/rejoindre passent en actions fantômes au pied du registre
 formulaires servent les deux états. Les états parlent français : chargement
 « Ouverture du registre… », échec = `ErrorMsg` + « Réessayer », erreurs API
 (chaînes machines anglaises) retraduites par statut HTTP.
+
+La table des matières (`PartyPage.tsx`, la page d'un groupe) est la seconde
+page réglée — même grammaire, autre page du même monde : le registre énumère
+les volumes, la table des matières ouvre le volume choisi. L'ordre de lecture
+EST la hiérarchie : I Ton personnage, II La table, III Outils & annexes.
+
+| Dispositif | Recette |
+|---|---|
+| Tête de volume | nom du groupe `font-display` centré (`text-2xl` / `sm:text-3xl`), méta « N joueurs · N personnages · mode » ; même double règle de tête, mesure unique `max-w-3xl` |
+| En-têtes de section | numéral romain Cinzel `ink-300` (`w-8` aligné à droite, aria-hidden) + `.section-title` + filet `parchment-200` courant jusqu'au bord |
+| Points de conduite | `DotLeader` : filet pointillé `parchment-300` entre un libellé et sa valeur de queue (outils, code d'invitation) — réservé aux lignes d'annexes, jamais au corps des entrées |
+| La porte sang | UN seul élément sang par page : ici « Ouvrir → » `blood-600` + anneau `blood-300` du médaillon sur SES personnages ; les portes du MD vers les autres fiches restent encre (flèche `ink-300` → `blood-600` au survol) ; fiches des autres joueurs SANS lien, 🔒 `ink-300` en queue avec title explicatif |
+| Médaillon | portrait rond ou initiale Cinzel sur `parchment-100`, anneau 2 px — `blood-300` = ton siège, `parchment-300` sinon ; 56 px (`h-14`, portes de section I), 40 px (`h-10`, roster de section II) |
+| Roster | un membre par ligne : nom + @pseudo + tampon `MD` (`blood-600` blanc) / `Joueur` (`parchment-200` / `ink-700`) ; sous chaque membre, ses personnages en médaillon 40 px + nom sur méta (verrouillé 🔒 pour les joueurs, porte encre pour le MD) ; « sans personnage » en italique `ink-400` |
+| Annexes | lignes réglées à glyphe d'outil (🛡 ⚔ 🎭) + libellé `ink-800` + points de conduite + pastille flèche : mini-médaillon `border-parchment-300` 32 px, flèche `ink-500` → `blood-600` au survol — l'affordance existe au repos, pas seulement au survol ; ligne code (MD) : `code` mono `tracking-[0.2em]` + bouton copier en pastille bordée, état « Copié ✓ » passe bord et texte en sang |
 
 ## Composants — `src/components/ui.tsx`
 
