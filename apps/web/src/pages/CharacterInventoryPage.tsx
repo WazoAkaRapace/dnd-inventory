@@ -881,6 +881,10 @@ export default function CharacterInventoryPage() {
                       );
                       setHubInitOpen(false);
                       setHubInitInput('');
+                      // The combat:change echo is suppressed server-side for the
+                      // actor, so the hub card would keep asking for initiative.
+                      // Bump the refresh counter to reload the combat status now.
+                      setCombatRefresh(n => n + 1);
                       await refreshInventory();
                     } catch { /* silent */ }
                   }}
