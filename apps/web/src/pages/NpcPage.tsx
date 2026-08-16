@@ -278,7 +278,7 @@ export default function NpcPage({ embedded = false }: { embedded?: boolean }) {
         <div className="space-y-6">
           {grouped.map(([faction, group]) => (
             <section key={faction}>
-              <h2 className="font-display text-lg font-semibold mb-3 flex items-center gap-2">
+              <h2 className="section-title mb-3 flex items-center gap-2">
                 <span className="text-blood-600">⚜</span>
                 {faction}
                 <span className="text-ink-400 text-sm font-normal">({group.length})</span>
@@ -371,7 +371,7 @@ function NpcCard({
           className="min-w-0 flex-1 text-left"
           aria-label={canEdit ? `Modifier ${npc.name}` : npc.name}
         >
-          <h3 className="font-display text-lg font-semibold leading-tight truncate">{npc.name}</h3>
+          <h3 className="section-title leading-tight truncate">{npc.name}</h3>
         </button>
         <span
           className="shrink-0 text-base"

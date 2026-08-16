@@ -182,7 +182,7 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
     <div className="space-y-4">
       {/* Identity: class, level, race, background */}
       <section className="card p-4 sm:p-5 space-y-3">
-        <h2 className="font-display text-lg font-semibold">Identité</h2>
+        <h2 className="section-title">Identité</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <label className="block">
             <span className="label">Classe</span>
@@ -333,7 +333,7 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
 
       {/* Ability scores */}
       <section className="card p-4 sm:p-5 space-y-3">
-        <h2 className="font-display text-lg font-semibold">Caractéristiques</h2>
+        <h2 className="section-title">Caractéristiques</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {ABILITY_FIELDS.map(({ key, ability }) => {
             const score = (character[key as keyof Character] as number) ?? 10;
@@ -366,7 +366,7 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
 
       {/* Derived stats */}
       <section className="card p-4 sm:p-5 space-y-3">
-        <h2 className="font-display text-lg font-semibold">Statistiques dérivées</h2>
+        <h2 className="section-title">Statistiques dérivées</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {/* Armor Class — computed or overridden */}
           <div className="bg-parchment-100 rounded-xl p-3 text-center">
@@ -528,7 +528,7 @@ function WeaponMasteryCard({
   return (
     <section className="card p-4 sm:p-5 space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="font-display text-lg font-semibold">Maîtrise d'armes</h2>
+        <h2 className="section-title">Maîtrise d'armes</h2>
         {isCustom && (
           <button
             type="button"

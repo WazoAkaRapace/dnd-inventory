@@ -204,7 +204,7 @@ export default function CharacterNotesTab({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="font-display text-lg font-semibold">
+        <h2 className="section-title">
           Notes <span className="text-ink-400 text-sm font-normal">({notes.length})</span>
         </h2>
         <button type="button" onClick={openCreate} className="btn-primary text-sm px-3 py-1.5">
@@ -217,7 +217,7 @@ export default function CharacterNotesTab({
           <EmptyState
             icon="📝"
             title="Aucune note"
-            message="Créez des notes pour vos quêtes, rappels, lore, ou tout ce dont vous avez besoin."
+            hint="Crée des notes pour tes quêtes, rappels, lore, ou tout ce dont tu as besoin."
           />
         </div>
       ) : (

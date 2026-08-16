@@ -21,7 +21,16 @@ import AddMonsterModal from '../components/AddMonsterModal';
 import AddPlayerModal from '../components/AddPlayerModal';
 import CombatantRow from '../components/CombatantRow';
 import MonsterStatBlock from '../components/MonsterStatBlock';
-import { EmptyState, ErrorMsg, LoadingSpinner, Modal } from '../components/ui';
+import {
+  ConfirmButton,
+  EmptyState,
+  ErrorMsg,
+  Fab,
+  LoadingSpinner,
+  Modal,
+  type Toast,
+  ToastStack,
+} from '../components/ui';
 import { useHeaderOverride } from '../headerContext';
 import { useSyncEvent } from '../sync';
 
@@ -37,6 +46,40 @@ export default function CombatPage() {
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [showNewEncounter, setShowNewEncounter] = useState(false);
   const [newName, setNewName] = useState('');
+
+  // Damage chip: the rolled damage waiting to be applied. Tapping a combatant
+  // card while armed applies floor(value × half?0.5:1) and consumes the chip.
+  const [damageChip, setDamageChip] = useState<{
+    value: number;
+    source: string;
+    half: boolean;
+  } | null>(null);
+  const [applyMode, setApplyMode] = useState(false);
+
+  // Stat block: docked side panel on desktop, bottom-sheet modal on mobile.
+  const [statPanelSlug, setStatPanelSlug] = useState<string | null>(null);
+  const [statModalSlug, setStatModalSlug] = useState<string | null>(null);
+  const [isDesktop, setIsDesktop] = useState(
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  // Toasts for combat mutations (optimistic rollback, applied damage…)
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const toastId = useRef(0);
+  const pushToast = useCallback((message: string, kind: Toast['kind'] = 'success') => {
+    const id = ++toastId.current;
+    setToasts((ts) => [...ts, { id, message, kind }]);
+    setTimeout(
+      () => setToasts((ts) => ts.filter((t) => t.id !== id)),
+      kind === 'error' ? 6000 : 2500,
+    );
+  }, []);
 
   const currentPartyId = Number(partyId);
   const isGM = party?.members.some((m) => m.userId === user?.id && m.role === 'gm') ?? false;
@@ -84,24 +127,27 @@ export default function CombatPage() {
     load();
   }, [load]);
 
-  // Real-time sync
+  // Real-time sync — skip our own echo: we already applied the server's
+  // response, so reloading would just flash stale→fresh for nothing.
   useSyncEvent(
     (event) => {
       if (event.partyId === currentPartyId && event.type === 'combat:change') {
+        if (event.actorUserId !== undefined && event.actorUserId === user?.id) return;
         load(true);
         // Also refresh the active encounter detail
         if (activeEncounter) loadEncounter(activeEncounter.id, true);
       }
     },
-    [currentPartyId, activeEncounter?.id],
+    [currentPartyId, activeEncounter?.id, user?.id],
   );
 
-  const loadEncounter = useCallback(async (id: number, _silent = false) => {
+  const loadEncounter = useCallback(async (id: number, silent = false) => {
     try {
       const res = await api.get(`/api/encounters/${id}`);
       setActiveEncounter(res.data.encounter);
     } catch {
-      // handled silently
+      // Silent refreshes keep the stale view; a failed explicit open must say so.
+      if (!silent) setError('Impossible de charger la rencontre');
     }
   }, []);
 
@@ -144,19 +190,22 @@ export default function CombatPage() {
     if (!activeEncounter) return;
     try {
       await api.patch(`/api/encounters/${activeEncounter.id}`, patch);
-      await loadEncounter(activeEncounter.id);
+      // Response omits combatants — reload the full detail.
+      await loadEncounter(activeEncounter.id, true);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erreur');
+      pushToast(err.response?.data?.error || 'Erreur', 'error');
     }
   };
 
   const nextTurn = async () => {
     if (!activeEncounter) return;
     try {
+      // The server recomputes turn order, round and condition expiry — the
+      // response skips combatants, so reload the full detail once.
       await api.post(`/api/encounters/${activeEncounter.id}/next-turn`);
-      await loadEncounter(activeEncounter.id);
+      await loadEncounter(activeEncounter.id, true);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erreur');
+      pushToast(err.response?.data?.error || 'Erreur', 'error');
     }
   };
 
@@ -187,11 +236,26 @@ export default function CombatPage() {
 
   const patchCombatant = async (id: number, patch: Partial<Combatant>) => {
     if (!activeEncounter) return;
+    // Optimistic: apply locally now, reconcile with the server's combatant,
+    // roll back visually if the patch fails.
+    const snapshot = activeEncounter;
+    setActiveEncounter({
+      ...snapshot,
+      combatants: snapshot.combatants.map((c) => (c.id === id ? { ...c, ...patch } : c)),
+    });
     try {
-      await api.patch(`/api/combatants/${id}`, patch);
-      await loadEncounter(activeEncounter.id);
+      const res = await api.patch(`/api/combatants/${id}`, patch);
+      const updated: Combatant | undefined = res.data?.combatant;
+      if (updated) {
+        setActiveEncounter((enc) =>
+          enc
+            ? { ...enc, combatants: enc.combatants.map((c) => (c.id === id ? updated : c)) }
+            : enc,
+        );
+      }
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erreur');
+      setActiveEncounter(snapshot);
+      pushToast(err.response?.data?.error || 'Échec de la mise à jour', 'error');
     }
   };
 
@@ -222,9 +286,57 @@ export default function CombatPage() {
       if (activeEncounter?.id === id) setActiveEncounter(null);
       await load(true);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erreur');
+      pushToast(err.response?.data?.error || 'Erreur', 'error');
     }
   };
+
+  // ---------- Damage chip flow ----------
+
+  /** A damage roll in a stat block (panel or modal) creates a fresh chip. */
+  const handleDamageRolled = useCallback((total: number, source: string) => {
+    setDamageChip({ value: total, source, half: false });
+    setApplyMode(false);
+  }, []);
+
+  /** Tap the chip → arm; tap again → disarm. */
+  const toggleChip = () => setApplyMode((a) => !a);
+
+  const applyDamageTo = (combatantId: number) => {
+    if (!damageChip || !activeEncounter) return;
+    const target = activeEncounter.combatants.find((c) => c.id === combatantId);
+    if (!target) return;
+    const dealt = Math.floor(damageChip.value * (damageChip.half ? 0.5 : 1));
+    const max = target.maxHitPoints ?? 0;
+    const cur = target.hitPoints ?? 0;
+    const newHp = Math.max(0, Math.min(max, cur - dealt));
+    setDamageChip(null);
+    setApplyMode(false);
+    patchCombatant(combatantId, { hitPoints: newHp });
+  };
+
+  const cancelChip = () => {
+    setDamageChip(null);
+    setApplyMode(false);
+  };
+
+  // Escape cancels apply mode
+  useEffect(() => {
+    if (!applyMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') cancelChip();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [applyMode]);
+
+  /** Stat blocks dock on desktop, open as modal on mobile. */
+  const openStatBlock = useCallback(
+    (slug: string) => {
+      if (isDesktop) setStatPanelSlug(slug);
+      else setStatModalSlug(slug);
+    },
+    [isDesktop],
+  );
 
   if (loading) return <LoadingSpinner />;
   if (error && !party) return <ErrorMsg message={error} />;
@@ -252,20 +364,30 @@ export default function CombatPage() {
               title="Aucune rencontre"
               hint={
                 isGM
-                  ? 'Créez une rencontre pour commencer le combat.'
+                  ? 'Crée une rencontre pour commencer le combat.'
                   : "Le MD n'a pas encore créé de rencontre."
               }
             />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {encounters.map((enc) => (
-                <button
-                  type="button"
+                <div
                   key={enc.id}
                   onClick={() => selectEncounter(enc.id)}
-                  className="card p-4 text-left hover:shadow-md transition-shadow"
+                  className="card p-4 text-left hover:shadow-md transition-shadow cursor-pointer"
                 >
-                  <h3 className="font-display text-lg font-semibold">{enc.name}</h3>
+                  <h3 className="section-title">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        selectEncounter(enc.id);
+                      }}
+                      className="text-left w-full section-title"
+                    >
+                      {enc.name}
+                    </button>
+                  </h3>
                   <div className="mt-2 flex gap-3 text-sm text-ink-500">
                     <span>👥 {enc.combatantCount}</span>
                     <span>
@@ -275,18 +397,17 @@ export default function CombatPage() {
                     </span>
                   </div>
                   {isGM && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteEncounter(enc.id);
-                      }}
+                    <ConfirmButton
+                      onConfirm={() => deleteEncounter(enc.id)}
                       className="text-ink-400 hover:text-red-600 text-xs mt-2"
+                      armedClassName="text-red-700 font-semibold"
+                      title="Supprimer la rencontre"
+                      confirmChildren="Confirmer ?"
                     >
                       Supprimer
-                    </button>
+                    </ConfirmButton>
                   )}
-                </button>
+                </div>
               ))}
             </div>
           )}
@@ -295,109 +416,196 @@ export default function CombatPage() {
 
       {/* Active encounter combat grid */}
       {activeEncounter && (
-        <>
-          {/* Turn controls */}
-          <div className="card p-3 flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-3">
-              {activeEncounter.status === 'setup' && (
-                <span
-                  className={`px-3 py-1 rounded-full text-sm font-medium ${
-                    needsInitiative
-                      ? 'bg-yellow-100 text-yellow-700'
-                      : 'bg-green-100 text-green-700'
-                  }`}
-                >
-                  {needsInitiative
-                    ? "⚪ En attente d'initiative"
-                    : '✅ Prêt à démarrer — cliquez Tour suivant'}
-                </span>
-              )}
-              {activeEncounter.status === 'active' && (
-                <>
-                  <span className="px-3 py-1 rounded-full bg-blood-600 text-parchment-50 text-sm font-medium">
-                    🔴 Tour {activeEncounter.round}
-                  </span>
-                  {currentCombatant && (
-                    <span className="text-sm text-ink-600">
-                      Au tour de : <strong>{currentCombatant.name}</strong>
-                    </span>
-                  )}
-                </>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              {isGM && activeEncounter.status !== 'ended' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={nextTurn}
-                    disabled={needsInitiative}
-                    className="btn-primary text-sm disabled:opacity-40 disabled:cursor-not-allowed"
-                    title={
+        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-4 lg:items-start">
+          <div className="min-w-0 space-y-4">
+            {/* Turn controls — pinned while the list scrolls */}
+            <div className="card p-3 flex items-center justify-between gap-3 flex-wrap sticky top-2 z-30 lg:top-3">
+              <div className="flex items-center gap-3">
+                {activeEncounter.status === 'setup' && (
+                  <span
+                    className={`px-3 py-1 rounded-full text-sm font-medium ${
                       needsInitiative
-                        ? 'Tous les combattants doivent lancer leur initiative'
-                        : 'Passer au tour suivant'
-                    }
+                        ? 'bg-yellow-100 text-yellow-700'
+                        : 'bg-green-100 text-green-700'
+                    }`}
                   >
-                    {activeEncounter.status === 'setup' ? '▶ Démarrer le combat' : '▶ Tour suivant'}
-                  </button>
-                  {activeEncounter.status === 'active' && (
+                    {needsInitiative
+                      ? "⚪ En attente d'initiative"
+                      : '✅ Prêt à démarrer — cliquez Tour suivant'}
+                  </span>
+                )}
+                {activeEncounter.status === 'active' && (
+                  <>
+                    <span className="px-3 py-1 rounded-full bg-blood-600 text-parchment-50 text-sm font-medium">
+                      🔴 Tour {activeEncounter.round}
+                    </span>
+                    {currentCombatant && (
+                      <span className="text-sm text-ink-600">
+                        Au tour de : <strong>{currentCombatant.name}</strong>
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {isGM && activeEncounter.status !== 'ended' && (
+                  <>
                     <button
                       type="button"
-                      onClick={() => patchEncounter({ status: 'ended' })}
-                      className="btn-secondary text-sm"
+                      onClick={nextTurn}
+                      disabled={needsInitiative}
+                      className="btn-primary text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={
+                        needsInitiative
+                          ? 'Tous les combattants doivent lancer leur initiative'
+                          : 'Passer au tour suivant'
+                      }
                     >
-                      ⏹ Fin
+                      {activeEncounter.status === 'setup'
+                        ? '▶ Démarrer le combat'
+                        : '▶ Tour suivant'}
                     </button>
-                  )}
-                </>
-              )}
-              {isGM && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddMonster(true)}
-                    className="btn-secondary text-sm"
-                  >
-                    + Monstre
-                  </button>
-                  {availableChars.length > 0 && (
+                    {activeEncounter.status === 'active' && (
+                      <button
+                        type="button"
+                        onClick={() => patchEncounter({ status: 'ended' })}
+                        className="btn-secondary text-sm"
+                      >
+                        ⏹ Fin
+                      </button>
+                    )}
+                  </>
+                )}
+                {isGM && (
+                  <>
                     <button
                       type="button"
-                      onClick={() => setShowAddPlayer(true)}
+                      onClick={() => setShowAddMonster(true)}
                       className="btn-secondary text-sm"
                     >
-                      + PJ
+                      + Monstre
                     </button>
-                  )}
-                </>
-              )}
+                    {availableChars.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAddPlayer(true)}
+                        className="btn-secondary text-sm"
+                      >
+                        + PJ
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
+
+            {/* Damage chip tray — the rolled damage waits here until applied */}
+            {isGM && damageChip && (
+              <div
+                className={`card p-2.5 flex items-center gap-2 flex-wrap ${
+                  applyMode ? 'ring-2 ring-blood-400' : ''
+                }`}
+                role="status"
+              >
+                <button
+                  type="button"
+                  onClick={toggleChip}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-bold font-mono transition-all active:scale-95 ${
+                    applyMode
+                      ? 'bg-blood-600 text-parchment-50 shadow-md'
+                      : 'bg-orange-100 text-orange-800 hover:bg-orange-200'
+                  }`}
+                  title={applyMode ? 'Annuler (Échap)' : 'Appliquer à une cible'}
+                >
+                  ⚔ {Math.floor(damageChip.value * (damageChip.half ? 0.5 : 1))} dégâts
+                  <span className="text-xs font-normal ml-1.5 opacity-75 font-sans">
+                    {damageChip.source}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDamageChip((c) => (c ? { ...c, half: !c.half } : c))}
+                  className={`px-2.5 py-1.5 rounded-lg text-sm font-bold transition-colors ${
+                    damageChip.half
+                      ? 'bg-ink-900 text-parchment-50'
+                      : 'bg-parchment-100 text-ink-600 hover:bg-parchment-200'
+                  }`}
+                  aria-pressed={damageChip.half}
+                  title="Demi-dégâts (résistance, sauvegarde réussie)"
+                >
+                  ½
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelChip}
+                  className="btn-ghost text-ink-400 hover:text-ink-700 p-1 text-sm"
+                  aria-label="Annuler la puce de dégâts"
+                >
+                  ✕
+                </button>
+                <span className="text-xs text-ink-500 ml-auto">
+                  {applyMode ? 'Touchez une cible…' : 'Touchez la puce, puis une cible'}
+                </span>
+              </div>
+            )}
+
+            {/* Combatant list */}
+            {activeEncounter.combatants.length === 0 ? (
+              <EmptyState
+                icon="🎭"
+                title="Aucun combattant"
+                hint={isGM ? 'Ajoutez des monstres et des personnages pour commencer.' : ''}
+              />
+            ) : (
+              <CombatantList
+                combatants={activeEncounter.combatants}
+                turnIndex={activeEncounter.turnIndex}
+                status={activeEncounter.status}
+                isGM={isGM}
+                partyId={currentPartyId}
+                party={party}
+                userId={user?.id ?? 0}
+                onPatch={patchCombatant}
+                onDelete={deleteCombatant}
+                onSetInitiative={setInitiative}
+                targetMode={isGM && applyMode && !!damageChip}
+                onApplyDamage={applyDamageTo}
+                onOpenStatBlock={isGM ? openStatBlock : undefined}
+              />
+            )}
           </div>
 
-          {/* Combatant list */}
-          {activeEncounter.combatants.length === 0 ? (
-            <EmptyState
-              icon="🎭"
-              title="Aucun combattant"
-              hint={isGM ? 'Ajoutez des monstres et des personnages pour commencer.' : ''}
-            />
-          ) : (
-            <CombatantList
-              combatants={activeEncounter.combatants}
-              turnIndex={activeEncounter.turnIndex}
-              status={activeEncounter.status}
-              isGM={isGM}
-              partyId={currentPartyId}
-              party={party}
-              userId={user?.id ?? 0}
-              onPatch={patchCombatant}
-              onDelete={deleteCombatant}
-              onSetInitiative={setInitiative}
-            />
+          {/* Docked stat block (desktop) — rolls feed the damage chip above */}
+          {isGM && (
+            <aside className="hidden lg:block lg:sticky lg:top-3 max-h-[calc(100vh-6rem)]">
+              {statPanelSlug ? (
+                <MonsterStatBlock
+                  open
+                  variant="panel"
+                  slug={statPanelSlug}
+                  onClose={() => setStatPanelSlug(null)}
+                  onDamageRolled={handleDamageRolled}
+                />
+              ) : (
+                <div className="card p-6 text-center text-sm text-ink-400">
+                  📜 Bloc de stats
+                  <p className="mt-1 text-xs">
+                    Touchez 📜 sur un monstre pour l'amarrer ici pendant la rencontre.
+                  </p>
+                </div>
+              )}
+            </aside>
           )}
-        </>
+        </div>
       )}
+
+      {/* Mobile stat-block modal */}
+      <MonsterStatBlock
+        open={statModalSlug !== null}
+        slug={statModalSlug}
+        onClose={() => setStatModalSlug(null)}
+        onDamageRolled={handleDamageRolled}
+      />
 
       {/* New encounter modal */}
       <Modal
@@ -454,15 +662,13 @@ export default function CombatPage() {
 
       {/* FAB: create new encounter (GM only, encounter list only) */}
       {!activeEncounter && isGM && (
-        <button
-          type="button"
-          onClick={() => setShowNewEncounter(true)}
-          className="fab-enter fixed bottom-5 right-5 z-30 w-14 h-14 rounded-full bg-blood-600 text-white shadow-lg flex items-center justify-center text-2xl font-light hover:bg-blood-700 active:scale-95 transition-all"
-          aria-label="Nouvelle rencontre"
-        >
-          +
-        </button>
+        <Fab onClick={() => setShowNewEncounter(true)} label="Nouvelle rencontre" />
       )}
+
+      <ToastStack
+        toasts={toasts}
+        onDismiss={(id) => setToasts((ts) => ts.filter((t) => t.id !== id))}
+      />
     </div>
   );
 }
@@ -486,6 +692,9 @@ function CombatantList({
   onPatch,
   onDelete,
   onSetInitiative,
+  targetMode = false,
+  onApplyDamage,
+  onOpenStatBlock,
 }: {
   combatants: Combatant[];
   turnIndex: number;
@@ -497,9 +706,10 @@ function CombatantList({
   onPatch: (id: number, patch: Partial<Combatant>) => void;
   onDelete: (id: number) => void;
   onSetInitiative: (id: number, initiative: number) => void;
+  targetMode?: boolean;
+  onApplyDamage?: (id: number) => void;
+  onOpenStatBlock?: (slug: string) => void;
 }) {
-  const [statBlockSlug, setStatBlockSlug] = useState<string | null>(null);
-
   // Build groups: combatants with the same groupId form a group;
   // those without groupId are each their own singleton.
   const groups: Group[] = [];
@@ -598,7 +808,9 @@ function CombatantList({
                   {isGM && first.monsterSlug && (
                     <button
                       type="button"
-                      onClick={() => setStatBlockSlug(first.monsterSlug)}
+                      onClick={() =>
+                        onOpenStatBlock ? onOpenStatBlock(first.monsterSlug!) : undefined
+                      }
                       className="text-ink-500 hover:text-blood-600 text-xs"
                       title="Stat block"
                     >
@@ -606,14 +818,16 @@ function CombatantList({
                     </button>
                   )}
                   {isGM && (
-                    <button
-                      type="button"
-                      onClick={() => onDelete(first.id)}
+                    <ConfirmButton
+                      onConfirm={() => onDelete(first.id)}
                       className="text-ink-400 hover:text-red-600 text-xs"
+                      armedClassName="bg-red-100 text-red-700 rounded px-1.5"
                       title="Supprimer le groupe"
+                      ariaLabel={`Supprimer le groupe ${first.name}`}
+                      confirmChildren="Sûr ?"
                     >
                       🗑
-                    </button>
+                    </ConfirmButton>
                   )}
                 </div>
               </div>
@@ -649,18 +863,15 @@ function CombatantList({
                   onPatch={onPatch}
                   onDelete={isGroup ? undefined : onDelete} // delete handled by group header
                   onSetInitiative={onSetInitiative}
+                  targetMode={targetMode}
+                  onApplyDamage={onApplyDamage}
+                  onOpenStatBlock={onOpenStatBlock}
                 />
               ))}
             </div>
           </div>
         );
       })}
-
-      <MonsterStatBlock
-        open={statBlockSlug !== null}
-        slug={statBlockSlug}
-        onClose={() => setStatBlockSlug(null)}
-      />
     </div>
   );
 }

@@ -37,7 +37,7 @@ import api from '../api';
 import { useAuth } from '../auth';
 import ConcentrationAlert from '../components/ConcentrationAlert';
 import MonsterStatBlock from '../components/MonsterStatBlock';
-import TurnSlash, { useTurnSlash } from '../components/TurnSlash';
+import TurnSlash, { combatVibrate, useTurnSlash } from '../components/TurnSlash';
 import { useSync, useSyncEvent } from '../sync';
 import CharacterDescriptionTab from './CharacterDescriptionTab';
 import CharacterFeaturesTab from './CharacterFeaturesTab';
@@ -80,10 +80,13 @@ const CHARACTER_TABS: {
 import {
   BottomSheet,
   CategoryBadge,
+  Chip,
   CostBadge,
   EmptyState,
   EncumbranceBar,
   ErrorMsg,
+  Fab,
+  HpBar,
   LoadingSpinner,
   Modal,
   RarityBadge,
@@ -172,15 +175,18 @@ export default function CharacterInventoryPage() {
   const [nameDraft, setNameDraft] = useState('');
   const [editingName, setEditingName] = useState(false);
 
-  // Toast system
+  // Toast system — errors linger longer than successes (noisy table)
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastId = useRef(0);
   const pushToast = useCallback((message: string, kind: 'success' | 'error' = 'success') => {
     const id = ++toastId.current;
     setToasts((prev) => [...prev, { id, message, kind }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 2500);
+    setTimeout(
+      () => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      },
+      kind === 'error' ? 6000 : 2500,
+    );
   }, []);
   const dismissToast = useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -220,6 +226,7 @@ export default function CharacterInventoryPage() {
   } | null>(null);
   const [hubInitOpen, setHubInitOpen] = useState(false);
   const [hubInitInput, setHubInitInput] = useState('');
+  const [hubInitError, setHubInitError] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [catalogCategory, setCatalogCategory] = useState<'' | ItemCategory>('');
@@ -717,6 +724,15 @@ export default function CharacterInventoryPage() {
   // "Your turn" sword-cut on the mobile combat indicator (dock card + hub)
   const turnSlash = useTurnSlash(!!hubCombat?.isMyTurn);
 
+  // Haptic cue the moment the initiative prompt appears
+  const needsInitNow = !!hubCombat?.needsInitiative;
+  const prevDockNeedsInit = useRef(false);
+  useEffect(() => {
+    const rising = needsInitNow && !prevDockNeedsInit.current;
+    prevDockNeedsInit.current = needsInitNow;
+    if (rising) combatVibrate([80, 40, 80]);
+  }, [needsInitNow]);
+
   // ---------- Render guards ----------
   if (loading) return <LoadingSpinner label="Chargement du sac à dos…" />;
   if (error && !data) return <ErrorMsg message={error} />;
@@ -897,8 +913,7 @@ export default function CharacterInventoryPage() {
                 </p>
                 <p className="text-ink-400">
                   Ce multiplicateur s'applique aux trois paliers (encombré, lourdement encombré,
-                  max). Modifiez-le si votre personnage a un trait qui augmente sa capacité de
-                  portage.
+                  max). Modifie-le si ton personnage a un trait qui augmente sa capacité de portage.
                 </p>
               </div>
             )}
@@ -952,55 +967,67 @@ export default function CharacterInventoryPage() {
               🎲 Lance ton initiative !
             </button>
             {hubInitOpen && (
-              <div className="px-3 pb-2 pt-1 flex items-center gap-2 bg-yellow-50 border-t border-yellow-300">
-                <input
-                  type="number"
-                  min={1}
-                  max={40}
-                  value={hubInitInput}
-                  onChange={(e) => setHubInitInput(e.target.value)}
-                  placeholder="—"
-                  className="input input-compact text-sm py-1"
-                  autoFocus
-                  aria-label="Ton initiative"
-                />
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const v = parseInt(hubInitInput, 10);
-                    if (Number.isNaN(v)) return;
-                    try {
-                      await api.patch(
-                        `/api/encounters/${hubCombat.encounterId}/combatants/${hubCombat.myCombatantId}/initiative`,
-                        { initiative: v },
-                      );
-                      setHubInitOpen(false);
-                      setHubInitInput('');
-                      // The combat:change echo is suppressed server-side for the
-                      // actor, so the hub card would keep asking for initiative.
-                      // Bump the refresh counter to reload the combat status now.
-                      setCombatRefresh((n) => n + 1);
-                      await refreshInventory();
-                    } catch {
-                      /* silent */
-                    }
-                  }}
-                  className="btn-primary text-xs px-3 py-1"
-                >
-                  OK
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const roll = Math.floor(Math.random() * 20) + 1;
-                    setHubInitInput(String(roll + hubCombat.initiativeBonus));
-                  }}
-                  className="btn-secondary text-xs px-2 py-1"
-                  title={`d20 + ${hubCombat.initiativeBonus} (DEX)`}
-                >
-                  🎲
-                </button>
-              </div>
+              <>
+                <div className="px-3 pb-2 pt-1 flex items-center gap-2 bg-yellow-50 border-t border-yellow-300">
+                  <input
+                    type="number"
+                    min={1}
+                    max={40}
+                    value={hubInitInput}
+                    onChange={(e) => {
+                      setHubInitInput(e.target.value);
+                      if (hubInitError) setHubInitError(false);
+                    }}
+                    placeholder="—"
+                    className="input input-compact text-sm py-1"
+                    autoFocus
+                    aria-label="Ton initiative"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const v = parseInt(hubInitInput, 10);
+                      if (Number.isNaN(v)) return;
+                      try {
+                        await api.patch(
+                          `/api/encounters/${hubCombat.encounterId}/combatants/${hubCombat.myCombatantId}/initiative`,
+                          { initiative: v },
+                        );
+                        setHubInitOpen(false);
+                        setHubInitInput('');
+                        setHubInitError(false);
+                        // The combat:change echo is suppressed server-side for the
+                        // actor, so the hub card would keep asking for initiative.
+                        // Bump the refresh counter to reload the combat status now.
+                        setCombatRefresh((n) => n + 1);
+                        await refreshInventory();
+                      } catch {
+                        setHubInitError(true);
+                      }
+                    }}
+                    className="btn-primary text-xs px-3 py-1"
+                  >
+                    OK
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const roll = Math.floor(Math.random() * 20) + 1;
+                      setHubInitInput(String(roll + hubCombat.initiativeBonus));
+                      if (hubInitError) setHubInitError(false);
+                    }}
+                    className="btn-secondary text-xs px-2 py-1"
+                    title={`d20 + ${hubCombat.initiativeBonus} (DEX)`}
+                  >
+                    🎲
+                  </button>
+                </div>
+                {hubInitError && (
+                  <p className="px-3 pb-2 text-xs text-red-600" role="alert">
+                    Échec de l'enregistrement — réessaie
+                  </p>
+                )}
+              </>
             )}
           </div>
         ) : (
@@ -1355,7 +1382,7 @@ export default function CharacterInventoryPage() {
                 <div className="flex-1">
                   <p className="font-medium text-ink-900">Bienvenue !</p>
                   <p className="text-sm text-ink-700 mt-1">
-                    Appuyez sur le bouton <strong>+ Ajouter</strong> en bas de l'écran pour chercher
+                    Appuie sur le bouton <strong>+ Ajouter</strong> en bas de l'écran pour chercher
                     un objet dans le catalogue, puis suivez la barre de poids pour voir si votre
                     personnage est encombré.
                   </p>
@@ -1375,7 +1402,7 @@ export default function CharacterInventoryPage() {
           <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
             {/* ---------- LEFT: inventory grouped by category ---------- */}
             <section className="space-y-3">
-              <h2 className="font-display text-lg font-semibold">
+              <h2 className="section-title">
                 {activeLocation ? activeLocation.name : 'Sac à dos'}{' '}
                 <span className="text-ink-400 text-sm font-normal">({entries.length})</span>
               </h2>
@@ -1387,7 +1414,7 @@ export default function CharacterInventoryPage() {
                       isActiveCarried ? '🎒' : LOCATION_TYPE_ICON[activeLocation?.type ?? 'carried']
                     }
                     title={isActiveCarried ? 'Sac à dos vide' : 'Aucun objet ici'}
-                    hint="Appuyez sur + Ajouter pour chercher un objet."
+                    hint="Appuie sur + Ajouter pour chercher un objet."
                   />
                 </div>
               ) : (
@@ -1421,7 +1448,7 @@ export default function CharacterInventoryPage() {
 
             {/* ---------- RIGHT: catalog (desktop only — mobile uses FAB + bottom sheet) ---------- */}
             <section className="hidden lg:block space-y-3">
-              <h2 className="font-display text-lg font-semibold">Catalogue</h2>
+              <h2 className="section-title">Catalogue</h2>
               {catalogContent}
             </section>
           </div>
@@ -1443,14 +1470,12 @@ export default function CharacterInventoryPage() {
 
       {/* ---------- Mobile FAB: open catalog as bottom sheet (inventory tab only) ---------- */}
       {activeTab === 'inventory' && canEdit && (
-        <button
-          type="button"
+        <Fab
           onClick={() => setCatalogOpen(true)}
-          className="lg:hidden fab-enter fixed bottom-24 right-5 z-30 w-14 h-14 rounded-full bg-blood-600 text-white shadow-lg flex items-center justify-center text-2xl font-light hover:bg-blood-700 active:scale-95 transition-all"
-          aria-label="Ajouter un objet au catalogue"
-        >
-          +
-        </button>
+          label="Ajouter un objet au catalogue"
+          mobileOnly
+          raised
+        />
       )}
 
       {/* ---------- Mobile catalog bottom sheet ---------- */}
@@ -1750,7 +1775,7 @@ function InventoryRow({
                   onClick={onToggleEquipped}
                   disabled={busy}
                   className={`shrink-0 mt-0.5 text-lg leading-none transition-colors ${
-                    entry.equipped ? 'text-gold-400' : 'text-ink-400/40 hover:text-ink-400'
+                    entry.equipped ? 'text-gold-600' : 'text-ink-400/40 hover:text-ink-400'
                   }`}
                   aria-label={`${entry.equipped ? 'Déséquiper' : 'Équiper'} ${itemName}`}
                   aria-pressed={entry.equipped}
@@ -1760,7 +1785,7 @@ function InventoryRow({
                 </button>
               ) : (
                 <span
-                  className={`shrink-0 mt-0.5 text-lg leading-none ${entry.equipped ? 'text-gold-400' : 'text-ink-400/40'}`}
+                  className={`shrink-0 mt-0.5 text-lg leading-none ${entry.equipped ? 'text-gold-600' : 'text-ink-400/40'}`}
                   title={entry.equipped ? 'Équipé' : 'Non équipé'}
                 >
                   {entry.equipped ? '★' : '☆'}
@@ -1938,12 +1963,8 @@ function InventoryRow({
                           (stats.magicBonus > 0 ? ` + ${stats.magicBonus} (magique)` : '');
                         return (
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <span
-                              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium border ${
-                                stats.proficient
-                                  ? 'bg-red-50 text-red-800 border-red-200'
-                                  : 'bg-amber-50 text-amber-800 border-amber-300'
-                              }`}
+                            <Chip
+                              tone={stats.proficient ? 'red' : 'amber'}
                               title={
                                 stats.proficient
                                   ? `Attaque : ${breakdown}`
@@ -1952,28 +1973,25 @@ function InventoryRow({
                             >
                               🎯 {formatModifier(stats.attackBonus)}
                               {!stats.proficient && ' ⚠'}
-                            </span>
+                            </Chip>
                             {stats.damageStr && (
-                              <span
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50 text-orange-800 text-[11px] font-medium border border-orange-200"
+                              <Chip
+                                tone="orange"
                                 title={`Dégâts : ${stats.damageStr} (${abilityLabel})${stats.magicBonus > 0 ? ` + ${stats.magicBonus} magique` : ''}`}
                               >
                                 ⚔ {stats.damageStr}
                                 {stats.damageTypeFr ? ` ${stats.damageTypeFr}` : ''}
-                              </span>
+                              </Chip>
                             )}
                             {stats.versatileDamageStr && (
-                              <span
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50/60 text-orange-700 text-[11px] font-medium border border-orange-200"
-                                title="Dégâts à deux mains"
-                              >
+                              <Chip tone="orange" soft title="Dégâts à deux mains">
                                 {stats.versatileDamageStr} · deux mains
-                              </span>
+                              </Chip>
                             )}
                             {stats.magicBonus > 0 && (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gold-100 text-gold-700 text-[11px] font-semibold border border-gold-300">
+                              <Chip tone="gold" className="font-semibold">
                                 ✨ +{stats.magicBonus}
-                              </span>
+                              </Chip>
                             )}
                             {stats.presumedBase && (
                               <span className="text-[10px] text-ink-400 italic">base présumée</span>
@@ -2238,7 +2256,7 @@ function CoinPurse({
         className="w-full flex items-center justify-between"
         aria-expanded={expanded}
       >
-        <h2 className="font-display text-lg font-semibold">
+        <h2 className="section-title">
           Bourse{' '}
           <span className="text-ink-400 text-sm font-normal">
             ({totalGp} PO{remCp > 0 ? ` ${remCp} PC` : ''})
@@ -2844,7 +2862,7 @@ function SurvivalPanel({
 
   return (
     <section className="card p-4 sm:p-5 space-y-4">
-      <h2 className="font-display text-lg font-semibold flex items-center gap-2">
+      <h2 className="section-title flex items-center gap-2">
         <span aria-hidden="true">🩸</span> Survie
       </h2>
 
@@ -2893,45 +2911,36 @@ function SurvivalPanel({
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium border ${
-                          stats.proficient
-                            ? 'bg-red-50 text-red-800 border-red-200'
-                            : 'bg-amber-50 text-amber-800 border-amber-300'
-                        }`}
+                      <Chip
+                        tone={stats.proficient ? 'red' : 'amber'}
                         title={`Attaque : ${breakdown}`}
                       >
                         🎯 {formatModifier(stats.attackBonus)}
-                      </span>
+                      </Chip>
                       {nAttacks > 1 && (
-                        <span
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blood-50 text-blood-800 text-[11px] font-semibold border border-blood-200"
+                        <Chip
+                          tone="blood"
+                          className="font-semibold"
                           title={`${nAttacks} attaques par action d'attaque`}
                         >
                           ×{nAttacks}
-                        </span>
+                        </Chip>
                       )}
                       {stats.damageStr && (
-                        <span
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50 text-orange-800 text-[11px] font-medium border border-orange-200"
-                          title={`Dégâts : ${stats.damageStr} (${abilityLabel})`}
-                        >
+                        <Chip tone="orange" title={`Dégâts : ${stats.damageStr} (${abilityLabel})`}>
                           ⚔ {stats.damageStr}
                           {stats.damageTypeFr ? ` ${stats.damageTypeFr}` : ''}
-                        </span>
+                        </Chip>
                       )}
                       {stats.versatileDamageStr && (
-                        <span
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50/60 text-orange-700 text-[11px] font-medium border border-orange-200"
-                          title="Dégâts à deux mains"
-                        >
+                        <Chip tone="orange" soft title="Dégâts à deux mains">
                           {stats.versatileDamageStr} · deux mains
-                        </span>
+                        </Chip>
                       )}
                       {stats.magicBonus > 0 && (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gold-100 text-gold-700 text-[11px] font-semibold border border-gold-300">
+                        <Chip tone="gold" className="font-semibold">
                           ✨ +{stats.magicBonus}
-                        </span>
+                        </Chip>
                       )}
                       {stats.presumedBase && (
                         <span className="text-[10px] text-ink-400 italic">base présumée</span>
@@ -2944,11 +2953,6 @@ function SurvivalPanel({
           );
         })()}
         {/* Unarmed strike — always available */}
-        {entries.filter((e) => e.equipped && e.item.category === 'weapon').length === 0 && (
-          <p className="text-xs text-ink-400 italic -mb-1">
-            Aucune arme équipée — la frappe sans arme reste disponible.
-          </p>
-        )}
         {findClass(character.characterClass)?.name === 'Roublard' &&
           (() => {
             const hasFinesseWeapon = entries.some(
@@ -2971,12 +2975,12 @@ function SurvivalPanel({
                   )}
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50 text-orange-800 text-[11px] font-medium border border-orange-200"
+                  <Chip
+                    tone="orange"
                     title="Une fois par tour, avec avantage ou un allié adjacent à la cible — dégâts du type de l'arme"
                   >
                     ⚔ {sneakAttackDice(character.level ?? 1)} dégâts de l'arme
-                  </span>
+                  </Chip>
                   <span className="text-[10px] text-ink-400">une fois par tour</span>
                 </div>
               </div>
@@ -3104,7 +3108,7 @@ function SurvivalPanel({
                 aria-label="Choisir une forme"
               >
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-display text-lg font-semibold">🐾 Choisir une forme</h3>
+                  <h3 className="section-title">🐾 Choisir une forme</h3>
                   <button
                     type="button"
                     onClick={() => setShapePickerOpen(false)}
@@ -3252,25 +3256,22 @@ function SurvivalPanel({
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
-                <span
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-red-50 text-red-800 text-[11px] font-medium border border-red-200"
+                <Chip
+                  tone="red"
                   title={`Attaque : d20 ${formatModifier(u.attackBonus - proficiencyBonus(character.level ?? 1))} (${abilityLabel}) + ${proficiencyBonus(character.level ?? 1)} (maîtrise)`}
                 >
                   🎯 {formatModifier(u.attackBonus)}
-                </span>
-                <span
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50 text-orange-800 text-[11px] font-medium border border-orange-200"
-                  title={`Dégâts : ${u.damageStr} (${abilityLabel})`}
-                >
+                </Chip>
+                <Chip tone="orange" title={`Dégâts : ${u.damageStr} (${abilityLabel})`}>
                   ⚔ {u.damageStr} {u.damageTypeFr}
-                </span>
+                </Chip>
                 {u.bonusActionAttack && (
-                  <span
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-indigo-50 text-indigo-700 text-[11px] font-medium border border-indigo-200"
+                  <Chip
+                    tone="indigo"
                     title="Arts martiaux : une frappe sans arme supplémentaire en action bonus après une attaque"
                   >
                     ⚡ action bonus
-                  </span>
+                  </Chip>
                 )}
               </div>
             </div>
@@ -3287,7 +3288,8 @@ function SurvivalPanel({
             const shapeMax = character.wildShapeMaxHp ?? 1;
             const commitShapeHp = async () => {
               if (shapeHpDraft === null) return;
-              const n = Math.max(0, Math.round(Number(shapeHpDraft) || 0));
+              // Same ceiling as the regular HP tracker: typed values obey the max.
+              const n = Math.min(Math.max(0, Math.round(Number(shapeHpDraft) || 0)), shapeMax);
               setShapeHpDraft(null);
               if (n === shapeHp) return;
               markLocalMutation();
@@ -3301,12 +3303,12 @@ function SurvivalPanel({
             return (
               <div className="rounded-xl border border-green-300 bg-green-50 p-3 space-y-2">
                 <div className="text-xs font-semibold text-green-900">❤ PV — forme animale</div>
-                <div className="h-4 bg-green-100 rounded-full overflow-hidden border border-green-200">
-                  <div
-                    className={`h-full rounded-full transition-all ${shapeHp <= 0 ? 'bg-red-600' : shapeHp <= shapeMax * 0.3 ? 'bg-orange-500' : 'bg-green-600'}`}
-                    style={{ width: `${Math.max(0, Math.min(100, (shapeHp / shapeMax) * 100))}%` }}
-                  />
-                </div>
+                <HpBar
+                  current={shapeHp}
+                  max={shapeMax}
+                  size="sm"
+                  trackClassName="bg-green-100 border border-green-200"
+                />
                 <div className="flex items-center justify-between gap-2">
                   <span className="flex items-center gap-1">
                     <input
@@ -3794,7 +3796,12 @@ function HpTracker({
     setter: (n: number) => void,
   ) => {
     const min = field === 'maxHp' ? 1 : 0;
-    const n = typeof raw === 'number' && Number.isFinite(raw) ? Math.max(min, raw) : min;
+    let n = typeof raw === 'number' && Number.isFinite(raw) ? Math.max(min, raw) : min;
+    // Typed current HP obeys the same ceiling as the +1 stepper.
+    if (field === 'currentHp') {
+      const max = typeof maxHp === 'number' && maxHp > 0 ? maxHp : character.maxHp;
+      if (max > 0) n = Math.min(n, max);
+    }
     setter(n);
     delete pendingPatch.current[field];
     if (n !== character[field]) patchFields({ [field]: n });
@@ -3823,7 +3830,6 @@ function HpTracker({
         : curNum <= maxNum * 0.5
           ? 'text-orange-500'
           : 'text-green-600';
-  const hpPct = maxNum > 0 ? Math.min(100, (curNum / maxNum) * 100) : 0;
 
   return (
     <div className="flex items-center gap-3 flex-wrap">
@@ -3926,12 +3932,7 @@ function HpTracker({
       )}
 
       {/* HP bar */}
-      <div className="flex-1 min-w-[80px] h-2 bg-parchment-200 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all ${curNum <= 0 ? 'bg-red-700' : curNum <= maxNum * 0.3 ? 'bg-red-500' : curNum <= maxNum * 0.5 ? 'bg-orange-400' : 'bg-green-500'}`}
-          style={{ width: `${hpPct}%` }}
-        />
-      </div>
+      <HpBar current={curNum} max={maxNum} className="flex-1 min-w-[80px]" />
     </div>
   );
 }

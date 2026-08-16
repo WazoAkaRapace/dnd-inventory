@@ -10,6 +10,7 @@ import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import ConditionsEditor from './ConditionsEditor';
 import MonsterStatBlock from './MonsterStatBlock';
+import { ConfirmButton, HpBar } from './ui';
 
 const CARD_COLORS = [
   null, // default (type-based)
@@ -35,6 +36,11 @@ interface Props {
   onPatch: (id: number, patch: Partial<Combatant>) => void;
   onDelete?: (id: number) => void; // omitted when delete handled by group header
   onSetInitiative: (id: number, initiative: number) => void;
+  /** Damage-chip apply mode: the whole card becomes a tap target. */
+  targetMode?: boolean;
+  onApplyDamage?: (id: number) => void;
+  /** External stat-block handler (CombatPage panel/modal). Falls back to internal modal. */
+  onOpenStatBlock?: (slug: string) => void;
 }
 
 function rollD20(bonus: number): number {
@@ -53,6 +59,9 @@ export default function CombatantRow({
   onPatch,
   onDelete,
   onSetInitiative,
+  targetMode = false,
+  onApplyDamage,
+  onOpenStatBlock,
 }: Props) {
   const [damageInput, setDamageInput] = useState('');
   const [showActions, setShowActions] = useState(false);
@@ -64,12 +73,6 @@ export default function CombatantRow({
   const [initInput, setInitInput] = useState(
     combatant.initiative !== null ? String(combatant.initiative) : '',
   );
-
-  const hpPct =
-    combatant.hitPoints !== null && combatant.maxHitPoints
-      ? Math.max(0, Math.min(100, (combatant.hitPoints / combatant.maxHitPoints) * 100))
-      : 0;
-  const hpColor = hpPct > 50 ? 'bg-green-500' : hpPct > 25 ? 'bg-yellow-500' : 'bg-red-500';
 
   const applyDamage = (multiplier: number) => {
     const val = parseInt(damageInput, 10);
@@ -147,7 +150,9 @@ export default function CombatantRow({
     <div
       className={`card p-3 pt-4 transition-all relative ${
         isCurrent ? 'ring-2 ring-blood-500' : ''
-      } ${combatant.defeated ? 'opacity-50 grayscale' : ''} ${cardClass}`}
+      } ${combatant.defeated ? 'opacity-50 grayscale' : ''} ${cardClass} ${
+        targetMode ? 'combat-target' : ''
+      }`}
       style={{
         ...cardBg,
         ...(isCurrent
@@ -158,6 +163,15 @@ export default function CombatantRow({
           : {}),
       }}
     >
+      {/* Damage-chip apply mode: full-card tap target above the row content */}
+      {targetMode && onApplyDamage && (
+        <button
+          type="button"
+          onClick={() => onApplyDamage(combatant.id)}
+          className="absolute inset-0 z-20 rounded-2xl"
+          aria-label={`Appliquer les dégâts à ${label ?? combatant.name}`}
+        />
+      )}
       {/* Floating "Tour" label on top of card (hidden for group members — shown on group wrapper) */}
       {isCurrent && !combatant.defeated && !hideTourLabel && (
         <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-blood-600 text-parchment-50 text-xs font-bold shadow-md z-10 whitespace-nowrap">
@@ -224,14 +238,16 @@ export default function CombatantRow({
               🎨
             </button>
             {onDelete && (
-              <button
-                type="button"
-                onClick={() => onDelete(combatant.id)}
+              <ConfirmButton
+                onConfirm={() => onDelete(combatant.id)}
                 className="text-ink-400 hover:text-red-600 p-1 text-sm"
+                armedClassName="bg-red-100 text-red-700 rounded px-1.5"
                 title="Retirer"
+                ariaLabel={`Retirer ${label ?? combatant.name} du combat`}
+                confirmChildren="Sûr ?"
               >
                 🗑
-              </button>
+              </ConfirmButton>
             )}
           </div>
         )}
@@ -271,12 +287,13 @@ export default function CombatantRow({
         {combatant.hitPoints !== null && combatant.maxHitPoints !== null && (
           <div className="flex items-center gap-1 flex-1 min-w-0">
             <span className="text-xs text-ink-400 shrink-0">❤</span>
-            <div className="flex-1 h-5 rounded-full bg-parchment-200 overflow-hidden relative">
-              <div className={`h-full ${hpColor} transition-all`} style={{ width: `${hpPct}%` }} />
-              <span className="absolute inset-0 flex items-center justify-center text-xs font-mono font-semibold">
-                {combatant.hitPoints}/{combatant.maxHitPoints}
-              </span>
-            </div>
+            <HpBar
+              current={combatant.hitPoints}
+              max={combatant.maxHitPoints}
+              size="md"
+              showText
+              className="flex-1"
+            />
           </div>
         )}
       </div>
@@ -287,7 +304,9 @@ export default function CombatantRow({
           {combatant.monsterSlug && (
             <button
               type="button"
-              onClick={() => setShowStatBlock(true)}
+              onClick={() =>
+                onOpenStatBlock ? onOpenStatBlock(combatant.monsterSlug!) : setShowStatBlock(true)
+              }
               className="btn-secondary text-xs py-2 flex items-center justify-center gap-1"
               title="Stat block"
             >
@@ -447,11 +466,13 @@ export default function CombatantRow({
         combatantName={combatant.name}
       />
 
-      <MonsterStatBlock
-        open={showStatBlock}
-        slug={combatant.monsterSlug}
-        onClose={() => setShowStatBlock(false)}
-      />
+      {!onOpenStatBlock && (
+        <MonsterStatBlock
+          open={showStatBlock}
+          slug={combatant.monsterSlug}
+          onClose={() => setShowStatBlock(false)}
+        />
+      )}
 
       {/* Color picker popup (portal to body) */}
       {showColorPicker &&

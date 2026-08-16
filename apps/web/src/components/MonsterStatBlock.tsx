@@ -21,6 +21,10 @@ interface Props {
   open: boolean;
   slug: string | null;
   onClose: () => void;
+  /** Fires whenever the GM rolls damage — the result becomes a damage chip. */
+  onDamageRolled?: (total: number, source: string) => void;
+  /** 'panel' docks inline (desktop side panel); 'modal' (default) is the bottom sheet. */
+  variant?: 'modal' | 'panel';
 }
 
 /** Light spell row from GET /api/spells/light */
@@ -90,7 +94,13 @@ const SPEED_LABELS: Record<string, string> = {
   burrow: 'creusement',
 };
 
-export default function MonsterStatBlock({ open, slug, onClose }: Props) {
+export default function MonsterStatBlock({
+  open,
+  slug,
+  onClose,
+  onDamageRolled,
+  variant = 'modal',
+}: Props) {
   const [monster, setMonster] = useState<Monster | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -125,6 +135,56 @@ export default function MonsterStatBlock({ open, slug, onClose }: Props) {
 
   if (!open) return null;
 
+  const header = (
+    <div className="flex items-center justify-between p-4 border-b border-parchment-200 shrink-0">
+      <h2 className="section-title truncate">
+        {monster?.nameFr ?? (loading ? 'Chargement…' : 'Monstre')}
+      </h2>
+      <button
+        type="button"
+        onClick={onClose}
+        className="btn-ghost text-ink-500 p-1 shrink-0"
+        aria-label="Fermer"
+      >
+        ✕
+      </button>
+    </div>
+  );
+
+  const body = (
+    <div className="overflow-y-auto p-4 flex-1">
+      {loading && (
+        <p className="text-sm text-ink-400 text-center py-8">Chargement du stat block…</p>
+      )}
+      {!loading && !monster && (
+        <p className="text-sm text-ink-400 text-center py-8">Monstre introuvable.</p>
+      )}
+      {monster && (
+        <StatBlockBody
+          monster={monster}
+          spellCatalog={spellCatalog}
+          onOpenSpell={setOpenSpellId}
+          onDamageRolled={onDamageRolled}
+        />
+      )}
+    </div>
+  );
+
+  // Docked side panel (desktop): inline card, no backdrop, own scroll.
+  if (variant === 'panel') {
+    return (
+      <div className="card rounded-2xl flex flex-col overflow-hidden h-full">
+        {header}
+        {body}
+        <SpellDetailSheet
+          open={openSpellId !== null}
+          spellId={openSpellId}
+          onClose={() => setOpenSpellId(null)}
+        />
+      </div>
+    );
+  }
+
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={onClose}>
       <div
@@ -132,37 +192,8 @@ export default function MonsterStatBlock({ open, slug, onClose }: Props) {
         style={{ maxHeight: '88vh' }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-parchment-200 shrink-0">
-          <h2 className="font-display text-lg font-semibold">
-            {monster?.nameFr ?? (loading ? 'Chargement…' : 'Monstre')}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="btn-ghost text-ink-500 p-1"
-            aria-label="Fermer"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="overflow-y-auto p-4 flex-1">
-          {loading && (
-            <p className="text-sm text-ink-400 text-center py-8">Chargement du stat block…</p>
-          )}
-          {!loading && !monster && (
-            <p className="text-sm text-ink-400 text-center py-8">Monstre introuvable.</p>
-          )}
-          {monster && (
-            <StatBlockBody
-              monster={monster}
-              spellCatalog={spellCatalog}
-              onOpenSpell={setOpenSpellId}
-            />
-          )}
-        </div>
+        {header}
+        {body}
       </div>
 
       {/* Spell detail sheet (stacks above the stat block) */}
@@ -180,10 +211,12 @@ function StatBlockBody({
   monster,
   spellCatalog,
   onOpenSpell,
+  onDamageRolled,
 }: {
   monster: Monster;
   spellCatalog: SpellLight[];
   onOpenSpell: (id: number) => void;
+  onDamageRolled?: (total: number, source: string) => void;
 }) {
   const sizeLabel = MONSTER_SIZE_LABELS_FR[monster.size] ?? monster.size;
   const typeLine = [
@@ -311,6 +344,7 @@ function StatBlockBody({
           actions={monster.traits}
           spellCatalog={spellCatalog}
           onOpenSpell={onOpenSpell}
+          onDamageRolled={onDamageRolled}
         />
       )}
 
@@ -321,6 +355,7 @@ function StatBlockBody({
           actions={monster.actions}
           spellCatalog={spellCatalog}
           onOpenSpell={onOpenSpell}
+          onDamageRolled={onDamageRolled}
         />
       )}
 
@@ -331,6 +366,7 @@ function StatBlockBody({
           actions={monster.legendaryActions}
           spellCatalog={spellCatalog}
           onOpenSpell={onOpenSpell}
+          onDamageRolled={onDamageRolled}
         />
       )}
     </div>
@@ -342,11 +378,13 @@ function ActionSection({
   actions,
   spellCatalog,
   onOpenSpell,
+  onDamageRolled,
 }: {
   title: string;
   actions: MonsterAction[];
   spellCatalog: SpellLight[];
   onOpenSpell: (id: number) => void;
+  onDamageRolled?: (total: number, source: string) => void;
 }) {
   return (
     <div>
@@ -360,6 +398,7 @@ function ActionSection({
             action={action}
             spellCatalog={spellCatalog}
             onOpenSpell={onOpenSpell}
+            onDamageRolled={onDamageRolled}
           />
         ))}
       </div>
@@ -411,10 +450,12 @@ function ActionEntry({
   action,
   spellCatalog,
   onOpenSpell,
+  onDamageRolled,
 }: {
   action: MonsterAction;
   spellCatalog: SpellLight[];
   onOpenSpell: (id: number) => void;
+  onDamageRolled?: (total: number, source: string) => void;
 }) {
   const [attackResult, setAttackResult] = useState<{
     roll: number;
@@ -437,13 +478,17 @@ function ActionEntry({
     setDamageResult(null); // clear previous damage
     // On a crit, auto-roll double damage
     if (result.natural === 20 && action.damageDice) {
-      setDamageResult(rollDamage(action.damageDice, true));
+      const critDamage = rollDamage(action.damageDice, true);
+      setDamageResult(critDamage);
+      if (critDamage.total > 0) onDamageRolled?.(critDamage.total, action.name);
     }
   };
 
   const handleDamage = () => {
     if (!action.damageDice) return;
-    setDamageResult(rollDamage(action.damageDice, isCrit));
+    const result = rollDamage(action.damageDice, isCrit);
+    setDamageResult(result);
+    if (result.total > 0) onDamageRolled?.(result.total, action.name);
   };
 
   const isCrit = attackResult?.natural === 20;

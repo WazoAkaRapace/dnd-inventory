@@ -15,7 +15,7 @@ import { Link, useLocation } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../auth';
 import { useSyncEvent } from '../sync';
-import TurnSlash, { useTurnSlash } from './TurnSlash';
+import TurnSlash, { combatVibrate, useTurnSlash } from './TurnSlash';
 
 interface ActiveCombat {
   encounter: EncounterDetail;
@@ -35,6 +35,7 @@ export default function CombatWidget() {
   const [combats, setCombats] = useState<ActiveCombat[]>([]);
   const [collapsed, setCollapsed] = useState(true); // minimized by default
   const [initInput, setInitInput] = useState('');
+  const [initError, setInitError] = useState(false);
   const loadSeq = useRef(0);
 
   // Only show on a character sheet route
@@ -119,14 +120,23 @@ export default function CombatWidget() {
     }
   }, []);
 
-  const setInitiative = async (encounterId: number, combatantId: number, value: number) => {
+  const setInitiative = async (
+    encounterId: number,
+    combatantId: number,
+    value: number,
+  ): Promise<boolean> => {
     try {
       await api.patch(`/api/encounters/${encounterId}/combatants/${combatantId}/initiative`, {
         initiative: value,
       });
+      setInitError(false);
       loadCombats();
+      return true;
     } catch {
-      // ignore
+      // The player must know the roll didn't save — otherwise they wait for a
+      // turn that never comes.
+      setInitError(true);
+      return false;
     }
   };
 
@@ -152,6 +162,15 @@ export default function CombatWidget() {
       c.currentCombatant?.id === c.myCombatant.id,
   );
   const isMyTurn = !!myTurn;
+
+  // Haptic cue the moment initiative is requested (phone in pocket)
+  const needsInitAnywhere = combats.some((c) => c.myCombatant?.initiative === null);
+  const prevNeedsInit = useRef(false);
+  useEffect(() => {
+    const rising = needsInitAnywhere && !prevNeedsInit.current;
+    prevNeedsInit.current = needsInitAnywhere;
+    if (rising) combatVibrate([80, 40, 80]);
+  }, [needsInitAnywhere]);
 
   // Sword-cut on the any-state → "your turn" transition (shared hook)
   const slashActive = useTurnSlash(isMyTurn);
@@ -268,18 +287,21 @@ export default function CombatWidget() {
                   min={1}
                   max={40}
                   value={initInput}
-                  onChange={(e) => setInitInput(e.target.value)}
+                  onChange={(e) => {
+                    setInitInput(e.target.value);
+                    if (initError) setInitError(false);
+                  }}
                   placeholder="—"
                   className="input input-compact text-sm py-1"
                   autoFocus
                 />
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     const v = parseInt(initInput, 10);
-                    if (!Number.isNaN(v))
-                      setInitiative(combat.encounter.id, combat.myCombatant!.id, v);
-                    setInitInput('');
+                    if (Number.isNaN(v)) return;
+                    const ok = await setInitiative(combat.encounter.id, combat.myCombatant!.id, v);
+                    if (ok) setInitInput('');
                   }}
                   className="btn-primary text-xs px-2 py-1"
                 >
@@ -300,6 +322,11 @@ export default function CombatWidget() {
                   🎲
                 </button>
               </div>
+              {initError && (
+                <p className="text-xs text-red-600 mt-1" role="alert">
+                  Échec de l'enregistrement — réessaie
+                </p>
+              )}
             </div>
           )}
 

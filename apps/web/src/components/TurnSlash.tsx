@@ -14,6 +14,22 @@ import { useEffect, useRef, useState } from 'react';
 // 1.15s animation + 110ms echo delay, plus a little slack
 const SLASH_MS = 1400;
 
+/** Haptic cue for combat transitions. Degrades silently where unsupported
+ *  (iOS Safari) or when the user prefers reduced motion. */
+export function combatVibrate(pattern: number | number[]): void {
+  if (typeof navigator === 'undefined' || !('vibrate' in navigator)) return;
+  if (
+    typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  )
+    return;
+  try {
+    navigator.vibrate(pattern);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function useTurnSlash(isMyTurn: boolean): boolean {
   const wasMyTurn = useRef(false);
   const [slashActive, setSlashActive] = useState(false);
@@ -21,6 +37,7 @@ export function useTurnSlash(isMyTurn: boolean): boolean {
     const becameMyTurn = isMyTurn && !wasMyTurn.current;
     wasMyTurn.current = isMyTurn;
     if (!becameMyTurn) return;
+    combatVibrate([120, 60, 120]);
     setSlashActive(true);
     const t = setTimeout(() => setSlashActive(false), SLASH_MS);
     return () => {

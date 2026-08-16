@@ -6,7 +6,7 @@
 import type { CombatantCondition } from '@dnd-inventory/shared';
 import { DND_CONDITIONS_FR } from '@dnd-inventory/shared';
 import { useState } from 'react';
-import { createPortal } from 'react-dom';
+import { BottomSheet } from './ui';
 
 interface Props {
   open: boolean;
@@ -69,71 +69,16 @@ export default function ConditionsEditor({
 
   if (!open) return null;
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={onClose}>
-      <div
-        className="card w-full max-w-md rounded-b-none flex flex-col sheet-enter"
-        style={{ maxHeight: '88vh' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between p-4 border-b border-parchment-200 shrink-0">
-          <h2 className="font-display text-lg font-semibold">Conditions — {combatantName}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="btn-ghost text-ink-500 p-1"
-            aria-label="Fermer"
-          >
-            ✕
-          </button>
-        </div>
-        <div className="overflow-y-auto p-4 flex-1 space-y-2">
-          {DND_CONDITIONS_FR.map((cond) => {
-            const active = activeSet.has(cond);
-            const entry = draft.find((c) => c.name === cond);
-            return (
-              <div
-                key={cond}
-                className={`flex items-center gap-3 p-2 rounded-lg border transition-colors ${
-                  active ? 'border-blood-300 bg-blood-50' : 'border-parchment-200'
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => toggle(cond)}
-                  className={`w-9 h-9 rounded-lg flex items-center justify-center text-lg shrink-0 transition-colors ${
-                    active ? 'bg-blood-100' : 'bg-parchment-100 hover:bg-parchment-200'
-                  }`}
-                  aria-label={cond}
-                >
-                  {CONDITION_ICONS[cond] ?? '❓'}
-                </button>
-                <span className="flex-1 text-sm font-medium">{cond}</span>
-                {active && (
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      min={1}
-                      max={20}
-                      value={entry?.duration ?? ''}
-                      placeholder="∞"
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setDuration(cond, v === '' ? null : Math.max(1, parseInt(v, 10)));
-                      }}
-                      className="input w-14 text-center text-sm"
-                      title="Durée en tours (vide = jusqu'à dissipation)"
-                    />
-                    <span className="text-xs text-ink-400 w-12">
-                      {entry?.duration == null ? 'tours ∞' : 'tours'}
-                    </span>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-        <div className="flex gap-2 p-4 border-t border-parchment-200 shrink-0">
+  return (
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      title={`Conditions — ${combatantName}`}
+      size="md"
+      mobileOnly={false}
+      bodyClassName="space-y-2"
+      footer={
+        <>
           <button type="button" onClick={onClose} className="btn-secondary flex-1">
             Annuler
           </button>
@@ -147,9 +92,53 @@ export default function ConditionsEditor({
           >
             Appliquer
           </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
+        </>
+      }
+    >
+      {DND_CONDITIONS_FR.map((cond) => {
+        const active = activeSet.has(cond);
+        const entry = draft.find((c) => c.name === cond);
+        return (
+          <div
+            key={cond}
+            className={`flex items-center gap-3 p-2 rounded-lg border transition-colors ${
+              active ? 'border-blood-300 bg-blood-50' : 'border-parchment-200'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => toggle(cond)}
+              className={`w-9 h-9 rounded-lg flex items-center justify-center text-lg shrink-0 transition-colors ${
+                active ? 'bg-blood-100' : 'bg-parchment-100 hover:bg-parchment-200'
+              }`}
+              aria-label={cond}
+            >
+              {CONDITION_ICONS[cond] ?? '❓'}
+            </button>
+            <span className="flex-1 text-sm font-medium">{cond}</span>
+            {active && (
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={entry?.duration ?? ''}
+                  placeholder="∞"
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setDuration(cond, v === '' ? null : Math.max(1, parseInt(v, 10)));
+                  }}
+                  className="input w-14 text-center text-sm"
+                  title="Durée en tours (vide = jusqu'à dissipation)"
+                />
+                <span className="text-xs text-ink-400 w-12">
+                  {entry?.duration == null ? 'tours ∞' : 'tours'}
+                </span>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </BottomSheet>
   );
 }

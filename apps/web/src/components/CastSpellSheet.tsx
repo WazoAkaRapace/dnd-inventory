@@ -2,6 +2,7 @@ import type { Spell } from '@dnd-inventory/shared';
 import { formatModifier, spellDamageAtLevel, spellSaveDC } from '@dnd-inventory/shared';
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Chip } from './ui';
 
 /**
  * Bottom sheet (mobile) / dialog (desktop) to cast a known spell:
@@ -78,7 +79,7 @@ export default function CastSpellSheet({
       >
         <div className="flex items-start justify-between gap-2 mb-3">
           <div>
-            <h3 className="font-display text-lg font-semibold">🪄 {spell.nameFr ?? spell.name}</h3>
+            <h3 className="section-title">🪄 {spell.nameFr ?? spell.name}</h3>
             <p className="text-xs text-ink-400">
               {isCantrip ? 'Tour de magie' : `Sort de niveau ${spell.level}`}
               {spell.concentration && ' · 🌀 Concentration'}
@@ -161,20 +162,16 @@ export default function CastSpellSheet({
                 <span className="text-xs text-ink-400">Au niveau {chosen} :</span>
               )}
               {dmg.dice && (
-                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50 text-orange-800 text-[11px] font-medium border border-orange-200">
+                <Chip tone="orange">
                   ⚔ {dmg.dice}
                   {dmg.typeFr ? ` dégâts ${dmg.typeFr}` : ''}
-                </span>
+                </Chip>
               )}
               {spell.dcJson && castingMod !== undefined && profBonus !== undefined && (
-                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-50 text-blue-800 text-[11px] font-medium border border-blue-200">
-                  🛡 DD {spellSaveDC(castingMod, profBonus)}
-                </span>
+                <Chip tone="blue">🛡 DD {spellSaveDC(castingMod, profBonus)}</Chip>
               )}
               {spell.attackType && castingMod !== undefined && profBonus !== undefined && (
-                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-red-50 text-red-800 text-[11px] font-medium border border-red-200">
-                  🎯 {formatModifier(castingMod + profBonus)}
-                </span>
+                <Chip tone="red">🎯 {formatModifier(castingMod + profBonus)}</Chip>
               )}
             </div>
           );

@@ -99,7 +99,7 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
       {/* Saving throws */}
       <section className="card p-4 sm:p-5 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="font-display text-lg font-semibold">Jets de sauvegarde</h2>
+          <h2 className="section-title">Jets de sauvegarde</h2>
           <span className="text-xs text-ink-400">
             Bonus de maîtrise {formatModifier(profBonus)}
           </span>
@@ -135,7 +135,7 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
 
       {/* Skills grouped by ability */}
       <section className="card p-4 sm:p-5 space-y-3">
-        <h2 className="font-display text-lg font-semibold">Compétences</h2>
+        <h2 className="section-title">Compétences</h2>
         {skillsByAbility.map((group) => (
           <div key={group.ability}>
             <div className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-1.5">

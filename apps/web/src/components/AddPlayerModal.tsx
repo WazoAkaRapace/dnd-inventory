@@ -49,7 +49,7 @@ export default function AddPlayerModal({ open, onClose, characters, onAdd }: Pro
       <div className="flex items-center justify-between mb-2">
         <span className="text-sm text-ink-500">
           {selected.size === 0
-            ? 'Sélectionnez un ou plusieurs personnages'
+            ? 'Sélectionne un ou plusieurs personnages'
             : `${selected.size} sélectionné${selected.size > 1 ? 's' : ''}`}
         </span>
         <button

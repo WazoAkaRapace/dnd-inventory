@@ -8,17 +8,32 @@
   --color-parchment-400: #c9b074;
   --color-parchment-500: #b8975a;
 
+  --color-blood-50: #faf0f0;
+  --color-blood-100: #f0d4d4;
+  --color-blood-200: #dda3a3;
+  --color-blood-300: #c05151;
+  --color-blood-400: #a92424;
   --color-blood-500: #8b1a1a;
   --color-blood-600: #7a1f1f;
   --color-blood-700: #651515;
+  --color-blood-800: #541212;
+  --color-blood-900: #470d0d;
 
-  --color-ink-900: #2a1f14;
-  --color-ink-700: #4a3825;
+  --color-ink-100: #e9e1d4;
+  --color-ink-300: #a8926f;
+  --color-ink-400: #7d6850;
   --color-ink-500: #6b5640;
-  --color-ink-400: #8a7558;
+  --color-ink-600: #5b4733;
+  --color-ink-700: #4a3825;
+  --color-ink-800: #3a2b1c;
+  --color-ink-900: #2a1f14;
 
+  --color-gold-100: #f6ecd2;
+  --color-gold-300: #e3c766;
   --color-gold-400: #d4af37;
   --color-gold-500: #b8975a;
+  --color-gold-600: #9a7c48;
+  --color-gold-700: #7e6439;
 
   --font-display: "Cinzel", Georgia, serif;
   --font-body: "Iowan Old Style", Palatino, Georgia, serif;
@@ -52,6 +67,16 @@ input,
 select,
 textarea {
   @apply text-base;
+}
+
+/* Keyboard focus — visible blood ring on every control.
+   Inputs keep their own focus ring/border treatment from .input. */
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-blood-500);
+  outline-offset: 2px;
 }
 
 /* Hide number input spinners */
@@ -108,6 +133,11 @@ input[type="number"] {
 
 .label {
   @apply block text-sm font-medium text-ink-700 mb-1;
+}
+
+/* Section heading — the one display type style used above card content */
+.section-title {
+  @apply font-display text-lg font-semibold;
 }
 
 /* Rarity badge colors — text tinted from the badge hue, never gray */
@@ -431,5 +461,40 @@ input[type="number"] {
   }
   .combat-slash-overlay {
     display: none;
+  }
+}
+
+/* ---------- Damage-chip apply mode ----------
+   The GM tapped a damage chip: every combatant card becomes an obvious
+   tap target — blood fringe + breathing glow, content untouched below. */
+.combat-target {
+  cursor: crosshair;
+}
+.combat-target::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 1rem;
+  border: 2px solid rgba(185, 28, 28, 0.55);
+  pointer-events: none;
+  animation: target-breathe 1.6s ease-in-out infinite;
+}
+@keyframes target-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 10px 1px rgba(185, 28, 28, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 18px 4px rgba(185, 28, 28, 0.32);
+  }
+}
+.combat-target:active {
+  transform: scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .combat-target::after {
+    animation: none;
+    box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.45);
   }
 }

@@ -107,7 +107,7 @@ export default function CharacterDescriptionTab({ character, charId, onSaved, on
     <div className="space-y-4">
       {/* Portrait + physical attributes */}
       <section className="card p-4 sm:p-5 space-y-3">
-        <h2 className="font-display text-lg font-semibold">Apparence</h2>
+        <h2 className="section-title">Apparence</h2>
 
         {/* Portrait */}
         <div className="flex items-center gap-4">
@@ -183,7 +183,7 @@ export default function CharacterDescriptionTab({ character, charId, onSaved, on
 
       {/* Personality */}
       <section className="card p-4 sm:p-5 space-y-3">
-        <h2 className="font-display text-lg font-semibold">Personnalité</h2>
+        <h2 className="section-title">Personnalité</h2>
         <div className="space-y-3">
           {PERSONALITY_FIELDS.map((f) => (
             <label key={f.key} className="block">

@@ -6,7 +6,8 @@ import {
   RARITY_LABELS_FR,
 } from '@dnd-inventory/shared';
 import type React from 'react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 export function RarityBadge({ rarity }: { rarity: Rarity }) {
   const cls = `rarity-${rarity}`;
@@ -28,6 +29,146 @@ export function CategoryBadge({ category }: { category: ItemCategory }) {
 export function WeightBadge({ weightKg }: { weightKg: number | null }) {
   if (weightKg === null) return <span className="text-xs text-ink-400">poids ?</span>;
   return <span className="text-xs text-ink-500">{weightKg} kg</span>;
+}
+
+// ---------- Hit-points bar ----------
+// Severity tiers shared by every HP display: dead (≤0) dark red, then red /
+// amber below 25% / 50%, green above. The fill sits on a parchment track;
+// `showText` overlays the numeric value inside the bar.
+
+export function HpBar({
+  current,
+  max,
+  size = 'xs',
+  showText = false,
+  trackClassName = 'bg-parchment-200',
+  className = '',
+}: {
+  current: number;
+  max: number;
+  size?: 'xs' | 'sm' | 'md';
+  showText?: boolean;
+  trackClassName?: string;
+  className?: string;
+}) {
+  const pct = Math.max(0, Math.min(100, max > 0 ? (current / max) * 100 : 0));
+  const tier =
+    current <= 0
+      ? 'bg-red-700'
+      : pct <= 25
+        ? 'bg-red-500'
+        : pct <= 50
+          ? 'bg-yellow-500'
+          : 'bg-green-500';
+  const height = size === 'md' ? 'h-5' : size === 'sm' ? 'h-4' : 'h-2';
+  return (
+    <div
+      className={`relative ${height} ${trackClassName} rounded-full overflow-hidden ${className}`}
+      role="progressbar"
+      aria-valuenow={current}
+      aria-valuemin={0}
+      aria-valuemax={max}
+      aria-valuetext={`${current}/${max} PV`}
+    >
+      <div className={`h-full ${tier} transition-all`} style={{ width: `${pct}%` }} />
+      {showText && (
+        <span className="absolute inset-0 flex items-center justify-center text-xs font-mono font-semibold">
+          {current}/{max}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ---------- Tone chip ----------
+// Small inline stat chip (attack, damage, concentration…): tinted surface,
+// darker text of the same hue, 1px border. `soft` is the de-emphasized
+// variant used for secondary readings of the same stat.
+
+const CHIP_TONES = {
+  orange: {
+    solid: 'bg-orange-50 text-orange-800 border-orange-200',
+    soft: 'bg-orange-50/60 text-orange-700 border-orange-200',
+  },
+  red: {
+    solid: 'bg-red-50 text-red-800 border-red-200',
+    soft: 'bg-red-50/60 text-red-700 border-red-200',
+  },
+  blood: {
+    solid: 'bg-blood-50 text-blood-800 border-blood-200',
+    soft: 'bg-blood-50/60 text-blood-700 border-blood-200',
+  },
+  green: {
+    solid: 'bg-green-50 text-green-800 border-green-200',
+    soft: 'bg-green-50/60 text-green-700 border-green-200',
+  },
+  blue: {
+    solid: 'bg-blue-50 text-blue-800 border-blue-200',
+    soft: 'bg-blue-50/60 text-blue-700 border-blue-200',
+  },
+  amber: {
+    solid: 'bg-amber-50 text-amber-800 border-amber-300',
+    soft: 'bg-amber-50/60 text-amber-700 border-amber-300',
+  },
+  gold: {
+    solid: 'bg-gold-100 text-gold-700 border-gold-300',
+    soft: 'bg-gold-100/60 text-gold-700 border-gold-300',
+  },
+  indigo: {
+    solid: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    soft: 'bg-indigo-50/60 text-indigo-700 border-indigo-200',
+  },
+} as const;
+
+export function Chip({
+  tone = 'orange',
+  soft = false,
+  title,
+  className = '',
+  children,
+}: {
+  tone?: keyof typeof CHIP_TONES;
+  soft?: boolean;
+  title?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const toneCls = CHIP_TONES[tone][soft ? 'soft' : 'solid'];
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium border ${toneCls} ${className}`}
+      title={title}
+    >
+      {children}
+    </span>
+  );
+}
+
+// ---------- Floating action button ----------
+
+export function Fab({
+  onClick,
+  label,
+  mobileOnly = false,
+  raised = false,
+  children = '+',
+}: {
+  onClick: () => void;
+  label: string;
+  mobileOnly?: boolean;
+  raised?: boolean;
+  children?: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className={`fab-enter fixed ${raised ? 'bottom-24' : 'bottom-5'} right-5 z-30 w-14 h-14 rounded-full bg-blood-600 text-white shadow-lg flex items-center justify-center text-2xl font-light hover:bg-blood-700 active:scale-95 transition-all ${mobileOnly ? 'lg:hidden' : ''}`}
+    >
+      {children}
+    </button>
+  );
 }
 
 export function CostBadge({ qty, unit }: { qty: number | null; unit: CostUnit | null }) {
@@ -171,6 +312,74 @@ export function EmptyState({ icon, title, hint }: { icon: string; title: string;
   );
 }
 
+// ---------- Two-step destructive confirm ----------
+// First click arms (warn style + 4s auto-revert), second click fires onConfirm.
+// Clicks never bubble to a parent card handler.
+
+export function ConfirmButton({
+  onConfirm,
+  children,
+  confirmChildren,
+  className = '',
+  armedClassName = '',
+  title,
+  ariaLabel,
+}: {
+  onConfirm: () => void;
+  children: React.ReactNode;
+  confirmChildren: React.ReactNode;
+  className?: string;
+  armedClassName?: string;
+  title?: string;
+  ariaLabel?: string;
+}) {
+  const [armed, setArmed] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
+
+  const disarm = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    setArmed(false);
+  };
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!armed) {
+      setArmed(true);
+      timer.current = setTimeout(disarm, 4000);
+      return;
+    }
+    disarm();
+    onConfirm();
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      onBlur={armed ? disarm : undefined}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && armed) {
+          e.stopPropagation();
+          disarm();
+        }
+      }}
+      className={`${className} ${armed ? `pulse-warn ${armedClassName}` : ''}`}
+      title={title}
+      aria-label={armed && ariaLabel ? `${ariaLabel} — confirmer ?` : ariaLabel}
+    >
+      {armed ? confirmChildren : children}
+    </button>
+  );
+}
+
 // ---------- Toast system ----------
 
 export interface Toast {
@@ -188,7 +397,7 @@ export function ToastStack({
 }) {
   return (
     <div
-      className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 items-center pointer-events-none"
+      className="fixed bottom-24 lg:bottom-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 items-center pointer-events-none"
       aria-live="polite"
       aria-atomic="true"
     >
@@ -290,7 +499,7 @@ export function Modal({
         aria-label={title}
       >
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-display text-lg font-semibold">{title}</h2>
+          <h2 className="section-title">{title}</h2>
           <button
             type="button"
             onClick={onClose}
@@ -306,18 +515,28 @@ export function Modal({
   );
 }
 
-// ---------- Bottom sheet (mobile catalog) ----------
+// ---------- Bottom sheet ----------
+// Portaled so it escapes any transformed ancestor. `mobileOnly` keeps the
+// historical lg:hidden catalog behavior; desktop-capable sheets opt out.
 
 export function BottomSheet({
   open,
   onClose,
   title,
   children,
+  footer,
+  size = 'lg',
+  mobileOnly = true,
+  bodyClassName = '',
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: React.ReactNode;
+  footer?: React.ReactNode;
+  size?: 'md' | 'lg';
+  mobileOnly?: boolean;
+  bodyClassName?: string;
 }) {
   const sheetRef = useRef<HTMLDivElement>(null);
 
@@ -335,22 +554,22 @@ export function BottomSheet({
   }, [open, onClose]);
 
   if (!open) return null;
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 lg:hidden"
+      className={`fixed inset-0 z-50 flex items-end justify-center bg-black/40 ${mobileOnly ? 'lg:hidden' : ''}`}
       role="presentation"
       onClick={onClose}
     >
       <div
         ref={sheetRef}
-        className="sheet-enter card w-full max-w-6xl max-h-[88vh] rounded-b-none flex flex-col"
+        className={`sheet-enter card w-full ${size === 'md' ? 'max-w-md' : 'max-w-6xl'} max-h-[88vh] rounded-b-none flex flex-col`}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label={title}
       >
         <div className="flex items-center justify-between p-4 border-b border-parchment-200 shrink-0">
-          <h2 className="font-display text-lg font-semibold">{title}</h2>
+          <h2 className="section-title">{title}</h2>
           <button
             type="button"
             onClick={onClose}
@@ -360,8 +579,12 @@ export function BottomSheet({
             ✕
           </button>
         </div>
-        <div className="overflow-y-auto p-4 flex-1">{children}</div>
+        <div className={`overflow-y-auto p-4 flex-1 ${bodyClassName}`}>{children}</div>
+        {footer && (
+          <div className="flex gap-2 p-4 border-t border-parchment-200 shrink-0">{footer}</div>
+        )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

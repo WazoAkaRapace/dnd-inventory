@@ -23,13 +23,26 @@ function SyncIndicator() {
     disconnected: 'bg-red-400',
   };
   const labels = { connected: 'Synchronisé', connecting: 'Connexion…', disconnected: 'Hors ligne' };
+  // Dot for the happy path; text appears whenever the table would care
+  // (connecting/disconnected) so the state is never color-only.
   return (
     <span
-      className={`inline-block w-2.5 h-2.5 rounded-full ${colors[status]}`}
-      title={labels[status]}
-      role="img"
-      aria-label={labels[status]}
-    />
+      className="inline-flex items-center gap-1.5 text-xs text-ink-400"
+      role="status"
+      aria-live="polite"
+    >
+      <span
+        className={`inline-block w-2.5 h-2.5 rounded-full ${colors[status]}`}
+        title={labels[status]}
+        role="img"
+        aria-label={labels[status]}
+      />
+      {status !== 'connected' && (
+        <span className={status === 'disconnected' ? 'text-red-600 font-medium' : ''}>
+          {labels[status]}
+        </span>
+      )}
+    </span>
   );
 }
 

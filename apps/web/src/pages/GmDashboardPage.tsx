@@ -8,7 +8,7 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import api from '../api';
-import { CategoryBadge, EmptyState, ErrorMsg, LoadingSpinner, Modal } from '../components/ui';
+import { CategoryBadge, EmptyState, ErrorMsg, Fab, LoadingSpinner, Modal } from '../components/ui';
 import { useSyncEvent } from '../sync';
 
 interface Transaction {
@@ -520,7 +520,7 @@ function CustomItemsTab({ partyId }: { partyId: string }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-display text-lg font-semibold">
+        <h3 className="section-title">
           Objets personnalisés{' '}
           <span className="text-ink-400 text-sm font-normal">({customItems.length})</span>
         </h3>
@@ -536,7 +536,7 @@ function CustomItemsTab({ partyId }: { partyId: string }) {
           <EmptyState
             icon="✨"
             title="Aucun objet personnalisé"
-            message="Créez des objets non-SRD : trésors spéciaux, objets de quête, armes uniques…"
+            hint="Crée des objets non-SRD : trésors spéciaux, objets de quête, armes uniques…"
           />
         </div>
       ) : (
@@ -598,14 +598,7 @@ function CustomItemsTab({ partyId }: { partyId: string }) {
 
       {/* Floating + button */}
       {customItems.length > 0 && (
-        <button
-          type="button"
-          onClick={openCreate}
-          className="lg:hidden fab-enter fixed bottom-5 right-5 z-30 w-14 h-14 rounded-full bg-blood-600 text-white shadow-lg flex items-center justify-center text-2xl font-light hover:bg-blood-700 active:scale-95 transition-all"
-          aria-label="Ajouter un objet personnalisé"
-        >
-          +
-        </button>
+        <Fab onClick={openCreate} label="Ajouter un objet personnalisé" mobileOnly />
       )}
 
       {/* Create/Edit modal */}

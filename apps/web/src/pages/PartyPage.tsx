@@ -14,6 +14,7 @@ export default function PartyPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showAddChar, setShowAddChar] = useState(false);
+  const [inviteCopied, setInviteCopied] = useState(false);
 
   // New character form
   const [charName, setCharName] = useState('');
@@ -105,10 +106,18 @@ export default function PartyPage() {
                   </code>
                   <button
                     type="button"
-                    onClick={() => navigator.clipboard.writeText(party.party.inviteCode)}
+                    onClick={() => {
+                      navigator.clipboard
+                        .writeText(party.party.inviteCode)
+                        .then(() => {
+                          setInviteCopied(true);
+                          setTimeout(() => setInviteCopied(false), 2000);
+                        })
+                        .catch(() => {});
+                    }}
                     className="text-xs text-blood-600 hover:underline"
                   >
-                    Copier
+                    {inviteCopied ? 'Copié ✓' : 'Copier'}
                   </button>
                 </div>
                 <Link to={`/party/${partyId}/gm`} className="btn-secondary text-sm">
@@ -136,7 +145,7 @@ export default function PartyPage() {
       {/* My characters */}
       {myCharacters.length > 0 && (
         <div>
-          <h2 className="font-display text-lg font-semibold mb-3">Mes personnages</h2>
+          <h2 className="section-title mb-3">Mes personnages</h2>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {myCharacters.map((c) => (
               <CharacterCard key={c.id} c={c} partyId={partyId!} />
@@ -148,7 +157,7 @@ export default function PartyPage() {
       {/* All characters (GM view or other players) */}
       {isGM && party.characters.length > myCharacters.length && (
         <div>
-          <h2 className="font-display text-lg font-semibold mb-3">Tous les personnages</h2>
+          <h2 className="section-title mb-3">Tous les personnages</h2>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {party.characters.map((c) => (
               <CharacterCard key={c.id} c={c} partyId={partyId!} />
@@ -158,18 +167,12 @@ export default function PartyPage() {
       )}
 
       {!isGM && party.characters.length === 0 && (
-        <EmptyState
-          icon="🧙"
-          title="Aucun personnage"
-          hint="Créez votre personnage pour commencer."
-        />
+        <EmptyState icon="🧙" title="Aucun personnage" hint="Crée ton personnage pour commencer." />
       )}
 
       {/* Members */}
       <div>
-        <h2 className="font-display text-lg font-semibold mb-3">
-          Membres ({party.members.length})
-        </h2>
+        <h2 className="section-title mb-3">Membres ({party.members.length})</h2>
         <div className="card p-4">
           <div className="flex flex-wrap gap-3">
             {party.members.map((m) => (
@@ -288,7 +291,7 @@ function CharacterCard({ c, partyId }: { c: CharacterSummary; partyId: string })
           />
         )}
         <div className="min-w-0 flex-1">
-          <h3 className="font-display text-lg font-semibold truncate">{c.name}</h3>
+          <h3 className="section-title truncate">{c.name}</h3>
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-ink-500">
             {c.characterClass && (
               <span>

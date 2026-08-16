@@ -22,7 +22,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '../api';
 import CastSpellSheet from '../components/CastSpellSheet';
-import { BottomSheet } from '../components/ui';
+import { BottomSheet, Chip } from '../components/ui';
 
 interface Props {
   character: Character;
@@ -360,7 +360,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
       {isCaster && (
         <section className="card p-4 sm:p-5 space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="font-display text-lg font-semibold">Emplacements de sort</h2>
+            <h2 className="section-title">Emplacements de sort</h2>
             <button
               type="button"
               onClick={restoreAll}
@@ -416,7 +416,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
         {/* Known spells */}
         <section className="card p-4 sm:p-5 space-y-3 min-w-0">
           <div className="flex items-center justify-between">
-            <h2 className="font-display text-lg font-semibold flex items-center gap-2">
+            <h2 className="section-title flex items-center gap-2">
               Sorts connus{' '}
               <span className="text-ink-400 text-sm font-normal">({charSpells.length})</span>
               {preparedLimit !== null && (
@@ -484,7 +484,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                                 <button
                                   type="button"
                                   onClick={() => togglePrepared(cs.id, cs.prepared)}
-                                  className={`text-lg shrink-0 ${cs.prepared ? 'text-gold-400' : 'text-parchment-300 hover:text-parchment-400'}`}
+                                  className={`text-lg shrink-0 ${cs.prepared ? 'text-gold-600' : 'text-parchment-300 hover:text-parchment-400'}`}
                                   aria-label={cs.prepared ? 'Sort préparé' : 'Sort non préparé'}
                                   title={cs.prepared ? 'Préparé' : 'Non préparé'}
                                 >
@@ -596,7 +596,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
 
         {/* Desktop: catalog panel always visible on the right */}
         <section className="hidden lg:block space-y-3">
-          <h2 className="font-display text-lg font-semibold">Grimoire</h2>
+          <h2 className="section-title">Grimoire</h2>
           <div className="card p-4 space-y-3 max-h-[70vh] overflow-y-auto">
             <SpellCatalog {...catalogProps} />
           </div>
@@ -722,7 +722,7 @@ function SpellStatBadges({
   return (
     <div className="flex flex-wrap gap-1.5 pt-1.5">
       {dc && (
-        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-blue-50 text-blue-800 text-[11px] font-medium border border-blue-200">
+        <Chip tone="blue">
           🛡 DD {dcValue}
           {dc.dc_type?.index && (
             <span className="text-blue-500">
@@ -734,21 +734,17 @@ function SpellStatBadges({
           {dc.dc_success && dc.dc_success !== 'none' && (
             <span className="text-blue-400">· {DC_SUCCESS_FR[dc.dc_success] ?? ''}</span>
           )}
-        </span>
+        </Chip>
       )}
       {spell.attackType && (
-        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-red-50 text-red-800 text-[11px] font-medium border border-red-200">
+        <Chip tone="red">
           🎯 {formatModifier(attackBonus)}
           <span className="text-red-500">
             · {spell.attackType === 'ranged' ? 'Distance' : 'Corps à corps'}
           </span>
-        </span>
+        </Chip>
       )}
-      {damageDice && (
-        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50 text-orange-800 text-[11px] font-medium border border-orange-200">
-          ⚔ {damageDice}
-        </span>
-      )}
+      {damageDice && <Chip tone="orange">⚔ {damageDice}</Chip>}
     </div>
   );
 }

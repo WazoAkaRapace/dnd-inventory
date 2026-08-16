@@ -86,7 +86,7 @@ export default function PartiesPage() {
         <EmptyState
           icon="🎲"
           title="Aucun groupe pour l'instant"
-          hint="Créez un groupe (comme MD) ou rejoignez-en un avec un code d'invitation."
+          hint="Crée un groupe (comme MD) ou rejoins-en un avec un code d'invitation."
         />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
@@ -98,8 +98,8 @@ export default function PartiesPage() {
             >
               <div className="flex items-start justify-between">
                 <div>
-                  <h3 className="font-display text-lg font-semibold">{p.name}</h3>
-                  <p className="text-sm text-ink-400">MD: {p.gmName || '—'}</p>
+                  <h3 className="section-title">{p.name}</h3>
+                  <p className="text-sm text-ink-400">MD&nbsp;: {p.gmName || '—'}</p>
                 </div>
                 <span
                   className={`text-xs px-2 py-1 rounded-full font-medium ${

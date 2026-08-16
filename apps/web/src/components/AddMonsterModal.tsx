@@ -105,7 +105,7 @@ export default function AddMonsterModal({ open, onClose, onAdd }: Props) {
           <div className="card p-4 bg-parchment-50">
             <div className="flex items-start justify-between">
               <div>
-                <h3 className="font-display text-lg font-semibold">{selected.nameFr}</h3>
+                <h3 className="section-title">{selected.nameFr}</h3>
                 <p className="text-sm text-ink-500">
                   {selected.type} · {MONSTER_SIZE_LABELS_FR[selected.size] ?? selected.size} · FP{' '}
                   {formatCR(selected.challengeRating)}

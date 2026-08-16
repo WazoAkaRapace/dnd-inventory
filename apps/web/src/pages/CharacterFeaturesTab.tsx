@@ -174,7 +174,7 @@ export default function CharacterFeaturesTab({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="font-display text-lg font-semibold">
+        <h2 className="section-title">
           Traits <span className="text-ink-400 text-sm font-normal">({features.length})</span>
         </h2>
         <button type="button" onClick={openCreate} className="btn-primary text-sm px-3 py-1.5">
@@ -187,7 +187,7 @@ export default function CharacterFeaturesTab({
           <EmptyState
             icon="📋"
             title="Aucun trait"
-            message="Ajoutez vos capacités de classe, traits raciaux, dons, ou toute autre caractéristique de votre personnage."
+            hint="Ajoute tes capacités de classe, traits raciaux, dons, ou toute autre caractéristique de ton personnage."
           />
         </div>
       ) : (

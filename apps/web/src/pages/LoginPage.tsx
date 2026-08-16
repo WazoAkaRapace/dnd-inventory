@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
+import { ErrorMsg } from '../components/ui';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -60,7 +61,7 @@ export default function LoginPage() {
               required
             />
           </div>
-          {error && <div className="text-red-600 text-sm">{error}</div>}
+          {error && <ErrorMsg message={error} />}
           <button type="submit" className="btn-primary w-full" disabled={loading}>
             {loading ? 'Connexion…' : 'Se connecter'}
           </button>
