@@ -296,13 +296,15 @@ export default function CombatWidget() {
           </div>
         )}
 
-        {/* Link to combat page */}
+        {/* Link to combat page — enc param opens the encounter directly
+            (CombatPage reads it, then strips it from the URL) */}
         <Link
-          to={`/party/${combat.partyId}/combat`}
+          to={`/party/${combat.partyId}/combat?enc=${combat.encounter.id}`}
           className="block text-center text-xs text-blood-600 hover:text-blood-700 pt-1"
         >
           Voir le combat →
         </Link>
+      </div>
       </div>
     </div>
   );

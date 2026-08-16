@@ -13,9 +13,16 @@ import {
   type ReactNode,
 } from 'react';
 
+interface HeaderAction {
+  label: string; // desktop label
+  short: string; // mobile label (usually an icon)
+  to: string;
+}
+
 interface HeaderOverride {
   title: string;
   onBack: (() => void) | null; // null = use default nav back; function = custom back
+  action?: HeaderAction | null; // extra link rendered in the header's right side
 }
 
 interface HeaderState {
@@ -47,10 +54,14 @@ export function useHeaderState(): HeaderState {
  * Set a header override while the component is mounted (or while title/onBack change).
  * Clears the override on unmount.
  */
-export function useHeaderOverride(title: string, onBack: (() => void) | null) {
+export function useHeaderOverride(
+  title: string,
+  onBack: (() => void) | null,
+  action?: HeaderAction | null,
+) {
   const { setOverride } = useContext(HeaderContext);
   useEffect(() => {
-    setOverride({ title, onBack });
+    setOverride({ title, onBack, action });
     return () => setOverride(null);
-  }, [setOverride, title, onBack]);
+  }, [setOverride, title, onBack, action]);
 }

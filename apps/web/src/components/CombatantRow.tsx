@@ -5,6 +5,7 @@
  */
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Link } from 'react-router-dom';
 import type { Combatant, CombatantCondition } from '@dnd-inventory/shared';
 import ConditionsEditor from './ConditionsEditor';
 import MonsterStatBlock from './MonsterStatBlock';
@@ -23,6 +24,7 @@ const CARD_COLORS = [
 
 interface Props {
   combatant: Combatant;
+  characterSheetPath?: string; // set for player combatants → name links to their sheet
   label?: string; // override display name (e.g., "Gobelin 1" for group members)
   isCurrent: boolean;
   isGM: boolean;
@@ -40,6 +42,7 @@ function rollD20(bonus: number): number {
 
 export default function CombatantRow({
   combatant,
+  characterSheetPath,
   label,
   isCurrent,
   isGM,
@@ -185,10 +188,20 @@ export default function CombatantRow({
           </div>
         )}
 
-        {/* Name — takes all remaining space */}
-        <span className="font-display font-semibold truncate flex-1 min-w-0">
-          {label ?? combatant.name}
-        </span>
+        {/* Name — takes all remaining space; player cards link to the sheet */}
+        {characterSheetPath ? (
+          <Link
+            to={characterSheetPath}
+            className="font-display font-semibold truncate flex-1 min-w-0 hover:text-blood-600 hover:underline"
+            title="Ouvrir la fiche du personnage"
+          >
+            {label ?? combatant.name}
+          </Link>
+        ) : (
+          <span className="font-display font-semibold truncate flex-1 min-w-0">
+            {label ?? combatant.name}
+          </span>
+        )}
 
         {/* Card management (tiny icons, far right) */}
         {isGM && (

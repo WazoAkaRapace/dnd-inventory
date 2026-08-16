@@ -5,7 +5,7 @@
  * Players see a floating widget (CombatWidget) on other pages for their
  * initiative entry + turn notifications.
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../auth';
@@ -40,11 +40,20 @@ export default function CombatPage() {
   const currentPartyId = Number(partyId);
   const isGM = party?.members.some((m) => m.userId === user?.id && m.role === 'gm') ?? false;
 
-  // Override app Nav header: when inside an encounter, show its name + back to list
+  // Override app Nav header: when inside an encounter, show its name + back to
+  // list. Players also get a shortcut back to their own character sheet.
   const backToList = useCallback(() => setActiveEncounter(null), []);
+  const myCharacter = party?.characters.find((c) => c.ownerId === user?.id) ?? null;
+  const sheetAction = useMemo(
+    () => myCharacter && partyId
+      ? { label: 'Ma fiche', short: '🧙', to: `/party/${partyId}/character/${myCharacter.id}` }
+      : null,
+    [myCharacter?.id, partyId],
+  );
   useHeaderOverride(
     activeEncounter ? activeEncounter.name : '⚔ Combat',
     activeEncounter ? backToList : null,
+    sheetAction,
   );
 
   const load = useCallback(async (silent = false) => {
@@ -337,6 +346,7 @@ export default function CombatPage() {
               turnIndex={activeEncounter.turnIndex}
               status={activeEncounter.status}
               isGM={isGM}
+              partyId={currentPartyId}
               party={party}
               userId={user?.id ?? 0}
               onPatch={patchCombatant}
@@ -411,6 +421,7 @@ function CombatantList({
   turnIndex,
   status,
   isGM,
+  partyId,
   party,
   userId,
   onPatch,
@@ -421,6 +432,7 @@ function CombatantList({
   turnIndex: number;
   status: EncounterStatus;
   isGM: boolean;
+  partyId: number;
   party: PartyDetail;
   userId: number;
   onPatch: (id: number, patch: Partial<Combatant>) => void;
@@ -541,6 +553,11 @@ function CombatantList({
                 <CombatantRow
                   key={m.combatant.id}
                   combatant={m.combatant}
+                  characterSheetPath={
+                    m.combatant.characterId && party.characters.some((ch) => ch.id === m.combatant.characterId)
+                      ? `/party/${partyId}/character/${m.combatant.characterId}`
+                      : undefined
+                  }
                   label={isGroup ? `${m.combatant.name} ${memberIdx + 1}` : undefined}
                   isCurrent={isCurrentGroup || (m.index === turnIndex && status === 'active')}
                   isGM={isGM}

@@ -87,6 +87,12 @@ function Nav() {
           )}
         </div>
         <div className="flex items-center gap-2 sm:gap-4">
+          {override?.action && (
+            <Link to={override.action.to} className="btn-ghost text-parchment-50 hover:bg-ink-700 text-sm">
+              <span className="hidden sm:inline">{override.action.label}</span>
+              <span className="sm:hidden">{override.action.short}</span>
+            </Link>
+          )}
           {loc.pathname.startsWith('/party/') && !routeTitle?.backTo && (
             <Link to="/parties" className="btn-ghost text-parchment-50 hover:bg-ink-700 text-sm">
               <span className="hidden sm:inline">Mes groupes</span>
