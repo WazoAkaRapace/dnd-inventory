@@ -23,6 +23,24 @@ export function toRoman(n: number): string {
   return out || 'I';
 }
 
+/** SQLite timestamps are space-separated; Safari rejects those in Date(). */
+export function formatSince(createdAt: string): string {
+  const normalized = createdAt.includes(' ') ? createdAt.replace(' ', 'T') : createdAt;
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return '';
+  const fmt = new Intl.DateTimeFormat('fr-FR', { month: 'short', year: 'numeric' });
+  return `depuis ${fmt.format(d)}`;
+}
+
+/** Neutral creation stamp for finished things — no « depuis », the entity is over. */
+export function formatCreated(createdAt: string): string {
+  const normalized = createdAt.includes(' ') ? createdAt.replace(' ', 'T') : createdAt;
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return '';
+  const fmt = new Intl.DateTimeFormat('fr-FR', { month: 'short', year: 'numeric' });
+  return `créée ${fmt.format(d)}`;
+}
+
 /** Clipboard write with a legacy fallback — embedded browsers often deny the async API. */
 export async function copyText(text: string): Promise<boolean> {
   try {

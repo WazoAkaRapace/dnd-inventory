@@ -3032,6 +3032,14 @@ export interface Combatant {
   sortOrder: number;
   defeated: boolean;
   cardColor: string | null; // hex color for the card background, null = default
+  /**
+   * Vague apparent-health tier for monsters when HP is redacted for non-GM
+   * viewers: 0 = dying, 1 = badly hurt, 2 = hurt, 3 = healthy. Computed
+   * server-side from the real ratio with a stable per-combatant jitter, so
+   * players read "how it looks", never a percentage. Undefined for GM views
+   * and for combatants whose HP is not redacted.
+   */
+  feeling?: number;
 }
 
 export type EncounterStatus = 'setup' | 'active' | 'ended';
@@ -3050,6 +3058,13 @@ export interface EncounterDetail extends Encounter {
   combatants: Combatant[];
 }
 
+/** One roster line of an encounter summary: a character or an aggregated monster group. */
+export interface EncounterRosterEntry {
+  name: string;
+  count: number;
+  player: boolean;
+}
+
 export interface EncounterSummary {
   id: number;
   partyId: number;
@@ -3058,6 +3073,8 @@ export interface EncounterSummary {
   turnIndex: number;
   status: EncounterStatus;
   combatantCount: number;
+  /** Who is in the fight: characters first, then monster groups by size. */
+  roster: EncounterRosterEntry[];
   createdAt: string;
 }
 

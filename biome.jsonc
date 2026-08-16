@@ -12,7 +12,9 @@
       "!**/dist",
       "!data",
       "!package-lock.json",
-      "!gui-test-screenshots"
+      "!gui-test-screenshots",
+      // Mimosa security-hook session state — tool output, not source.
+      "!**/.mimosa"
     ]
   },
   "formatter": {

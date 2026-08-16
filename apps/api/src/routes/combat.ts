@@ -19,6 +19,7 @@ import type {
   CreateEncounterPayload,
   Encounter,
   EncounterDetail,
+  EncounterRosterEntry,
   EncounterSummary,
   PatchCombatantPayload,
   PatchEncounterPayload,
@@ -89,11 +90,56 @@ function mapEncounter(row: any): Encounter {
   };
 }
 
-function mapEncounterSummary(row: any): EncounterSummary {
+function mapEncounterSummary(row: any, roster: EncounterRosterEntry[] = []): EncounterSummary {
   return {
     ...mapEncounter(row),
     combatantCount: row.combatant_count ?? 0,
+    roster,
   };
+}
+
+/**
+ * Aggregate combatants of several encounters into roster previews: characters
+ * first (alphabetical), then monster groups by descending size. Grouped and
+ * ungrouped monsters sharing a name are merged — the register only needs
+ * "Gobelin ×6", not six rows.
+ */
+function buildRosters(encounterIds: number[]): Map<number, EncounterRosterEntry[]> {
+  const byEncounter = new Map<number, Map<string, EncounterRosterEntry>>();
+  if (encounterIds.length > 0) {
+    const db = getDb();
+    const rows = db
+      .prepare(
+        `SELECT encounter_id, name, type FROM combatants
+         WHERE encounter_id IN (${encounterIds.map(() => '?').join(',')})`,
+      )
+      .all(...encounterIds) as any[];
+    for (const row of rows) {
+      const perEncounter =
+        byEncounter.get(row.encounter_id) ?? new Map<string, EncounterRosterEntry>();
+      const key = `${row.type}:${row.name}`;
+      const entry = perEncounter.get(key) ?? {
+        name: row.name,
+        count: 0,
+        player: row.type === 'player',
+      };
+      entry.count += 1;
+      perEncounter.set(key, entry);
+      byEncounter.set(row.encounter_id, perEncounter);
+    }
+  }
+  const result = new Map<number, EncounterRosterEntry[]>();
+  for (const [encId, perEncounter] of byEncounter) {
+    result.set(
+      encId,
+      [...perEncounter.values()].sort((a, b) => {
+        if (a.player !== b.player) return a.player ? -1 : 1;
+        if (a.count !== b.count) return b.count - a.count;
+        return a.name.localeCompare(b.name, 'fr');
+      }),
+    );
+  }
+  return result;
 }
 
 /**
@@ -184,7 +230,10 @@ export async function combatRoutes(app: FastifyInstance) {
           .all(partyId, userId);
       }
 
-      return reply.send({ encounters: rows.map(mapEncounterSummary) });
+      const rosters = buildRosters(rows.map((r) => r.id));
+      return reply.send({
+        encounters: rows.map((r) => mapEncounterSummary(r, rosters.get(r.id) ?? [])),
+      });
     },
   );
 
@@ -248,7 +297,8 @@ export async function combatRoutes(app: FastifyInstance) {
       let combatants = sortCombatants(rows.map(mapCombatant));
 
       // Privacy: non-GM players can only see HP/AC for their own combatants.
-      // For everyone else (monsters + other players), redact those fields.
+      // For everyone else (monsters + other players), redact those fields —
+      // monsters keep a vague "how it looks" tier instead of numbers.
       if (!gm) {
         // Find this user's character IDs in the party
         const myCharIds = new Set(
@@ -260,7 +310,23 @@ export async function combatRoutes(app: FastifyInstance) {
         );
         combatants = combatants.map((c) => {
           if (c.characterId !== null && myCharIds.has(c.characterId)) return c; // own combatant
-          return { ...c, hitPoints: null, maxHitPoints: null, armorClass: null };
+          // Stable per-combatant jitter (±8 % on the tier boundaries): the same
+          // monster always flips wording at the same hidden ratio, and players
+          // can't average their way back to exact HP from repeated reads.
+          let feeling: number | undefined;
+          if (c.type === 'monster' && c.hitPoints !== null && (c.maxHitPoints ?? 0) > 0) {
+            const jitter = ((((c.id * 2654435761) >>> 0) % 100) / 100) * 0.16 - 0.08;
+            const ratio = c.hitPoints / (c.maxHitPoints as number);
+            feeling =
+              ratio > 0.72 + jitter ? 3 : ratio > 0.47 + jitter ? 2 : ratio > 0.22 + jitter ? 1 : 0;
+          }
+          return {
+            ...c,
+            hitPoints: null,
+            maxHitPoints: null,
+            armorClass: null,
+            ...(feeling !== undefined ? { feeling } : {}),
+          };
         });
       }
 

@@ -490,6 +490,26 @@ input[type="number"] {
   }
 }
 
+/* ---------- Combat stage (CombatPage) ---------- */
+
+/* Stage swap — the théâtre's one signed moment: on each turn change the new
+   combatant's panel rises 8px into place. Nothing else in the fight moves. */
+@keyframes stage-swap {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+}
+.stage-swap {
+  animation: stage-swap 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stage-swap {
+    animation: none;
+  }
+}
+
 /* ---------- Damage-chip apply mode ----------
    The GM tapped a damage chip: every combatant card becomes an obvious
    tap target — blood fringe + breathing glow, content untouched below. */

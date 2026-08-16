@@ -89,6 +89,41 @@ EST la hiérarchie : I Ton personnage, II La table, III Outils & annexes.
 | Roster | un membre par ligne : nom + @pseudo + tampon `MD` (`blood-600` blanc) / `Joueur` (`parchment-200` / `ink-700`) ; sous chaque membre, ses personnages en médaillon 40 px + nom sur méta (verrouillé 🔒 pour les joueurs, porte encre pour le MD) ; « sans personnage » en italique `ink-400` |
 | Annexes | lignes réglées à glyphe d'outil (🛡 ⚔ 🎭) + libellé `ink-800` + points de conduite + pastille flèche : mini-médaillon `border-parchment-300` 32 px, flèche `ink-500` → `blood-600` au survol — l'affordance existe au repos, pas seulement au survol ; ligne code (MD) : `code` mono `tracking-[0.2em]` + bouton copier en pastille bordée, état « Copié ✓ » passe bord et texte en sang |
 
+Le registre des rencontres (`CombatPage.tsx`, état liste) est la troisième
+page réglée — la hiérarchie de cycle de vie remplace la hiérarchie de
+fraîcheur du registre des groupes.
+
+| Dispositif | Recette |
+|---|---|
+| Tête de page | « Rencontres » `font-display` centré + double règle ; méta « N rencontres au registre — N combat(s) en cours » |
+| Entrée courante (combat en cours) | `py-6`, ordinal `blood-500` `text-2xl`, nom `text-2xl`, pilier « Tour N » `blood-600` mono, méta « 🔴 En cours · N combattants », roster sous filet interne comme l'entrée courante du registre des groupes |
+| Entrées préparées | `py-4`, ordinal `ink-400` `text-lg`, nom `text-lg`, méta « ⚪ Préparation · N combattants », roster inline `truncate` `text-sm` `ink-500` |
+| Entrées terminées (compactes) | `py-3`, ordinal `ink-300` `text-base`, nom `text-base`, méta « ⚫ Terminée · tour N · créée {mois année} » (`formatCreated`, jamais « depuis ») ; PAS de roster |
+| Roster | payload `EncounterSummary.roster` (API) : personnages d'abord, groupes de monstres agrégés « Nom ×N », joints par « · » |
+| Pied (MD) | action fantôme « ＋ Nouvelle rencontre » ouvrant le `Modal` standard ; page vierge (MD) : chemin de création inline sous la double règle, joueur : `EmptyState` |
+
+## Le théâtre du tour — la page Combat (`CombatPage.tsx`, état rencontre)
+
+La scène et l'échelle : le tour en cours possède le centre, tout le champ
+reste visible d'un seul regard. C'est un panneau de travail — `.card` légitime
+— mais sa discipline est celle du monde : **le sang porte « maintenant +
+action primaire » uniquement** (détent courant, pilier Tour, boutons
+primaires) ; tous les autres états sont des marques imprimées.
+
+| Dispositif | Recette |
+|---|---|
+| L'échelle d'initiative | `nav` « Ordre d'initiative » : un détent par combattant (numéro d'initiative mono `w-5`, marque de couleur en pastille 8 px, nom `truncate`, compte de conditions en pastille orange titrée, `HpBar` xs) ; bandeau horizontal défilant épinglé `top-2` sur mobile, colonne `sticky top-3` (15 rem) sur desktop ; cibles ≥ 52 px |
+| États du détent | courant (le groupe entier) = rempli `blood-600` texte `parchment-50` + `aria-current="true"` ; focalisé hors-tour = bordure `ink-500` sur `parchment-100` ; vaincu = nom barré + 💀 + `opacity-55` ; initiative non lancée = « — » `ink-300` |
+| La scène | `article` `.card` : pilier d'état (Tour N `blood-600` mono / ⚪ Préparation / ⚫ Terminée / « Hors tour » `parchment-200`), nom `font-display` `text-2xl/3xl` (porte vers la fiche si PJ), badges Init + 🛡 CA (mono sur `parchment-100` bordé), `HpBar` md `showText` comme plus grande mesure ; monstre vu par un joueur (PV masqués) : **état apparent** — pastille de teinte (vert/jaune/orange/rouge, palier serveur jitteré) + phrase vague choisie par monstre (« En pleine forme », « Blessé », « À l'agonie »…), jamais de jauge ; combatant d'un autre joueur : rien ; conditions en pastilles orange avec durées mono |
+| Strip de groupe | les membres d'un groupe en pastilles (nom + PV mono) : tape = met ce membre à la scène ; puce armée = applique les dégâts |
+| Verbes du MD | grille 2/4 colonnes, py-3 (≥ 44 px) : ⚔ Dégâts (BottomSheet dégâts/résist/soins/PV direct), ✎ Cond. (ConditionsEditor), 📜 Stats (monstre), 🎨 Marque (BottomSheet de pastilles nommées en français) ; Retirer / Retirer le groupe en `ConfirmButton` |
+| Pied de scène | ▶ Tour suivant (primaire), ⏹ Fin, + Monstre, + PJ, « Puis : X (×N) » à droite en `ink-400` |
+| Banc de préparation | statut setup : barre d'assemblage (pilier ⚪/✅, 🎲 Tout lancer — un lancer par groupe, + Monstre, + PJ, ▶ Démarrer le combat bloqué tant qu'une initiative manque) ; saisie d'initiative sur la scène (MD : n'importe qui ; joueur : la sienne) ; banc vide = la scène porte le nom de la rencontre + pilier + `EmptyState` |
+| Puce de dégâts | dock `role="status"` au-dessus de la scène : puce ⚔ N dégâts + source, ½ (aria-pressed), ✕, Échap ; armée → `ring-blood-400` + `combat-target` sur les détent et pastilles ; les lancer de dés du bloc de stats amarré alimentent la puce |
+| Bloc de stats | desktop : colonne droite 340 px `sticky` (panneau amarré) ; mobile : modal ; jamais reporté d'une rencontre à l'autre |
+| Disposition | desktop `lg:grid-cols-[15rem_minmax(0,1fr)_340px]` (échelle \| scène \| bloc) ; mobile : échelle horizontale puis scène |
+
+
 ## Composants — `src/components/ui.tsx`
 
 | Composant | Usage | Points clés |
@@ -109,10 +144,13 @@ EST la hiérarchie : I Ton personnage, II La table, III Outils & annexes.
 
 Une seule courbe de sortie : `cubic-bezier(0.16, 1, 0.3, 1)`. Entrées courtes
 (0.2–0.45 s), un moment signé par surface (dock, sword-cut de tour,
-sheet-up, register-rise). Le registre arrive par `.register-rise` : montée de
-12 px + fondu, 0.35 s, remplissage `backwards`, stagger inline plafonné
+sheet-up, register-rise, stage-swap). Le registre arrive par `.register-rise` :
+montée de 12 px + fondu, 0.35 s, remplissage `backwards`, stagger inline plafonné
 (≤ 5 blocs × 60 ms) — les entrées se posent sous la règle de tête l'une après
-l'autre, puis plus rien ne bouge. Sur la fiche, la ligne Agir (ou l'appel
+l'autre, puis plus rien ne bouge. Le théâtre du tour change de combattant par
+`.stage-swap` : montée de 8 px + fondu, 0.25 s, clé React sur le combattant
+focalisé — un seul moment par tour, rien d'autre ne bouge dans le combat.
+Sur la fiche, la ligne Agir (ou l'appel
 d'initiative) monte par `.band-rise` (6 px + fondu, 0.2 s) à l'instant où le
 tour devient tien ; le jumeau épinglé descend par `.band-drop` (−8 px, 0.2 s,
 transform seul — jamais de changement de hauteur dans le flux au défilement).

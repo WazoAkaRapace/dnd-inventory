@@ -40,3 +40,6 @@ docker-data/
 .zcode/
 .impeccable/
 gui-test-screenshots/
+
+# Mimosa security-hook session state (tool output, not source)
+.mimosa/

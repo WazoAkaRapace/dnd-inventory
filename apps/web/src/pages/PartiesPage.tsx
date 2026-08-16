@@ -19,18 +19,9 @@ import { Link } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../auth';
 import { ErrorMsg, LoadingSpinner, Modal } from '../components/ui';
-import { copyText, plural, toRoman } from '../utils';
+import { copyText, formatSince, plural, toRoman } from '../utils';
 
 // ---------- Small helpers ----------
-
-/** SQLite timestamps are space-separated; Safari rejects those in Date(). */
-function formatSince(createdAt: string): string {
-  const normalized = createdAt.includes(' ') ? createdAt.replace(' ', 'T') : createdAt;
-  const d = new Date(normalized);
-  if (Number.isNaN(d.getTime())) return '';
-  const fmt = new Intl.DateTimeFormat('fr-FR', { month: 'short', year: 'numeric' });
-  return `depuis ${fmt.format(d)}`;
-}
 
 function RoleBadge({ role, large = false }: { role: PartyRole; large?: boolean }) {
   return (
