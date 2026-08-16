@@ -7,8 +7,8 @@
  *
  * Run: npm run import-items
  */
-import { writeFileSync, mkdirSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -17,8 +17,10 @@ const ROOT = resolve(__dirname, '..');
 const LB_TO_KG = 0.4536; // exact conversion factor
 
 const SOURCES = {
-  equipment: 'https://raw.githubusercontent.com/5e-bits/5e-database/main/src/2014/en/5e-SRD-Equipment.json',
-  magic: 'https://raw.githubusercontent.com/5e-bits/5e-database/main/src/2014/en/5e-SRD-Magic-Items.json',
+  equipment:
+    'https://raw.githubusercontent.com/5e-bits/5e-database/main/src/2014/en/5e-SRD-Equipment.json',
+  magic:
+    'https://raw.githubusercontent.com/5e-bits/5e-database/main/src/2014/en/5e-SRD-Magic-Items.json',
 } as const;
 
 // ---------- Types matching the 5e-bits SRD JSON ----------
@@ -102,12 +104,18 @@ function rarityFromString(s: string | undefined): string {
 function normalizeCostUnit(u: string | undefined): string | null {
   if (!u) return null;
   switch (u.toLowerCase()) {
-    case 'cp': return 'cp';
-    case 'sp': return 'sp';
-    case 'ep': return 'ep';
-    case 'gp': return 'gp';
-    case 'pp': return 'pp';
-    default: return null;
+    case 'cp':
+      return 'cp';
+    case 'sp':
+      return 'sp';
+    case 'ep':
+      return 'ep';
+    case 'gp':
+      return 'gp';
+    case 'pp':
+      return 'pp';
+    default:
+      return null;
   }
 }
 
@@ -146,9 +154,12 @@ function convertEquipment(it: SrdEquipment): SeedItem {
 }
 
 function convertMagicItem(it: SrdMagicItem): SeedItem {
-  const cat = it.equipment_category?.index === 'weapon' ? 'weapon'
-    : it.equipment_category?.index === 'armor' ? 'armor'
-    : 'magic';
+  const cat =
+    it.equipment_category?.index === 'weapon'
+      ? 'weapon'
+      : it.equipment_category?.index === 'armor'
+        ? 'armor'
+        : 'magic';
   const rarity = rarityFromString(it.rarity?.name);
   // Try to extract weight from description text (e.g. "This bag weighs 15 pounds")
   let weightKg: number | null = null;
@@ -216,7 +227,14 @@ async function main() {
   // Sample weights (kg)
   console.log('');
   console.log('Sample weights (kg):');
-  const samples = ['longsword', 'chain-mail', 'backpack', 'dagger', 'padded-armor', 'bag-of-holding'];
+  const samples = [
+    'longsword',
+    'chain-mail',
+    'backpack',
+    'dagger',
+    'padded-armor',
+    'bag-of-holding',
+  ];
   for (const idx of samples) {
     const found = items.find((i) => i.srdIndex === idx);
     if (found) console.log(`  ${found.name}: ${found.weightKg} kg (${found.category})`);

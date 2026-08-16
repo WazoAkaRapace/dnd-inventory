@@ -2,24 +2,25 @@
  * Inventory routes: list (with encumbrance in kg), add, update, delete, transfer.
  * All weight math uses the shared computeEncumbrance() helper (kg).
  */
+
+import {
+  type AddInventoryPayload,
+  type CharacterInventory,
+  computeEncumbrance,
+  type PatchInventoryPayload,
+  type TransferPayload,
+} from '@dnd-inventory/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
 import {
-  requireUser,
-  isPartyMember,
-  isPartyGM,
   isOwnerOrGM,
-  mapInventoryEntry,
+  isPartyGM,
+  isPartyMember,
   mapCharacter,
+  mapInventoryEntry,
+  requireUser,
 } from './helpers.ts';
-import {
-  computeEncumbrance,
-  type AddInventoryPayload,
-  type PatchInventoryPayload,
-  type TransferPayload,
-  type CharacterInventory,
-} from '@dnd-inventory/shared';
 
 export async function inventoryRoutes(app: FastifyInstance) {
   // ---------- Get character inventory (with computed kg encumbrance) ----------
@@ -30,20 +31,23 @@ export async function inventoryRoutes(app: FastifyInstance) {
       if (userId === null) return;
       const db = getDb();
 
-      const char = db.prepare(`
+      const char = db
+        .prepare(`
         SELECT c.*, p.encumbrance_mode, u.display_name AS owner_name
         FROM characters c
         JOIN parties p ON p.id = c.party_id
         JOIN users u ON u.id = c.owner_id
         WHERE c.id = ?
-      `).get(Number(req.params.id)) as any;
+      `)
+        .get(Number(req.params.id)) as any;
       if (!char) return reply.code(404).send({ error: 'character not found' });
       if (!isPartyMember(char.party_id, userId)) {
         return reply.code(403).send({ error: 'not a member' });
       }
 
       // Re-fetch with explicit aliases to avoid column-name collisions from the JOIN.
-      const cleanRows = db.prepare(`
+      const cleanRows = db
+        .prepare(`
         SELECT
           inv.id AS id, inv.character_id AS character_id, inv.item_id AS item_id,
           inv.quantity AS quantity, inv.equipped AS equipped, inv.notes AS notes,
@@ -59,16 +63,19 @@ export async function inventoryRoutes(app: FastifyInstance) {
         JOIN items i ON i.id = inv.item_id
         WHERE inv.character_id = ?
         ORDER BY inv.equipped DESC, i.name COLLATE NOCASE ASC
-      `).all(char.id);
+      `)
+        .all(char.id);
 
       // Ensure carried location exists
       const { ensureCarriedLocation } = await import('./locations.ts');
       const carriedLocId = ensureCarriedLocation(db, char.id);
 
       // Load all storage locations for this character
-      const locRows = db.prepare(`
+      const locRows = db
+        .prepare(`
         SELECT * FROM storage_locations WHERE character_id = ? ORDER BY sort_order, type, id
-      `).all(char.id) as any[];
+      `)
+        .all(char.id) as any[];
       const locations = locRows.map((r: any) => ({
         id: r.id,
         characterId: r.character_id,
@@ -104,7 +111,11 @@ export async function inventoryRoutes(app: FastifyInstance) {
           strMin: r.i_str_min,
           stealthDisadvantage: !!r.i_stealth_disadvantage,
           properties: r.i_properties_json ? JSON.parse(r.i_properties_json) : [],
-          survivalTags: r.i_survival_tags ? (typeof r.i_survival_tags === 'string' ? JSON.parse(r.i_survival_tags) : r.i_survival_tags) : [],
+          survivalTags: r.i_survival_tags
+            ? typeof r.i_survival_tags === 'string'
+              ? JSON.parse(r.i_survival_tags)
+              : r.i_survival_tags
+            : [],
           imagePath: r.i_image_path,
         },
         quantity: r.quantity,
@@ -122,11 +133,18 @@ export async function inventoryRoutes(app: FastifyInstance) {
       const EMPTY_WATERSKIN_KG = 0.268; // leather skin only, without water
 
       const locationWeights = locations.map((loc: any) => {
-        const locEntries = cleanEntries.filter((e: any) => (e.storageLocationId ?? carriedLocId) === loc.id);
+        const locEntries = cleanEntries.filter(
+          (e: any) => (e.storageLocationId ?? carriedLocId) === loc.id,
+        );
         const itemsWeight = locEntries.reduce((sum: number, e: any) => {
           let w = e.item.weightKg;
           // Empty waterskins weigh less (just the leather, no water)
-          if (e.notes && e.notes.includes('empty') && e.item.survivalTags && Array.isArray(e.item.survivalTags) && e.item.survivalTags.includes('water')) {
+          if (
+            e.notes?.includes('empty') &&
+            e.item.survivalTags &&
+            Array.isArray(e.item.survivalTags) &&
+            e.item.survivalTags.includes('water')
+          ) {
             w = EMPTY_WATERSKIN_KG;
           }
           return sum + (typeof w === 'number' ? w * e.quantity : 0);
@@ -163,8 +181,19 @@ export async function inventoryRoutes(app: FastifyInstance) {
           locationName: loc.name,
           locationType: loc.type,
           itemsWeightKg: +itemsWeight.toFixed(3),
-          ownWeightKg: loc.type === 'carried' ? +(coinWeightKg + locations.filter((l: any) => l.type === 'container').reduce((s: number, l: any) => s + (l.ownWeightKg || 0), 0)).toFixed(3) : 0,
-          maxCapacityKg: maxCap !== null && maxCap !== undefined && !isNaN(maxCap) ? +maxCap.toFixed(2) : null,
+          ownWeightKg:
+            loc.type === 'carried'
+              ? +(
+                  coinWeightKg +
+                  locations
+                    .filter((l: any) => l.type === 'container')
+                    .reduce((s: number, l: any) => s + (l.ownWeightKg || 0), 0)
+                ).toFixed(3)
+              : 0,
+          maxCapacityKg:
+            maxCap !== null && maxCap !== undefined && !Number.isNaN(maxCap)
+              ? +maxCap.toFixed(2)
+              : null,
           pct,
         };
       });
@@ -204,9 +233,12 @@ export async function inventoryRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(Number(req.params.id)) as any;
+      const char = db
+        .prepare('SELECT * FROM characters WHERE id = ?')
+        .get(Number(req.params.id)) as any;
       if (!char) return reply.code(404).send({ error: 'character not found' });
-      if (!isOwnerOrGM(char, userId)) return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
+      if (!isOwnerOrGM(char, userId))
+        return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
 
       const body = req.body || ({} as AddInventoryPayload);
       if (!body.itemId) return reply.code(400).send({ error: 'itemId is required' });
@@ -219,7 +251,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
       const carriedId = ensureCarriedLocation(db, char.id);
       const locId = body.storageLocationId ?? carriedId;
 
-      const result = db.prepare(`
+      db.prepare(`
         INSERT INTO inventory (character_id, item_id, quantity, equipped, notes, storage_location_id)
         VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(character_id, item_id, storage_location_id) DO UPDATE SET
@@ -229,14 +261,17 @@ export async function inventoryRoutes(app: FastifyInstance) {
       `).run(char.id, body.itemId, qty, equipped, notes, locId);
 
       // Log transaction
-      const itemRow = db.prepare('SELECT COALESCE(name_fr, name) AS name FROM items WHERE id = ?').get(body.itemId) as any;
+      const itemRow = db
+        .prepare('SELECT COALESCE(name_fr, name) AS name FROM items WHERE id = ?')
+        .get(body.itemId) as any;
       db.prepare(`
         INSERT INTO transactions (party_id, character_id, item_id, item_name, delta_qty, reason, actor_user_id)
         VALUES (?, ?, ?, ?, ?, 'add', ?)
       `).run(char.party_id, char.id, body.itemId, itemRow?.name || 'item', qty, userId);
 
       // Query by character_id + item_id (not lastInsertRowid, which is unreliable on UPSERT)
-      const invRow = db.prepare(`
+      const invRow = db
+        .prepare(`
         SELECT
           inv.id AS id, inv.character_id AS character_id, inv.item_id AS item_id,
           inv.quantity AS quantity, inv.equipped AS equipped, inv.notes AS notes,
@@ -250,8 +285,16 @@ export async function inventoryRoutes(app: FastifyInstance) {
           i.survival_tags AS i_survival_tags, i.image_path AS i_image_path
         FROM inventory inv JOIN items i ON i.id = inv.item_id
         WHERE inv.character_id = ? AND inv.item_id = ?
-      `).get(char.id, body.itemId);
-      bus.emitChange({ type: 'inventory:change', partyId: char.party_id, characterId: char.id, action: 'add', itemName: itemRow?.name_fr || itemRow?.name, actorUserId: userId });
+      `)
+        .get(char.id, body.itemId);
+      bus.emitChange({
+        type: 'inventory:change',
+        partyId: char.party_id,
+        characterId: char.id,
+        action: 'add',
+        itemName: itemRow?.name_fr || itemRow?.name,
+        actorUserId: userId,
+      });
       return reply.code(201).send({ entry: mapInventoryEntry(invRow) });
     },
   );
@@ -266,10 +309,13 @@ export async function inventoryRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const inv = db.prepare('SELECT * FROM inventory WHERE id = ?').get(Number(req.params.invId)) as any;
+      const inv = db
+        .prepare('SELECT * FROM inventory WHERE id = ?')
+        .get(Number(req.params.invId)) as any;
       if (!inv) return reply.code(404).send({ error: 'inventory entry not found' });
       const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(inv.character_id) as any;
-      if (!isOwnerOrGM(char, userId)) return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
+      if (!isOwnerOrGM(char, userId))
+        return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
 
       const body = req.body || {};
       const sets: string[] = [];
@@ -300,7 +346,9 @@ export async function inventoryRoutes(app: FastifyInstance) {
       if (body.quantity !== undefined) {
         const delta = body.quantity - oldQty;
         if (delta !== 0) {
-          const itemRow = db.prepare('SELECT COALESCE(name_fr, name) AS name FROM items WHERE id = ?').get(inv.item_id) as any;
+          const itemRow = db
+            .prepare('SELECT COALESCE(name_fr, name) AS name FROM items WHERE id = ?')
+            .get(inv.item_id) as any;
           db.prepare(`
             INSERT INTO transactions (party_id, character_id, item_id, item_name, delta_qty, reason, actor_user_id)
             VALUES (?, ?, ?, ?, ?, 'adjust', ?)
@@ -311,11 +359,18 @@ export async function inventoryRoutes(app: FastifyInstance) {
       // If quantity reached 0, delete the entry
       if (body.quantity === 0) {
         db.prepare('DELETE FROM inventory WHERE id = ?').run(inv.id);
-        bus.emitChange({ type: 'inventory:change', partyId: char.party_id, characterId: char.id, action: 'remove', actorUserId: userId });
+        bus.emitChange({
+          type: 'inventory:change',
+          partyId: char.party_id,
+          characterId: char.id,
+          action: 'remove',
+          actorUserId: userId,
+        });
         return reply.code(204).send();
       }
 
-      const row = db.prepare(`
+      const row = db
+        .prepare(`
         SELECT
           inv.id AS id, inv.character_id AS character_id, inv.item_id AS item_id,
           inv.quantity AS quantity, inv.equipped AS equipped, inv.notes AS notes,
@@ -328,8 +383,15 @@ export async function inventoryRoutes(app: FastifyInstance) {
           i.properties_json AS i_properties_json,
           i.survival_tags AS i_survival_tags, i.image_path AS i_image_path
         FROM inventory inv JOIN items i ON i.id = inv.item_id WHERE inv.id = ?
-      `).get(inv.id);
-      bus.emitChange({ type: 'inventory:change', partyId: char.party_id, characterId: char.id, action: 'adjust', actorUserId: userId });
+      `)
+        .get(inv.id);
+      bus.emitChange({
+        type: 'inventory:change',
+        partyId: char.party_id,
+        characterId: char.id,
+        action: 'adjust',
+        actorUserId: userId,
+      });
       return reply.send({ entry: mapInventoryEntry(row) });
     },
   );
@@ -341,19 +403,31 @@ export async function inventoryRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const inv = db.prepare('SELECT * FROM inventory WHERE id = ?').get(Number(req.params.invId)) as any;
+      const inv = db
+        .prepare('SELECT * FROM inventory WHERE id = ?')
+        .get(Number(req.params.invId)) as any;
       if (!inv) return reply.code(404).send({ error: 'inventory entry not found' });
       const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(inv.character_id) as any;
-      if (!isOwnerOrGM(char, userId)) return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
+      if (!isOwnerOrGM(char, userId))
+        return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
 
-      const itemRow = db.prepare('SELECT COALESCE(name_fr, name) AS name FROM items WHERE id = ?').get(inv.item_id) as any;
+      const itemRow = db
+        .prepare('SELECT COALESCE(name_fr, name) AS name FROM items WHERE id = ?')
+        .get(inv.item_id) as any;
       db.prepare(`
         INSERT INTO transactions (party_id, character_id, item_id, item_name, delta_qty, reason, actor_user_id)
         VALUES (?, ?, ?, ?, ?, 'remove', ?)
       `).run(char.party_id, char.id, inv.item_id, itemRow?.name || 'item', -inv.quantity, userId);
 
       db.prepare('DELETE FROM inventory WHERE id = ?').run(inv.id);
-      bus.emitChange({ type: 'inventory:change', partyId: char.party_id, characterId: char.id, action: 'remove', itemName: itemRow?.name_fr || itemRow?.name, actorUserId: userId });
+      bus.emitChange({
+        type: 'inventory:change',
+        partyId: char.party_id,
+        characterId: char.id,
+        action: 'remove',
+        itemName: itemRow?.name_fr || itemRow?.name,
+        actorUserId: userId,
+      });
       return reply.code(204).send();
     },
   );
@@ -379,16 +453,21 @@ export async function inventoryRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'characters must be in the same party' });
       }
       if (!isOwnerOrGM(fromChar, userId)) {
-        return reply.code(403).send({ error: 'only the owner or GM can transfer from this character' });
+        return reply
+          .code(403)
+          .send({ error: 'only the owner or GM can transfer from this character' });
       }
 
       const inv = db.prepare('SELECT * FROM inventory WHERE id = ?').get(inventoryId) as any;
       if (!inv || inv.character_id !== fromCharId) {
         return reply.code(404).send({ error: 'inventory entry not found for this character' });
       }
-      if (qty > inv.quantity) return reply.code(400).send({ error: 'not enough quantity to transfer' });
+      if (qty > inv.quantity)
+        return reply.code(400).send({ error: 'not enough quantity to transfer' });
 
-      const itemRow = db.prepare('SELECT COALESCE(name_fr, name) AS name FROM items WHERE id = ?').get(inv.item_id) as any;
+      const itemRow = db
+        .prepare('SELECT COALESCE(name_fr, name) AS name FROM items WHERE id = ?')
+        .get(inv.item_id) as any;
       const itemName = itemRow?.name || 'item';
 
       // Destination upsert must target the carried location to match the
@@ -422,7 +501,15 @@ export async function inventoryRoutes(app: FastifyInstance) {
       tx();
 
       // Emit events for both source and destination characters
-      bus.emitChange({ type: 'inventory:change', partyId: fromChar.party_id, characterId: fromCharId, toCharacterId, action: 'transfer', itemName, actorUserId: userId });
+      bus.emitChange({
+        type: 'inventory:change',
+        partyId: fromChar.party_id,
+        characterId: fromCharId,
+        toCharacterId,
+        action: 'transfer',
+        itemName,
+        actorUserId: userId,
+      });
 
       return reply.code(200).send({ transferred: qty });
     },
@@ -431,24 +518,33 @@ export async function inventoryRoutes(app: FastifyInstance) {
   // ---------- Consume food/water from inventory (resets deprivation) ----------
   app.post(
     '/characters/:id/consume',
-    async (req: FastifyRequest<{ Params: { id: string }; Body: { type: 'food' | 'water' } }>, reply: FastifyReply) => {
+    async (
+      req: FastifyRequest<{ Params: { id: string }; Body: { type: 'food' | 'water' } }>,
+      reply: FastifyReply,
+    ) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(Number(req.params.id)) as any;
+      const char = db
+        .prepare('SELECT * FROM characters WHERE id = ?')
+        .get(Number(req.params.id)) as any;
       if (!char) return reply.code(404).send({ error: 'character not found' });
-      if (!isOwnerOrGM(char, userId)) return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
+      if (!isOwnerOrGM(char, userId))
+        return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
 
       const type = req.body?.type;
-      if (type !== 'food' && type !== 'water') return reply.code(400).send({ error: 'type must be food or water' });
+      if (type !== 'food' && type !== 'water')
+        return reply.code(400).send({ error: 'type must be food or water' });
 
       // Find a tagged inventory item
       // For water: skip items with notes containing 'empty' (already drunk)
-      const notEmptyFilter = type === 'water'
-        ? "AND (inv.notes IS NULL OR inv.notes = '' OR inv.notes NOT LIKE '%empty%')"
-        : '';
+      const notEmptyFilter =
+        type === 'water'
+          ? "AND (inv.notes IS NULL OR inv.notes = '' OR inv.notes NOT LIKE '%empty%')"
+          : '';
 
-      const entry = db.prepare(`
+      const entry = db
+        .prepare(`
         SELECT inv.id AS inv_id, inv.quantity, inv.item_id, inv.notes, i.name_fr, i.name
         FROM inventory inv
         JOIN items i ON i.id = inv.item_id
@@ -456,12 +552,14 @@ export async function inventoryRoutes(app: FastifyInstance) {
         ${notEmptyFilter}
         ORDER BY inv.quantity DESC
         LIMIT 1
-      `).get(char.id, `%"${type}"%`) as any;
+      `)
+        .get(char.id, `%"${type}"%`) as any;
 
       if (!entry || entry.quantity < 1) {
-        const msg = type === 'food'
-          ? 'Aucune ration disponible'
-          : 'Aucune gourde disponible (toutes vides ou absentes)';
+        const msg =
+          type === 'food'
+            ? 'Aucune ration disponible'
+            : 'Aucune gourde disponible (toutes vides ou absentes)';
         return reply.code(400).send({ error: msg });
       }
 
@@ -473,7 +571,9 @@ export async function inventoryRoutes(app: FastifyInstance) {
           if (entry.quantity <= 1) {
             db.prepare('DELETE FROM inventory WHERE id = ?').run(entry.inv_id);
           } else {
-            db.prepare('UPDATE inventory SET quantity = quantity - 1 WHERE id = ?').run(entry.inv_id);
+            db.prepare('UPDATE inventory SET quantity = quantity - 1 WHERE id = ?').run(
+              entry.inv_id,
+            );
           }
           db.prepare('UPDATE characters SET food_days = 0 WHERE id = ?').run(char.id);
           db.prepare(`
@@ -485,25 +585,30 @@ export async function inventoryRoutes(app: FastifyInstance) {
       } else {
         // Water: decrement full waterskins, increment empty ones
         // The entry found is a "full" waterskin (not marked empty in notes)
-        const fullLocId = db.prepare('SELECT storage_location_id FROM inventory WHERE id = ?').get(entry.inv_id)?.storage_location_id;
         const tx = db.transaction(() => {
           // Decrement the full entry
           if (entry.quantity <= 1) {
             db.prepare('DELETE FROM inventory WHERE id = ?').run(entry.inv_id);
           } else {
-            db.prepare('UPDATE inventory SET quantity = quantity - 1 WHERE id = ?').run(entry.inv_id);
+            db.prepare('UPDATE inventory SET quantity = quantity - 1 WHERE id = ?').run(
+              entry.inv_id,
+            );
           }
 
           // Check if an "empty" entry already exists for this item+character
           // Empty entries are stored with storage_location_id = NULL to avoid UNIQUE collision
-          const emptyEntry = db.prepare(`
+          const emptyEntry = db
+            .prepare(`
             SELECT id, quantity FROM inventory
             WHERE character_id = ? AND item_id = ? AND notes LIKE '%empty%' AND storage_location_id IS NULL
             LIMIT 1
-          `).get(char.id, entry.item_id) as any;
+          `)
+            .get(char.id, entry.item_id) as any;
 
           if (emptyEntry) {
-            db.prepare('UPDATE inventory SET quantity = quantity + 1 WHERE id = ?').run(emptyEntry.id);
+            db.prepare('UPDATE inventory SET quantity = quantity + 1 WHERE id = ?').run(
+              emptyEntry.id,
+            );
           } else {
             db.prepare(`
               INSERT INTO inventory (character_id, item_id, quantity, equipped, notes, storage_location_id)
@@ -520,7 +625,13 @@ export async function inventoryRoutes(app: FastifyInstance) {
         tx();
       }
 
-      bus.emitChange({ type: 'inventory:change', partyId: char.party_id, characterId: char.id, action: 'adjust', actorUserId: userId });
+      bus.emitChange({
+        type: 'inventory:change',
+        partyId: char.party_id,
+        characterId: char.id,
+        action: 'adjust',
+        actorUserId: userId,
+      });
 
       return reply.send({ consumed: true, type });
     },
@@ -534,18 +645,23 @@ export async function inventoryRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(Number(req.params.id)) as any;
+      const char = db
+        .prepare('SELECT * FROM characters WHERE id = ?')
+        .get(Number(req.params.id)) as any;
       if (!char) return reply.code(404).send({ error: 'character not found' });
-      if (!isOwnerOrGM(char, userId)) return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
+      if (!isOwnerOrGM(char, userId))
+        return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
 
       // Find all empty waterskins
-      const empties = db.prepare(`
+      const empties = db
+        .prepare(`
         SELECT inv.id AS inv_id, inv.quantity, inv.notes, inv.item_id, inv.storage_location_id, i.name_fr
         FROM inventory inv
         JOIN items i ON i.id = inv.item_id
         WHERE inv.character_id = ? AND i.survival_tags LIKE '%water%'
         AND inv.notes LIKE '%empty%'
-      `).all(char.id) as any[];
+      `)
+        .all(char.id) as any[];
 
       if (!empties.length) {
         return reply.code(400).send({ error: 'Aucune gourde vide à remplir' });
@@ -555,32 +671,43 @@ export async function inventoryRoutes(app: FastifyInstance) {
       const carriedId = ensureCarriedLocation(db, char.id);
 
       const tx = db.transaction(() => {
-        let totalRefilled = 0;
         for (const e of empties) {
           const emptyQty = e.quantity;
           // Find the corresponding full entry (any location, no 'empty' note)
-          const fullEntry = db.prepare(`
+          const fullEntry = db
+            .prepare(`
             SELECT id, quantity FROM inventory
             WHERE character_id = ? AND item_id = ?
             AND (notes IS NULL OR notes = '' OR notes NOT LIKE '%empty%')
             LIMIT 1
-          `).get(char.id, e.item_id) as any;
+          `)
+            .get(char.id, e.item_id) as any;
 
           if (fullEntry) {
             // Merge into existing full stack
-            db.prepare('UPDATE inventory SET quantity = quantity + ? WHERE id = ?').run(emptyQty, fullEntry.id);
+            db.prepare('UPDATE inventory SET quantity = quantity + ? WHERE id = ?').run(
+              emptyQty,
+              fullEntry.id,
+            );
             // Delete the empty entry
             db.prepare('DELETE FROM inventory WHERE id = ?').run(e.inv_id);
           } else {
             // No full entry exists — just clear the empty note and assign to carried
-            db.prepare('UPDATE inventory SET notes = NULL, storage_location_id = ? WHERE id = ?').run(carriedId, e.inv_id);
+            db.prepare(
+              'UPDATE inventory SET notes = NULL, storage_location_id = ? WHERE id = ?',
+            ).run(carriedId, e.inv_id);
           }
-          totalRefilled += emptyQty;
         }
       });
       tx();
 
-      bus.emitChange({ type: 'inventory:change', partyId: char.party_id, characterId: char.id, action: 'adjust', actorUserId: userId });
+      bus.emitChange({
+        type: 'inventory:change',
+        partyId: char.party_id,
+        characterId: char.id,
+        action: 'adjust',
+        actorUserId: userId,
+      });
 
       return reply.send({ refilled: empties.length });
     },
@@ -596,13 +723,15 @@ export async function inventoryRoutes(app: FastifyInstance) {
       if (!isPartyGM(partyId, userId)) return reply.code(403).send({ error: 'GM only' });
 
       const db = getDb();
-      const rows = db.prepare(`
+      const rows = db
+        .prepare(`
         SELECT t.*, u.display_name AS actor_name
         FROM transactions t LEFT JOIN users u ON u.id = t.actor_user_id
         WHERE t.party_id = ?
         ORDER BY t.at DESC, t.id DESC
         LIMIT 200
-      `).all(partyId);
+      `)
+        .all(partyId);
       return reply.send({
         transactions: rows.map((r: any) => ({
           id: r.id,

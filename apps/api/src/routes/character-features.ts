@@ -11,19 +11,15 @@
  *
  * All mutations emit a `character:change` sync event.
  */
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { getDb } from '../db/index.ts';
-import { bus } from '../sync/bus.ts';
-import {
-  requireUser,
-  isPartyMember,
-  isPartyGM,
-  mapFeature,
-} from './helpers.ts';
+
 import type {
   CreateCharacterFeaturePayload,
   PatchCharacterFeaturePayload,
 } from '@dnd-inventory/shared';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { getDb } from '../db/index.ts';
+import { bus } from '../sync/bus.ts';
+import { isPartyGM, isPartyMember, mapFeature, requireUser } from './helpers.ts';
 
 /**
  * Fetch the (feature, character) pair for a character_features row.
@@ -52,17 +48,21 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(Number(req.params.id)) as any;
+      const char = db
+        .prepare('SELECT * FROM characters WHERE id = ?')
+        .get(Number(req.params.id)) as any;
       if (!char) return reply.code(404).send({ error: 'character not found' });
       if (!isPartyMember(char.party_id, userId)) {
         return reply.code(403).send({ error: 'not a member' });
       }
 
-      const rows = db.prepare(`
+      const rows = db
+        .prepare(`
         SELECT * FROM character_features
         WHERE character_id = ?
         ORDER BY sort_order ASC, created_at ASC
-      `).all(char.id);
+      `)
+        .all(char.id);
 
       return reply.send({ features: rows.map(mapFeature) });
     },
@@ -78,7 +78,9 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(Number(req.params.id)) as any;
+      const char = db
+        .prepare('SELECT * FROM characters WHERE id = ?')
+        .get(Number(req.params.id)) as any;
       if (!char) return reply.code(404).send({ error: 'character not found' });
       if (!isPartyMember(char.party_id, userId)) {
         return reply.code(403).send({ error: 'not a member' });
@@ -88,7 +90,7 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
       }
 
       const body = req.body || ({} as CreateCharacterFeaturePayload);
-      if (!body.title || !body.title.trim()) {
+      if (!body.title?.trim()) {
         return reply.code(400).send({ error: 'title is required' });
       }
 
@@ -99,14 +101,26 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
 
       // Compute sort_order as MAX(sort_order)+1 for this character (0 if none yet).
       const maxRow = db
-        .prepare('SELECT COALESCE(MAX(sort_order), -1) AS max_sort FROM character_features WHERE character_id = ?')
+        .prepare(
+          'SELECT COALESCE(MAX(sort_order), -1) AS max_sort FROM character_features WHERE character_id = ?',
+        )
         .get(char.id) as any;
       const sortOrder = (maxRow?.max_sort ?? -1) + 1;
 
-      const info = db.prepare(`
+      const info = db
+        .prepare(`
         INSERT INTO character_features (character_id, title, category, description, counter_max, counter_current, sort_order)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(char.id, body.title.trim(), category, description, counterMax, counterCurrent, sortOrder);
+      `)
+        .run(
+          char.id,
+          body.title.trim(),
+          category,
+          description,
+          counterMax,
+          counterCurrent,
+          sortOrder,
+        );
 
       const featureId = info.lastInsertRowid as number;
       const row = db.prepare('SELECT * FROM character_features WHERE id = ?').get(featureId);
@@ -161,7 +175,10 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
         sets.push('counter_max = ?');
         vals.push(body.counterMax);
         // If setting a new max and current is null or exceeds new max, reset to max
-        if (body.counterMax !== null && (feature.counter_current === null || feature.counter_current > body.counterMax)) {
+        if (
+          body.counterMax !== null &&
+          (feature.counter_current === null || feature.counter_current > body.counterMax)
+        ) {
           sets.push('counter_current = ?');
           vals.push(body.counterMax);
         }

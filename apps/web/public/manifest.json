@@ -10,11 +10,7 @@
   "orientation": "any",
   "background_color": "#f4ecd8",
   "theme_color": "#2a1f14",
-  "categories": [
-    "games",
-    "utilities",
-    "productivity"
-  ],
+  "categories": ["games", "utilities", "productivity"],
   "icons": [
     {
       "src": "/favicon-32.png",

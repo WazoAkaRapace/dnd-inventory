@@ -1,7 +1,7 @@
+import type { Spell } from '@dnd-inventory/shared';
+import { formatModifier, spellDamageAtLevel, spellSaveDC } from '@dnd-inventory/shared';
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { spellDamageAtLevel, spellSaveDC, formatModifier } from '@dnd-inventory/shared';
-import type { Spell } from '@dnd-inventory/shared';
 
 /**
  * Bottom sheet (mobile) / dialog (desktop) to cast a known spell:
@@ -10,7 +10,17 @@ import type { Spell } from '@dnd-inventory/shared';
  *
  * Portaled to body — .card's backdrop-filter would break fixed positioning.
  */
-export default function CastSpellSheet({ spell, slots, slotsUsed, concentrating, castingMod, profBonus, charLevel, onClose, onCast }: {
+export default function CastSpellSheet({
+  spell,
+  slots,
+  slotsUsed,
+  concentrating,
+  castingMod,
+  profBonus,
+  charLevel,
+  onClose,
+  onCast,
+}: {
   spell: Spell;
   /** Max slots per level 1-9 (index 0 = level 1). */
   slots: number[];
@@ -38,7 +48,7 @@ export default function CastSpellSheet({ spell, slots, slotsUsed, concentrating,
     }
   }
 
-  const [chosen, setChosen] = useState<number>(isCantrip ? 0 : castableLevels[0] ?? -1);
+  const [chosen, setChosen] = useState<number>(isCantrip ? 0 : (castableLevels[0] ?? -1));
   const [casting, setCasting] = useState(false);
 
   const concConflict = spell.concentration && concentrating;
@@ -68,16 +78,19 @@ export default function CastSpellSheet({ spell, slots, slotsUsed, concentrating,
       >
         <div className="flex items-start justify-between gap-2 mb-3">
           <div>
-            <h3 className="font-display text-lg font-semibold">
-              🪄 {spell.nameFr ?? spell.name}
-            </h3>
+            <h3 className="font-display text-lg font-semibold">🪄 {spell.nameFr ?? spell.name}</h3>
             <p className="text-xs text-ink-400">
               {isCantrip ? 'Tour de magie' : `Sort de niveau ${spell.level}`}
               {spell.concentration && ' · 🌀 Concentration'}
               {spell.ritual && ' · ⚗ Rituel'}
             </p>
           </div>
-          <button onClick={onClose} className="text-ink-400 hover:text-ink-700 text-lg leading-none px-1" aria-label="Fermer">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-ink-400 hover:text-ink-700 text-lg leading-none px-1"
+            aria-label="Fermer"
+          >
             ✕
           </button>
         </div>
@@ -86,8 +99,8 @@ export default function CastSpellSheet({ spell, slots, slotsUsed, concentrating,
           <div className="rounded-lg bg-amber-50 border border-amber-300 p-3 mb-3 text-sm text-amber-900">
             <p className="font-semibold">⚠️ Concentration en cours</p>
             <p className="mt-0.5">
-              Tu concentres déjà un sort. Lancer <strong>{spell.nameFr ?? spell.name}</strong> mettra
-              fin au sort précédent.
+              Tu concentres déjà un sort. Lancer <strong>{spell.nameFr ?? spell.name}</strong>{' '}
+              mettra fin au sort précédent.
             </p>
           </div>
         )}
@@ -108,6 +121,7 @@ export default function CastSpellSheet({ spell, slots, slotsUsed, concentrating,
               const isUpcast = lvl > spell.level;
               return (
                 <button
+                  type="button"
                   key={lvl}
                   onClick={() => setChosen(lvl)}
                   className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border text-sm transition-colors ${
@@ -120,7 +134,9 @@ export default function CastSpellSheet({ spell, slots, slotsUsed, concentrating,
                   <span className="font-medium">
                     Niveau {lvl}
                     {isUpcast && (
-                      <span className={`ml-1.5 text-[10px] font-semibold uppercase ${selected ? 'text-gold-300' : 'text-blood-500'}`}>
+                      <span
+                        className={`ml-1.5 text-[10px] font-semibold uppercase ${selected ? 'text-gold-300' : 'text-blood-500'}`}
+                      >
                         supérieur
                       </span>
                     )}
@@ -146,7 +162,8 @@ export default function CastSpellSheet({ spell, slots, slotsUsed, concentrating,
               )}
               {dmg.dice && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50 text-orange-800 text-[11px] font-medium border border-orange-200">
-                  ⚔ {dmg.dice}{dmg.typeFr ? ` dégâts ${dmg.typeFr}` : ''}
+                  ⚔ {dmg.dice}
+                  {dmg.typeFr ? ` dégâts ${dmg.typeFr}` : ''}
                 </span>
               )}
               {spell.dcJson && castingMod !== undefined && profBonus !== undefined && (
@@ -164,6 +181,7 @@ export default function CastSpellSheet({ spell, slots, slotsUsed, concentrating,
         })()}
 
         <button
+          type="button"
           onClick={() => cast(chosen)}
           disabled={casting || chosen < 0}
           className="btn-primary w-full mt-4 py-2.5 disabled:opacity-40"
@@ -180,11 +198,13 @@ export default function CastSpellSheet({ spell, slots, slotsUsed, concentrating,
         {/* Ritual cast: no slot consumed, +10 minutes */}
         {spell.ritual && (
           <button
+            type="button"
             onClick={() => cast(spell.level, true)}
             disabled={casting}
             className="w-full mt-2 py-2.5 rounded-lg bg-purple-100 text-purple-800 border border-purple-300 hover:bg-purple-200 font-medium text-sm disabled:opacity-40 transition-colors"
           >
-            ⚗ Rituel (10 minutes) <span className="font-normal text-purple-500">— sans emplacement</span>
+            ⚗ Rituel (10 minutes){' '}
+            <span className="font-normal text-purple-500">— sans emplacement</span>
           </button>
         )}
       </div>

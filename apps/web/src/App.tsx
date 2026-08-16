@@ -1,28 +1,33 @@
-import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
+import type { ConcentrationCheck } from '@dnd-inventory/shared';
 import { useState } from 'react';
+import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth';
-import { useSync, useSyncEvent } from './sync';
-import { HeaderProvider, useHeaderState } from './headerContext';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import PartiesPage from './pages/PartiesPage';
-import PartyPage from './pages/PartyPage';
-import CharacterInventoryPage from './pages/CharacterInventoryPage';
-import GmDashboardPage from './pages/GmDashboardPage';
-import NpcPage from './pages/NpcPage';
-import CombatPage from './pages/CombatPage';
 import CombatWidget from './components/CombatWidget';
 import ConcentrationAlert from './components/ConcentrationAlert';
-import type { ConcentrationCheck } from '@dnd-inventory/shared';
+import { HeaderProvider, useHeaderState } from './headerContext';
+import CharacterInventoryPage from './pages/CharacterInventoryPage';
+import CombatPage from './pages/CombatPage';
+import GmDashboardPage from './pages/GmDashboardPage';
+import LoginPage from './pages/LoginPage';
+import NpcPage from './pages/NpcPage';
+import PartiesPage from './pages/PartiesPage';
+import PartyPage from './pages/PartyPage';
+import RegisterPage from './pages/RegisterPage';
+import { useSync, useSyncEvent } from './sync';
 
 function SyncIndicator() {
   const { status } = useSync();
-  const colors = { connected: 'bg-green-400', connecting: 'bg-yellow-400', disconnected: 'bg-red-400' };
+  const colors = {
+    connected: 'bg-green-400',
+    connecting: 'bg-yellow-400',
+    disconnected: 'bg-red-400',
+  };
   const labels = { connected: 'Synchronisé', connecting: 'Connexion…', disconnected: 'Hors ligne' };
   return (
     <span
       className={`inline-block w-2.5 h-2.5 rounded-full ${colors[status]}`}
       title={labels[status]}
+      role="img"
       aria-label={labels[status]}
     />
   );
@@ -47,9 +52,9 @@ function Nav() {
   const { user, logout } = useAuth();
   const loc = useLocation();
   const { override } = useHeaderState();
-  if (!user) return null;
 
   const routeTitle = useRouteTitle(loc.pathname);
+  if (!user) return null;
 
   // A page can override the header (e.g., CombatPage shows the encounter name).
   // override.onBack = function → custom back action (button).
@@ -68,18 +73,28 @@ function Nav() {
           {headerBack ? (
             <>
               {headerBack.onClick ? (
-                <button onClick={headerBack.onClick} className="btn-ghost text-parchment-50 hover:bg-ink-700 text-sm shrink-0">
+                <button
+                  type="button"
+                  onClick={headerBack.onClick}
+                  className="btn-ghost text-parchment-50 hover:bg-ink-700 text-sm shrink-0"
+                >
                   {headerBack.label}
                 </button>
               ) : (
-                <Link to={headerBack.to!} className="btn-ghost text-parchment-50 hover:bg-ink-700 text-sm shrink-0">
+                <Link
+                  to={headerBack.to!}
+                  className="btn-ghost text-parchment-50 hover:bg-ink-700 text-sm shrink-0"
+                >
                   {headerBack.label}
                 </Link>
               )}
               <span className="font-display text-lg font-semibold truncate">{headerTitle}</span>
             </>
           ) : (
-            <Link to="/parties" className="font-display text-lg font-semibold flex items-center gap-2">
+            <Link
+              to="/parties"
+              className="font-display text-lg font-semibold flex items-center gap-2"
+            >
               <span className="text-blood-500">⚔</span>
               <span className="hidden sm:inline">Inventaire D&D</span>
               <span className="sm:hidden">D&D</span>
@@ -88,7 +103,10 @@ function Nav() {
         </div>
         <div className="flex items-center gap-2 sm:gap-4">
           {override?.action && (
-            <Link to={override.action.to} className="btn-ghost text-parchment-50 hover:bg-ink-700 text-sm">
+            <Link
+              to={override.action.to}
+              className="btn-ghost text-parchment-50 hover:bg-ink-700 text-sm"
+            >
               <span className="hidden sm:inline">{override.action.label}</span>
               <span className="sm:hidden">{override.action.short}</span>
             </Link>
@@ -102,7 +120,13 @@ function Nav() {
           <span className="text-sm text-parchment-200 hidden sm:inline">{user.displayName}</span>
           <SyncIndicator />
           {loc.pathname === '/parties' && (
-            <button onClick={logout} className="btn-ghost text-parchment-50 hover:bg-ink-700 text-lg leading-none px-2" title="Déconnexion" aria-label="Déconnexion">
+            <button
+              type="button"
+              onClick={logout}
+              className="btn-ghost text-parchment-50 hover:bg-ink-700 text-lg leading-none px-2"
+              title="Déconnexion"
+              aria-label="Déconnexion"
+            >
               ⏻
             </button>
           )}
@@ -133,10 +157,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function ConcentrationWatcher() {
   const { user } = useAuth();
   const [check, setCheck] = useState<ConcentrationCheck | null>(null);
-  useSyncEvent((event) => {
-    const c = event.concentration;
-    if (c && user && c.ownerId === user.id) setCheck(c);
-  }, [user?.id]);
+  useSyncEvent(
+    (event) => {
+      const c = event.concentration;
+      if (c && user && c.ownerId === user.id) setCheck(c);
+    },
+    [user?.id],
+  );
   if (!check) return null;
   return <ConcentrationAlert check={check} onDone={() => setCheck(null)} />;
 }
@@ -149,12 +176,54 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
-          <Route path="/parties" element={<ProtectedRoute><PartiesPage /></ProtectedRoute>} />
-          <Route path="/party/:partyId" element={<ProtectedRoute><PartyPage /></ProtectedRoute>} />
-          <Route path="/party/:partyId/character/:charId" element={<ProtectedRoute><CharacterInventoryPage /></ProtectedRoute>} />
-          <Route path="/party/:partyId/gm" element={<ProtectedRoute><GmDashboardPage /></ProtectedRoute>} />
-          <Route path="/party/:partyId/npcs" element={<ProtectedRoute><NpcPage /></ProtectedRoute>} />
-          <Route path="/party/:partyId/combat" element={<ProtectedRoute><CombatPage /></ProtectedRoute>} />
+          <Route
+            path="/parties"
+            element={
+              <ProtectedRoute>
+                <PartiesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/party/:partyId"
+            element={
+              <ProtectedRoute>
+                <PartyPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/party/:partyId/character/:charId"
+            element={
+              <ProtectedRoute>
+                <CharacterInventoryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/party/:partyId/gm"
+            element={
+              <ProtectedRoute>
+                <GmDashboardPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/party/:partyId/npcs"
+            element={
+              <ProtectedRoute>
+                <NpcPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/party/:partyId/combat"
+            element={
+              <ProtectedRoute>
+                <CombatPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="*" element={<Navigate to="/parties" replace />} />
         </Routes>
       </main>

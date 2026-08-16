@@ -1,21 +1,21 @@
 /**
  * Compétences tab — 18 skills + 6 saving throws with proficiency toggles.
  */
+
+import {
+  ABILITY_SHORT_FR,
+  type AbilityKey,
+  abilityModifier,
+  type Character,
+  DND_ABILITIES,
+  DND_SKILLS,
+  formatModifier,
+  type ProficiencyLevel,
+  proficiencyBonus,
+  type SkillKey,
+} from '@dnd-inventory/shared';
 import { useCallback } from 'react';
 import api from '../api';
-import {
-  type Character,
-  type AbilityKey,
-  type SkillKey,
-  type ProficiencyLevel,
-  DND_SKILLS,
-  DND_ABILITIES,
-  ABILITY_LABELS_FR,
-  ABILITY_SHORT_FR,
-  abilityModifier,
-  formatModifier,
-  proficiencyBonus,
-} from '@dnd-inventory/shared';
 
 interface Props {
   character: Character;
@@ -47,17 +47,20 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
   const level = character.level ?? 1;
   const profBonus = proficiencyBonus(level);
 
-  const patchProficiencies = useCallback(async (skills: string[], saves: string[]) => {
-    try {
-      await api.patch(`/api/characters/${charId}`, {
-        skillProficiencies: skills,
-        savingThrowProficiencies: saves,
-      });
-      await onSaved();
-    } catch {
-      onError('Erreur de mise à jour');
-    }
-  }, [charId, onSaved, onError]);
+  const patchProficiencies = useCallback(
+    async (skills: string[], saves: string[]) => {
+      try {
+        await api.patch(`/api/characters/${charId}`, {
+          skillProficiencies: skills,
+          savingThrowProficiencies: saves,
+        });
+        await onSaved();
+      } catch {
+        onError('Erreur de mise à jour');
+      }
+    },
+    [charId, onSaved, onError],
+  );
 
   const toggleSkill = (skillKey: SkillKey) => {
     const current = skillProficiency(character, skillKey);
@@ -97,7 +100,9 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
       <section className="card p-4 sm:p-5 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-lg font-semibold">Jets de sauvegarde</h2>
-          <span className="text-xs text-ink-400">Bonus de maîtrise {formatModifier(profBonus)}</span>
+          <span className="text-xs text-ink-400">
+            Bonus de maîtrise {formatModifier(profBonus)}
+          </span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {DND_ABILITIES.map((abi) => {
@@ -107,6 +112,7 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
             const total = mod + (proficient ? profBonus : 0);
             return (
               <button
+                type="button"
                 key={abi.key}
                 onClick={() => toggleSave(abi.key)}
                 className={`flex items-center justify-between px-3 py-2 rounded-lg border transition-colors text-left ${
@@ -143,6 +149,7 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
                 const total = mod + (prof === 1 ? profBonus : prof === 2 ? profBonus * 2 : 0);
                 return (
                   <button
+                    type="button"
                     key={skill.key}
                     onClick={() => toggleSkill(skill.key)}
                     className={`w-full flex items-center justify-between gap-1 px-3 py-2 rounded-lg border transition-colors text-left ${
@@ -153,7 +160,9 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
                     aria-pressed={prof > 0}
                   >
                     <span className="flex items-center gap-2 min-w-0">
-                      <span className={`text-xs w-4 shrink-0 ${prof > 0 ? 'text-blood-600' : 'text-parchment-300'}`}>
+                      <span
+                        className={`text-xs w-4 shrink-0 ${prof > 0 ? 'text-blood-600' : 'text-parchment-300'}`}
+                      >
                         {prof > 0 ? '●' : '○'}
                       </span>
                       <span className="text-sm text-ink-700 truncate">{skill.label}</span>

@@ -5,24 +5,25 @@
  * Players see a floating widget (CombatWidget) on other pages for their
  * initiative entry + turn notifications.
  */
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useParams, useSearchParams, Link } from 'react-router-dom';
+
+import type {
+  Combatant,
+  EncounterDetail,
+  EncounterStatus,
+  EncounterSummary,
+  PartyDetail,
+} from '@dnd-inventory/shared';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../auth';
-import { useSyncEvent } from '../sync';
-import { useHeaderOverride } from '../headerContext';
-import type {
-  EncounterDetail,
-  EncounterSummary,
-  Combatant,
-  PartyDetail,
-  EncounterStatus,
-} from '@dnd-inventory/shared';
-import { LoadingSpinner, ErrorMsg, EmptyState, Modal } from '../components/ui';
-import CombatantRow from '../components/CombatantRow';
 import AddMonsterModal from '../components/AddMonsterModal';
 import AddPlayerModal from '../components/AddPlayerModal';
+import CombatantRow from '../components/CombatantRow';
 import MonsterStatBlock from '../components/MonsterStatBlock';
+import { EmptyState, ErrorMsg, LoadingSpinner, Modal } from '../components/ui';
+import { useHeaderOverride } from '../headerContext';
+import { useSyncEvent } from '../sync';
 
 export default function CombatPage() {
   const { partyId } = useParams();
@@ -44,10 +45,12 @@ export default function CombatPage() {
   // list. Players also get a shortcut back to their own character sheet.
   const backToList = useCallback(() => setActiveEncounter(null), []);
   const myCharacter = party?.characters.find((c) => c.ownerId === user?.id) ?? null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: dep narrowed to myCharacter?.id so the memoized action object keeps a stable identity across party refreshes.
   const sheetAction = useMemo(
-    () => myCharacter && partyId
-      ? { label: 'Ma fiche', short: '🧙', to: `/party/${partyId}/character/${myCharacter.id}` }
-      : null,
+    () =>
+      myCharacter && partyId
+        ? { label: 'Ma fiche', short: '🧙', to: `/party/${partyId}/character/${myCharacter.id}` }
+        : null,
     [myCharacter?.id, partyId],
   );
   useHeaderOverride(
@@ -56,36 +59,44 @@ export default function CombatPage() {
     sheetAction,
   );
 
-  const load = useCallback(async (silent = false) => {
-    if (!partyId) return;
-    if (!silent) setLoading(true);
-    try {
-      const [partyRes, encRes] = await Promise.all([
-        api.get(`/api/parties/${partyId}`),
-        api.get(`/api/parties/${partyId}/encounters`),
-      ]);
-      setParty(partyRes.data);
-      setEncounters(encRes.data.encounters || []);
-      setError('');
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Erreur');
-    } finally {
-      setLoading(false);
-    }
-  }, [partyId]);
+  const load = useCallback(
+    async (silent = false) => {
+      if (!partyId) return;
+      if (!silent) setLoading(true);
+      try {
+        const [partyRes, encRes] = await Promise.all([
+          api.get(`/api/parties/${partyId}`),
+          api.get(`/api/parties/${partyId}/encounters`),
+        ]);
+        setParty(partyRes.data);
+        setEncounters(encRes.data.encounters || []);
+        setError('');
+      } catch (err: any) {
+        setError(err.response?.data?.error || 'Erreur');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [partyId],
+  );
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   // Real-time sync
-  useSyncEvent((event) => {
-    if (event.partyId === currentPartyId && event.type === 'combat:change') {
-      load(true);
-      // Also refresh the active encounter detail
-      if (activeEncounter) loadEncounter(activeEncounter.id, true);
-    }
-  }, [currentPartyId, activeEncounter?.id]);
+  useSyncEvent(
+    (event) => {
+      if (event.partyId === currentPartyId && event.type === 'combat:change') {
+        load(true);
+        // Also refresh the active encounter detail
+        if (activeEncounter) loadEncounter(activeEncounter.id, true);
+      }
+    },
+    [currentPartyId, activeEncounter?.id],
+  );
 
-  const loadEncounter = useCallback(async (id: number, silent = false) => {
+  const loadEncounter = useCallback(async (id: number, _silent = false) => {
     try {
       const res = await api.get(`/api/encounters/${id}`);
       setActiveEncounter(res.data.encounter);
@@ -101,12 +112,13 @@ export default function CombatPage() {
   // Deep link: /combat?enc=ID opens the encounter directly
   const [searchParams, setSearchParams] = useSearchParams();
   const deepLinked = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selectEncounter is omitted on purpose — it is recreated every render and the deepLinked ref guards against double loads.
   useEffect(() => {
     if (deepLinked.current || loading || encounters.length === 0) return;
     const encParam = searchParams.get('enc');
     if (encParam) {
       const id = Number(encParam);
-      if (encounters.some(e => e.id === id)) {
+      if (encounters.some((e) => e.id === id)) {
         deepLinked.current = true;
         selectEncounter(id);
         searchParams.delete('enc');
@@ -152,7 +164,9 @@ export default function CombatPage() {
     if (!activeEncounter) return;
     try {
       await api.post(`/api/encounters/${activeEncounter.id}/combatants/monster`, {
-        monsterSlug: slug, count, name,
+        monsterSlug: slug,
+        count,
+        name,
       });
       await loadEncounter(activeEncounter.id);
     } catch (err: any) {
@@ -184,7 +198,9 @@ export default function CombatPage() {
   const setInitiative = async (id: number, initiative: number) => {
     if (!activeEncounter) return;
     try {
-      await api.patch(`/api/encounters/${activeEncounter.id}/combatants/${id}/initiative`, { initiative });
+      await api.patch(`/api/encounters/${activeEncounter.id}/combatants/${id}/initiative`, {
+        initiative,
+      });
       await loadEncounter(activeEncounter.id);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Erreur');
@@ -219,7 +235,8 @@ export default function CombatPage() {
     (c) => !activeEncounter?.combatants.some((com) => com.characterId === c.id),
   );
   // In setup phase, check if all combatants have rolled initiative
-  const needsInitiative = activeEncounter?.status === 'setup' &&
+  const needsInitiative =
+    activeEncounter?.status === 'setup' &&
     activeEncounter.combatants.some((c) => !c.defeated && c.initiative === null);
 
   return (
@@ -233,12 +250,17 @@ export default function CombatPage() {
             <EmptyState
               icon="⚔"
               title="Aucune rencontre"
-              hint={isGM ? 'Créez une rencontre pour commencer le combat.' : 'Le MD n\'a pas encore créé de rencontre.'}
+              hint={
+                isGM
+                  ? 'Créez une rencontre pour commencer le combat.'
+                  : "Le MD n'a pas encore créé de rencontre."
+              }
             />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {encounters.map((enc) => (
                 <button
+                  type="button"
                   key={enc.id}
                   onClick={() => selectEncounter(enc.id)}
                   className="card p-4 text-left hover:shadow-md transition-shadow"
@@ -254,7 +276,11 @@ export default function CombatPage() {
                   </div>
                   {isGM && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); deleteEncounter(enc.id); }}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteEncounter(enc.id);
+                      }}
                       className="text-ink-400 hover:text-red-600 text-xs mt-2"
                     >
                       Supprimer
@@ -274,13 +300,15 @@ export default function CombatPage() {
           <div className="card p-3 flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3">
               {activeEncounter.status === 'setup' && (
-                <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                  needsInitiative
-                    ? 'bg-yellow-100 text-yellow-700'
-                    : 'bg-green-100 text-green-700'
-                }`}>
+                <span
+                  className={`px-3 py-1 rounded-full text-sm font-medium ${
+                    needsInitiative
+                      ? 'bg-yellow-100 text-yellow-700'
+                      : 'bg-green-100 text-green-700'
+                  }`}
+                >
                   {needsInitiative
-                    ? '⚪ En attente d\'initiative'
+                    ? "⚪ En attente d'initiative"
                     : '✅ Prêt à démarrer — cliquez Tour suivant'}
                 </span>
               )}
@@ -301,15 +329,21 @@ export default function CombatPage() {
               {isGM && activeEncounter.status !== 'ended' && (
                 <>
                   <button
+                    type="button"
                     onClick={nextTurn}
                     disabled={needsInitiative}
                     className="btn-primary text-sm disabled:opacity-40 disabled:cursor-not-allowed"
-                    title={needsInitiative ? 'Tous les combattants doivent lancer leur initiative' : 'Passer au tour suivant'}
+                    title={
+                      needsInitiative
+                        ? 'Tous les combattants doivent lancer leur initiative'
+                        : 'Passer au tour suivant'
+                    }
                   >
                     {activeEncounter.status === 'setup' ? '▶ Démarrer le combat' : '▶ Tour suivant'}
                   </button>
                   {activeEncounter.status === 'active' && (
                     <button
+                      type="button"
                       onClick={() => patchEncounter({ status: 'ended' })}
                       className="btn-secondary text-sm"
                     >
@@ -320,11 +354,19 @@ export default function CombatPage() {
               )}
               {isGM && (
                 <>
-                  <button onClick={() => setShowAddMonster(true)} className="btn-secondary text-sm">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddMonster(true)}
+                    className="btn-secondary text-sm"
+                  >
                     + Monstre
                   </button>
                   {availableChars.length > 0 && (
-                    <button onClick={() => setShowAddPlayer(true)} className="btn-secondary text-sm">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddPlayer(true)}
+                      className="btn-secondary text-sm"
+                    >
                       + PJ
                     </button>
                   )}
@@ -358,9 +400,16 @@ export default function CombatPage() {
       )}
 
       {/* New encounter modal */}
-      <Modal open={showNewEncounter} onClose={() => setShowNewEncounter(false)} title="Nouvelle rencontre">
-        <label className="label">Nom de la rencontre</label>
+      <Modal
+        open={showNewEncounter}
+        onClose={() => setShowNewEncounter(false)}
+        title="Nouvelle rencontre"
+      >
+        <label className="label" htmlFor="new-encounter-name">
+          Nom de la rencontre
+        </label>
         <input
+          id="new-encounter-name"
           autoFocus
           type="text"
           value={newName}
@@ -370,10 +419,19 @@ export default function CombatPage() {
           onKeyDown={(e) => e.key === 'Enter' && createEncounter()}
         />
         <div className="flex gap-2 mt-4">
-          <button onClick={() => setShowNewEncounter(false)} className="btn-secondary flex-1">
+          <button
+            type="button"
+            onClick={() => setShowNewEncounter(false)}
+            className="btn-secondary flex-1"
+          >
             Annuler
           </button>
-          <button onClick={createEncounter} className="btn-primary flex-1" disabled={!newName.trim()}>
+          <button
+            type="button"
+            onClick={createEncounter}
+            className="btn-primary flex-1"
+            disabled={!newName.trim()}
+          >
             Créer
           </button>
         </div>
@@ -397,6 +455,7 @@ export default function CombatPage() {
       {/* FAB: create new encounter (GM only, encounter list only) */}
       {!activeEncounter && isGM && (
         <button
+          type="button"
           onClick={() => setShowNewEncounter(true)}
           className="fab-enter fixed bottom-5 right-5 z-30 w-14 h-14 rounded-full bg-blood-600 text-white shadow-lg flex items-center justify-center text-2xl font-light hover:bg-blood-700 active:scale-95 transition-all"
           aria-label="Nouvelle rencontre"
@@ -452,7 +511,11 @@ function CombatantList({
       if (existing) {
         existing.members.push({ combatant: c, index: idx });
       } else {
-        const g: Group = { key: `g${c.groupId}`, groupId: c.groupId, members: [{ combatant: c, index: idx }] };
+        const g: Group = {
+          key: `g${c.groupId}`,
+          groupId: c.groupId,
+          members: [{ combatant: c, index: idx }],
+        };
         seenGroups.set(c.groupId, g);
         groups.push(g);
       }
@@ -466,9 +529,10 @@ function CombatantList({
     <div className="space-y-3">
       {groups.map((group) => {
         const isGroup = group.members.length > 1;
-        const firstIdx = group.members[0].index;
         const first = group.members[0].combatant;
-        const isCurrentGroup = group.members.some((m) => m.index === turnIndex && status === 'active');
+        const isCurrentGroup = group.members.some(
+          (m) => m.index === turnIndex && status === 'active',
+        );
         const aliveCount = group.members.filter((m) => !m.combatant.defeated).length;
         const totalCount = group.members.length;
 
@@ -482,14 +546,16 @@ function CombatantList({
             )}
             {/* Group header (only for multi-member groups) */}
             {isGroup && (
-              <div className={`flex items-center gap-2 px-2 py-1 mb-1 rounded-lg text-sm font-medium ${
-                isCurrentGroup ? 'bg-blood-100 text-blood-700'
-                : first.type === 'player' ? 'bg-blue-100 text-blue-700'
-                : 'bg-red-100 text-red-700'
-              }`}>
-                <span className="font-bold">
-                  {first.name}
-                </span>
+              <div
+                className={`flex items-center gap-2 px-2 py-1 mb-1 rounded-lg text-sm font-medium ${
+                  isCurrentGroup
+                    ? 'bg-blood-100 text-blood-700'
+                    : first.type === 'player'
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'bg-red-100 text-red-700'
+                }`}
+              >
+                <span className="font-bold">{first.name}</span>
                 <span className="text-xs">
                   {aliveCount}/{totalCount} en vie
                 </span>
@@ -504,13 +570,19 @@ function CombatantList({
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                               const v = parseInt((e.target as HTMLInputElement).value, 10);
-                              if (!isNaN(v)) onSetInitiative(first.id, v);
+                              if (!Number.isNaN(v)) onSetInitiative(first.id, v);
                             }
                           }}
                           title="Saisir l'initiative du groupe"
                         />
                         <button
-                          onClick={() => onSetInitiative(first.id, Math.floor(Math.random() * 20) + 1 + first.initiativeBonus)}
+                          type="button"
+                          onClick={() =>
+                            onSetInitiative(
+                              first.id,
+                              Math.floor(Math.random() * 20) + 1 + first.initiativeBonus,
+                            )
+                          }
                           className="text-blood-600 hover:text-blood-700 text-sm"
                           title="Lancer l'initiative (d20 + DEX)"
                         >
@@ -525,6 +597,7 @@ function CombatantList({
                   )}
                   {isGM && first.monsterSlug && (
                     <button
+                      type="button"
                       onClick={() => setStatBlockSlug(first.monsterSlug)}
                       className="text-ink-500 hover:text-blood-600 text-xs"
                       title="Stat block"
@@ -534,6 +607,7 @@ function CombatantList({
                   )}
                   {isGM && (
                     <button
+                      type="button"
                       onClick={() => onDelete(first.id)}
                       className="text-ink-400 hover:text-red-600 text-xs"
                       title="Supprimer le groupe"
@@ -546,24 +620,30 @@ function CombatantList({
             )}
 
             {/* Members */}
-            <div className={`space-y-2 ${isGroup ? 'ml-3 border-l-2 pl-3' : ''} ${
-              isCurrentGroup ? 'border-blood-500' : 'border-parchment-200'
-            }`}>
+            <div
+              className={`space-y-2 ${isGroup ? 'ml-3 border-l-2 pl-3' : ''} ${
+                isCurrentGroup ? 'border-blood-500' : 'border-parchment-200'
+              }`}
+            >
               {group.members.map((m, memberIdx) => (
                 <CombatantRow
                   key={m.combatant.id}
                   combatant={m.combatant}
                   characterSheetPath={
-                    m.combatant.characterId && party.characters.some((ch) => ch.id === m.combatant.characterId)
+                    m.combatant.characterId &&
+                    party.characters.some((ch) => ch.id === m.combatant.characterId)
                       ? `/party/${partyId}/character/${m.combatant.characterId}`
                       : undefined
                   }
                   label={isGroup ? `${m.combatant.name} ${memberIdx + 1}` : undefined}
                   isCurrent={isCurrentGroup || (m.index === turnIndex && status === 'active')}
                   isGM={isGM}
-                  canSetInitiative={!!m.combatant.characterId && party.characters.some(
-                    (ch) => ch.id === m.combatant.characterId && ch.ownerId === userId,
-                  )}
+                  canSetInitiative={
+                    !!m.combatant.characterId &&
+                    party.characters.some(
+                      (ch) => ch.id === m.combatant.characterId && ch.ownerId === userId,
+                    )
+                  }
                   hideInitiative={isGroup} // initiative shown in group header
                   hideTourLabel={isGroup} // tour label shown on group wrapper
                   onPatch={onPatch}

@@ -2,11 +2,12 @@
  * Divine domain spells (Clerc, SRD): always prepared, don't count against
  * the prepared-spells limit. Derived from domain + level — no stored rows.
  */
+
+import type { Spell } from '@dnd-inventory/shared';
+import { bonusPreparedSpells, domainSpellsFor, findClass } from '@dnd-inventory/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
-import { requireUser, isPartyGM, mapSpell } from './helpers.ts';
-import { domainSpellsFor, bonusPreparedSpells, findClass } from '@dnd-inventory/shared';
-import type { Spell } from '@dnd-inventory/shared';
+import { isPartyGM, mapSpell, requireUser } from './helpers.ts';
 
 export async function domainSpellRoutes(app: FastifyInstance) {
   app.get(
@@ -15,7 +16,9 @@ export async function domainSpellRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(Number(req.params.id)) as any;
+      const char = db
+        .prepare('SELECT * FROM characters WHERE id = ?')
+        .get(Number(req.params.id)) as any;
       if (!char) return reply.code(404).send({ error: 'Personnage introuvable' });
       const gm = isPartyGM(char.party_id, userId);
       if (char.owner_id !== userId && !gm) {
@@ -25,13 +28,18 @@ export async function domainSpellRoutes(app: FastifyInstance) {
       // Cleric domains, druid Circle of the Land terrains, paladin oaths —
       // all the same SRD mechanic: always prepared, excluded from the limit.
       const clsName = findClass(char.character_class)?.name ?? null;
-      const groups = clsName === 'Clerc'
-        ? domainSpellsFor(char.divine_domain, char.level ?? 1)
-        : clsName === 'Druide'
-          ? bonusPreparedSpells('Druide', char.druid_circle === 'terre' ? char.land_circle : null, char.level ?? 1)
-          : clsName === 'Paladin'
-            ? bonusPreparedSpells('Paladin', char.sacred_oath, char.level ?? 1)
-            : [];
+      const groups =
+        clsName === 'Clerc'
+          ? domainSpellsFor(char.divine_domain, char.level ?? 1)
+          : clsName === 'Druide'
+            ? bonusPreparedSpells(
+                'Druide',
+                char.druid_circle === 'terre' ? char.land_circle : null,
+                char.level ?? 1,
+              )
+            : clsName === 'Paladin'
+              ? bonusPreparedSpells('Paladin', char.sacred_oath, char.level ?? 1)
+              : [];
       const spells: Array<Spell & { domainLevel: number }> = [];
       for (const g of groups) {
         for (const name of g.names) {

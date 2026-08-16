@@ -3,8 +3,9 @@
  * Multi-select: tick several characters then add them in one go,
  * or use the select-all toggle to bring the whole party into the fight.
  */
-import { useState, useEffect } from 'react';
+
 import type { CharacterSummary } from '@dnd-inventory/shared';
+import { useEffect, useState } from 'react';
 import { Modal } from './ui';
 
 interface Props {
@@ -52,6 +53,7 @@ export default function AddPlayerModal({ open, onClose, characters, onAdd }: Pro
             : `${selected.size} sélectionné${selected.size > 1 ? 's' : ''}`}
         </span>
         <button
+          type="button"
           onClick={toggleAll}
           disabled={characters.length === 0}
           className="text-sm font-medium text-blood-600 hover:text-blood-700 disabled:opacity-40"
@@ -85,10 +87,11 @@ export default function AddPlayerModal({ open, onClose, characters, onAdd }: Pro
         ))}
       </div>
       <div className="flex gap-2 mt-4">
-        <button onClick={onClose} className="btn-secondary flex-1">
+        <button type="button" onClick={onClose} className="btn-secondary flex-1">
           Annuler
         </button>
         <button
+          type="button"
           onClick={handleAdd}
           disabled={selected.size === 0}
           className="btn-primary flex-1 disabled:opacity-40 disabled:cursor-not-allowed"

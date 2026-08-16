@@ -2,11 +2,12 @@
  * SQLite connection singleton (better-sqlite3).
  * All weights in the DB are KILOGRAMS.
  */
-import Database from 'better-sqlite3';
-import { readFileSync, mkdirSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+
+import { mkdirSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Database as DB } from 'better-sqlite3';
+import Database from 'better-sqlite3';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -120,7 +121,7 @@ const COLUMN_MIGRATIONS: Record<string, Array<{ name: string; ddl: string }>> = 
   ],
   items: [
     { name: 'survival_tags', ddl: "TEXT NOT NULL DEFAULT '[]'" },
-    { name: 'aliases', ddl: "TEXT" },
+    { name: 'aliases', ddl: 'TEXT' },
   ],
   storage_locations: [
     { name: 'strength', ddl: 'INTEGER DEFAULT 10' },
@@ -131,7 +132,10 @@ const COLUMN_MIGRATIONS: Record<string, Array<{ name: string; ddl: string }>> = 
     { name: 'sort_order', ddl: 'INTEGER NOT NULL DEFAULT 0' },
   ],
   inventory: [
-    { name: 'storage_location_id', ddl: 'INTEGER REFERENCES storage_locations(id) ON DELETE SET NULL' },
+    {
+      name: 'storage_location_id',
+      ddl: 'INTEGER REFERENCES storage_locations(id) ON DELETE SET NULL',
+    },
   ],
   character_features: [
     { name: 'counter_max', ddl: 'INTEGER' },
@@ -177,7 +181,7 @@ export function migrate(): void {
   // migrateColumns below.
   try {
     db.exec(sql);
-  } catch (err: any) {
+  } catch {
     // Re-run statement-by-statement, skipping any that fail (typically a
     // CREATE INDEX on a not-yet-migrated column).
     const stmts = sql
@@ -186,7 +190,7 @@ export function migrate(): void {
       .filter((s) => s.length > 0 && !s.startsWith('--'));
     for (const stmt of stmts) {
       try {
-        db.exec(stmt + ';');
+        db.exec(`${stmt};`);
       } catch {
         // skip (likely an index on a column added by migrateColumns)
       }
@@ -202,7 +206,7 @@ export function migrate(): void {
     .filter((s) => /^CREATE\s+INDEX/i.test(s));
   for (const stmt of indexStmts) {
     try {
-      db.exec(stmt + ';');
+      db.exec(`${stmt};`);
     } catch {
       // already exists or other benign error
     }

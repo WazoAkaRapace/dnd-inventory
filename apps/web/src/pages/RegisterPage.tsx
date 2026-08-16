@@ -34,8 +34,11 @@ export default function RegisterPage() {
         </div>
         <form onSubmit={submit} className="space-y-4">
           <div>
-            <label className="label">Nom affiché</label>
+            <label className="label" htmlFor="register-display-name">
+              Nom affiché
+            </label>
             <input
+              id="register-display-name"
               className="input"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
@@ -44,8 +47,11 @@ export default function RegisterPage() {
             />
           </div>
           <div>
-            <label className="label">Nom d'utilisateur</label>
+            <label className="label" htmlFor="register-username">
+              Nom d'utilisateur
+            </label>
             <input
+              id="register-username"
               className="input"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -54,8 +60,11 @@ export default function RegisterPage() {
             />
           </div>
           <div>
-            <label className="label">Mot de passe (≥ 6 caractères)</label>
+            <label className="label" htmlFor="register-password">
+              Mot de passe (≥ 6 caractères)
+            </label>
             <input
+              id="register-password"
               type="password"
               className="input"
               value={password}

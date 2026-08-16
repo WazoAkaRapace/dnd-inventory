@@ -15,8 +15,8 @@
  *
  * Run: npx tsx scripts/import-aidedd-monsters.ts
  */
-import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -141,7 +141,10 @@ function extractDiv(html: string, openTag: string): string | null {
 function readLabeledLine(red: string, label: string): string | null {
   // Label may contain an apostrophe; escape regex-special chars naively.
   const esc = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`<strong>\\s*${esc}\\s*</strong>\\s*([^<]*(?:<(?!strong|br|div)[^>]*>[^<]*)*)`, 'i');
+  const re = new RegExp(
+    `<strong>\\s*${esc}\\s*</strong>\\s*([^<]*(?:<(?!strong|br|div)[^>]*>[^<]*)*)`,
+    'i',
+  );
   const m = red.match(re);
   if (!m) return null;
   return m[1];
@@ -197,19 +200,18 @@ interface ParsedCarac {
 function parseCarac(red: string): ParsedCarac {
   const re = /<div class='carac'>\s*<strong>\s*([A-ZÀ-Ÿ]+)\s*<\/strong>\s*<br>\s*(\d+)/gi;
   const map: Record<string, number> = {};
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(red)) !== null) {
+  for (const m of red.matchAll(re)) {
     const key = m[1].toLowerCase();
     map[key] = parseInt(m[2], 10);
   }
   return {
     abilities: {
-      for: map['for'] ?? 10,
-      dex: map['dex'] ?? 10,
-      con: map['con'] ?? 10,
-      int: map['int'] ?? 10,
-      sag: map['sag'] ?? 10,
-      cha: map['cha'] ?? 10,
+      for: map.for ?? 10,
+      dex: map.dex ?? 10,
+      con: map.con ?? 10,
+      int: map.int ?? 10,
+      sag: map.sag ?? 10,
+      cha: map.cha ?? 10,
     },
   };
 }
@@ -321,7 +323,10 @@ function parseDamageList(raw: string | null): string[] | null {
   const text = collapseWs(stripTags(raw));
   if (!text) return null;
   // Semicolons separate groups that should each be kept whole.
-  const groups = text.split(/\s*;\s*/).map((g) => g.trim()).filter(Boolean);
+  const groups = text
+    .split(/\s*;\s*/)
+    .map((g) => g.trim())
+    .filter(Boolean);
   const out: string[] = [];
   for (const g of groups) {
     // If a group contains a phrase like "d'attaques non magiques", keep it whole.
@@ -380,13 +385,40 @@ interface ParsedCr {
   xp: number;
 }
 const CR_XP: Record<string, number> = {
-  '0': 0, '0.125': 25, '0.25': 50, '0.5': 100,
-  '1': 200, '2': 450, '3': 700, '4': 1100, '5': 1800,
-  '6': 2300, '7': 2900, '8': 3900, '9': 5000, '10': 5900,
-  '11': 7200, '12': 8400, '13': 10000, '14': 11500, '15': 13000,
-  '16': 15000, '17': 18000, '18': 20000, '19': 22000, '20': 25000,
-  '21': 33000, '22': 41000, '23': 50000, '24': 62000, '25': 75000,
-  '26': 90000, '27': 105000, '28': 120000, '29': 135000, '30': 155000,
+  '0': 0,
+  '0.125': 25,
+  '0.25': 50,
+  '0.5': 100,
+  '1': 200,
+  '2': 450,
+  '3': 700,
+  '4': 1100,
+  '5': 1800,
+  '6': 2300,
+  '7': 2900,
+  '8': 3900,
+  '9': 5000,
+  '10': 5900,
+  '11': 7200,
+  '12': 8400,
+  '13': 10000,
+  '14': 11500,
+  '15': 13000,
+  '16': 15000,
+  '17': 18000,
+  '18': 20000,
+  '19': 22000,
+  '20': 25000,
+  '21': 33000,
+  '22': 41000,
+  '23': 50000,
+  '24': 62000,
+  '25': 75000,
+  '26': 90000,
+  '27': 105000,
+  '28': 120000,
+  '29': 135000,
+  '30': 155000,
 };
 
 /** CR: the value following the "Puissance" label, e.g. "10 (5900 PX)" or "1/2 (100 PX)". */
@@ -424,11 +456,14 @@ function parseCr(red: string): ParsedCr {
  * Split the red block by `div.rub` headers and the leading trait region.
  * Returns three HTML blobs: traits (before first rub), actions, legendary.
  */
-function splitSections(red: string): { traitsHtml: string; actionsHtml: string; legendaryHtml: string } {
+function splitSections(red: string): {
+  traitsHtml: string;
+  actionsHtml: string;
+  legendaryHtml: string;
+} {
   const rubRe = /<div class='rub'>\s*([^<]*)\s*<\/div>/gi;
   const boundaries: { name: string; idx: number }[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = rubRe.exec(red)) !== null) {
+  for (const m of red.matchAll(rubRe)) {
     boundaries.push({ name: m[1].trim().toLowerCase(), idx: m.index });
   }
   if (boundaries.length === 0) {
@@ -467,9 +502,8 @@ function parseSectionEntries(html: string): MonsterAction[] {
 
   // First, handle rich <p>...</p> entries.
   const pRe = /<p>([\s\S]*?)<\/p>/gi;
-  let m: RegExpExecArray | null;
   const consumedRanges: [number, number][] = [];
-  while ((m = pRe.exec(html)) !== null) {
+  for (const m of html.matchAll(pRe)) {
     const inner = m[1];
     consumedRanges.push([m.index, m.index + m[0].length]);
     const entry = parseEntryInner(inner);
@@ -485,7 +519,7 @@ function parseSectionEntries(html: string): MonsterAction[] {
   }
   // Look for <strong><em>Name</em></strong>. followed by <br> with no real body.
   const stubReA = /<strong>\s*<em>\s*([^<]+?)\s*<\/em>\s*<\/strong>\s*[.,]?\s*(?=<br|$|<div)/gi;
-  while ((m = stubReA.exec(masked)) !== null) {
+  for (const m of masked.matchAll(stubReA)) {
     const name = collapseWs(stripTags(m[1]));
     if (name) entries.push({ name, desc: '' });
   }
@@ -496,17 +530,23 @@ function parseSectionEntries(html: string): MonsterAction[] {
   const stubFragments = masked
     .replace(/<div class='rub'>[\s\S]*?<\/div>/gi, ' ') // drop rub headers
     .split(/<br\s*\/?>|\n/i);
-  for (let frag of stubFragments) {
+  for (const frag of stubFragments) {
     const text = collapseWs(stripTags(frag));
     if (!text) continue;
     // Skip if it's clearly a stat line remnant or a sub-phrase of an action.
-    if (/^(Classe d'armure|Points de vie|Vitesse|Jets de sauvegarde|Compétences|Sens|Langues|Puissance|Immunités|Résistances|Bonus de maîtrise)/i.test(text)) {
+    if (
+      /^(Classe d'armure|Points de vie|Vitesse|Jets de sauvegarde|Compétences|Sens|Langues|Puissance|Immunités|Résistances|Bonus de maîtrise)/i.test(
+        text,
+      )
+    ) {
       continue;
     }
     // Stub action names typically end with "." or "(Recharge ...)" and are short.
     if (text.length <= 80 && /\.$|\(Recharge|\(Rechargement|\(\d+\/jour|\(co[uû]te/.test(text)) {
       // Avoid duplicating one we already captured as a rich entry.
-      if (!entries.some((e) => e.name.toLowerCase() === text.replace(/\.$/, '').trim().toLowerCase())) {
+      if (
+        !entries.some((e) => e.name.toLowerCase() === text.replace(/\.$/, '').trim().toLowerCase())
+      ) {
         entries.push({ name: text.replace(/\.$/, '').trim(), desc: '' });
       }
     }
@@ -601,7 +641,7 @@ export function parseMonsterPage(slug: string, html: string): ParseResult {
 
   // Source line, e.g. <div class='source'>Monster Manual (SRD)</div>
   const srcM = html.match(/<div class='source'>([\s\S]*?)<\/div>/i);
-  const sourceLine = srcM ? collapseWs(stripTags(srcM[1])) : '';
+  const _sourceLine = srcM ? collapseWs(stripTags(srcM[1])) : '';
 
   // Sections — traits/actions live OUTSIDE .red, inside .jaune (siblings of .red).
   const { traitsHtml, actionsHtml, legendaryHtml } = splitSections(jaune);
@@ -668,8 +708,17 @@ async function main() {
       .filter(Boolean);
   } catch {
     console.warn(`  ⚠ ${missingPath} not found; falling back to comm of slug files`);
-    const a = readFileSync('/tmp/aidedd-slugs.txt', 'utf8').split(/\r?\n/).map((s) => s.trim()).filter(Boolean).sort();
-    const b = new Set(readFileSync('/tmp/our-slugs.txt', 'utf8').split(/\r?\n/).map((s) => s.trim()).filter(Boolean));
+    const a = readFileSync('/tmp/aidedd-slugs.txt', 'utf8')
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .sort();
+    const b = new Set(
+      readFileSync('/tmp/our-slugs.txt', 'utf8')
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
     missingSlugs = a.filter((s) => !b.has(s));
   }
   // Dedup, then ensure the two requested tritons are included.
@@ -677,7 +726,9 @@ async function main() {
   const slugSet = new Set(missingSlugs);
   for (const e of extra) slugSet.add(e);
   const slugs = [...slugSet];
-  console.log(`→ Scraping ${slugs.length} slugs from AideDD (${missingSlugs.length} missing + ${extra.length} extra tritons)`);
+  console.log(
+    `→ Scraping ${slugs.length} slugs from AideDD (${missingSlugs.length} missing + ${extra.length} extra tritons)`,
+  );
 
   // 2. Fetch + parse, throttled, sequential to be polite.
   const seeds: SeedMonster[] = [];
@@ -701,7 +752,9 @@ async function main() {
     } else {
       seeds.push(res.monster);
       if (count % 25 === 0 || count <= 5 || extra.includes(slug)) {
-        console.log(`  ✓ [${count}/${slugs.length}] ${slug} — ${res.monster.nameFr} (CR ${res.monster.challengeRating})`);
+        console.log(
+          `  ✓ [${count}/${slugs.length}] ${slug} — ${res.monster.nameFr} (CR ${res.monster.challengeRating})`,
+        );
       }
     }
     await sleep(THROTTLE_MS);

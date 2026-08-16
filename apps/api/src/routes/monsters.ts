@@ -2,10 +2,11 @@
  * Monster catalog routes: search the French SRD bestiary, get a full stat block.
  * Monsters are global reference data (no party scoping), like spells.
  */
+
+import type { Monster, MonsterSummary } from '@dnd-inventory/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { requireUser } from './helpers.ts';
-import type { Monster, MonsterSummary } from '@dnd-inventory/shared';
 
 interface MonsterQuery {
   search?: string;
@@ -26,7 +27,14 @@ function mapMonster(row: any): Monster {
     hitPoints: row.hit_points ?? 10,
     hitDice: row.hit_dice ?? null,
     speed: parseJson(row.speed_json, {}),
-    abilities: parseJson(row.abilities_json, { for: 10, dex: 10, con: 10, int: 10, sag: 10, cha: 10 }),
+    abilities: parseJson(row.abilities_json, {
+      for: 10,
+      dex: 10,
+      con: 10,
+      int: 10,
+      sag: 10,
+      cha: 10,
+    }),
     savingThrows: parseJson(row.saving_throws_json, []),
     skills: parseJson(row.skills_json, []),
     languages: parseJson(row.languages_json, []),
@@ -103,13 +111,15 @@ export async function monsterRoutes(app: FastifyInstance) {
       const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
       const db = getDb();
-      const rows = db.prepare(`
+      const rows = db
+        .prepare(`
         SELECT slug, name_fr, type, size, challenge_rating, armor_class, hit_points
         FROM monsters
         ${whereSql}
         ORDER BY challenge_rating ASC, name_fr COLLATE NOCASE ASC
         LIMIT ?
-      `).all(...params, lim);
+      `)
+        .all(...params, lim);
 
       return reply.send({ monsters: rows.map(mapMonsterSummary) });
     },

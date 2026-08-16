@@ -5,7 +5,7 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
-import { requireUser, mapSpell } from './helpers.ts';
+import { mapSpell, requireUser } from './helpers.ts';
 
 interface SpellQuery {
   class?: string;
@@ -67,12 +67,14 @@ export async function spellRoutes(app: FastifyInstance) {
       const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
       const db = getDb();
-      const rows = db.prepare(`
+      const rows = db
+        .prepare(`
         SELECT * FROM spells
         ${whereSql}
         ORDER BY level ASC, COALESCE(name_fr, name) COLLATE NOCASE ASC
         LIMIT ? OFFSET ?
-      `).all(...params, lim, off);
+      `)
+        .all(...params, lim, off);
 
       const total = (
         db.prepare(`SELECT COUNT(*) as n FROM spells ${whereSql}`).get(...params) as any
@@ -93,10 +95,12 @@ export async function spellRoutes(app: FastifyInstance) {
     const userId = requireUser(req, reply);
     if (userId === null) return;
     const db = getDb();
-    const rows = db.prepare(`
+    const rows = db
+      .prepare(`
       SELECT id, name_fr, level FROM spells WHERE name_fr IS NOT NULL
       ORDER BY level ASC, name_fr COLLATE NOCASE ASC
-    `).all();
+    `)
+      .all();
     return reply.send({
       spells: rows.map((r: any) => ({ id: r.id, nameFr: r.name_fr, level: r.level })),
     });

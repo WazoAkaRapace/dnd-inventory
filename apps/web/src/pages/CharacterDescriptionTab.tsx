@@ -1,9 +1,10 @@
 /**
  * Description tab — physical description, portrait, and personality traits.
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
-import api from '../api';
+
 import type { Character, PatchCharacterPayload } from '@dnd-inventory/shared';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import api from '../api';
 
 interface Props {
   character: Character;
@@ -25,7 +26,11 @@ const PHYSICAL_FIELDS: Array<{ key: keyof Character; label: string; placeholder?
 ];
 
 const PERSONALITY_FIELDS: Array<{ key: keyof Character; label: string; placeholder: string }> = [
-  { key: 'personalityTraits', label: 'Traits de personnalité', placeholder: "Je suis animé d'une curiosité insatiable…" },
+  {
+    key: 'personalityTraits',
+    label: 'Traits de personnalité',
+    placeholder: "Je suis animé d'une curiosité insatiable…",
+  },
   { key: 'ideals', label: 'Idéaux', placeholder: 'Le savoir est la plus grande richesse.' },
   { key: 'bonds', label: 'Liens', placeholder: 'Je cherche mon maître disparu.' },
   { key: 'flaws', label: 'Défauts', placeholder: 'Je suis incapable de résister à un mystère.' },
@@ -43,14 +48,17 @@ export default function CharacterDescriptionTab({ character, charId, onSaved, on
     setDrafts(d);
   }, [character]);
 
-  const patchCharacter = useCallback(async (payload: PatchCharacterPayload, errMsg: string) => {
-    try {
-      await api.patch(`/api/characters/${charId}`, payload);
-      await onSaved();
-    } catch {
-      onError(errMsg);
-    }
-  }, [charId, onSaved, onError]);
+  const patchCharacter = useCallback(
+    async (payload: PatchCharacterPayload, errMsg: string) => {
+      try {
+        await api.patch(`/api/characters/${charId}`, payload);
+        await onSaved();
+      } catch {
+        onError(errMsg);
+      }
+    },
+    [charId, onSaved, onError],
+  );
 
   const commitField = (key: string) => {
     const draftVal = drafts[key];
@@ -125,6 +133,7 @@ export default function CharacterDescriptionTab({ character, charId, onSaved, on
               onChange={handlePortraitUpload}
             />
             <button
+              type="button"
               onClick={() => fileInputRef.current?.click()}
               className="btn-primary text-sm px-3 py-1.5"
             >
@@ -132,6 +141,7 @@ export default function CharacterDescriptionTab({ character, charId, onSaved, on
             </button>
             {character.portraitUrl && (
               <button
+                type="button"
                 onClick={removePortrait}
                 className="text-xs text-red-500 hover:text-red-700"
               >

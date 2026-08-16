@@ -14,12 +14,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
-import {
-  requireUser,
-  isPartyMember,
-  isPartyGM,
-  mapCharacterSpell,
-} from './helpers.ts';
+import { isPartyGM, isPartyMember, mapCharacterSpell, requireUser } from './helpers.ts';
 
 interface AddCharacterSpellPayload {
   spellId: number;
@@ -58,7 +53,9 @@ export async function characterSpellRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(Number(req.params.id)) as any;
+      const char = db
+        .prepare('SELECT * FROM characters WHERE id = ?')
+        .get(Number(req.params.id)) as any;
       if (!char) return reply.code(404).send({ error: 'character not found' });
       if (!isPartyMember(char.party_id, userId)) {
         return reply.code(403).send({ error: 'not a member' });
@@ -66,7 +63,8 @@ export async function characterSpellRoutes(app: FastifyInstance) {
 
       // JOIN character_spells with spells, aliasing spell columns with s_ to
       // avoid colliding with the link table's own id/prepared/sort_order.
-      const rows = db.prepare(`
+      const rows = db
+        .prepare(`
         SELECT
           cs.id AS id, cs.character_id AS character_id,
           cs.prepared AS prepared, cs.sort_order AS sort_order, cs.added_at AS added_at,
@@ -82,7 +80,8 @@ export async function characterSpellRoutes(app: FastifyInstance) {
         JOIN spells s ON s.id = cs.spell_id
         WHERE cs.character_id = ?
         ORDER BY cs.prepared DESC, s.level ASC, COALESCE(s.name_fr, s.name) COLLATE NOCASE ASC
-      `).all(char.id);
+      `)
+        .all(char.id);
 
       return reply.send({ spells: rows.map(mapCharacterSpell) });
     },
@@ -98,7 +97,9 @@ export async function characterSpellRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(Number(req.params.id)) as any;
+      const char = db
+        .prepare('SELECT * FROM characters WHERE id = ?')
+        .get(Number(req.params.id)) as any;
       if (!char) return reply.code(404).send({ error: 'character not found' });
       if (!isPartyMember(char.party_id, userId)) {
         return reply.code(403).send({ error: 'not a member' });
@@ -116,15 +117,18 @@ export async function characterSpellRoutes(app: FastifyInstance) {
       const prepared = body.prepared ? 1 : 0;
 
       // UPSERT: if the character already knows this spell, just toggle prepared.
-      const info = db.prepare(`
+      const info = db
+        .prepare(`
         INSERT INTO character_spells (character_id, spell_id, prepared)
         VALUES (?, ?, ?)
         ON CONFLICT(character_id, spell_id) DO UPDATE SET
           prepared = excluded.prepared
-      `).run(char.id, body.spellId, prepared);
+      `)
+        .run(char.id, body.spellId, prepared);
 
       const linkId = info.lastInsertRowid as number;
-      const row = db.prepare(`
+      const row = db
+        .prepare(`
         SELECT
           cs.id AS id, cs.character_id AS character_id,
           cs.prepared AS prepared, cs.sort_order AS sort_order, cs.added_at AS added_at,
@@ -139,7 +143,8 @@ export async function characterSpellRoutes(app: FastifyInstance) {
         FROM character_spells cs
         JOIN spells s ON s.id = cs.spell_id
         WHERE cs.id = ?
-      `).get(linkId);
+      `)
+        .get(linkId);
 
       bus.emitChange({
         type: 'character:change',
@@ -187,7 +192,8 @@ export async function characterSpellRoutes(app: FastifyInstance) {
       vals.push(link.id);
       db.prepare(`UPDATE character_spells SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
 
-      const row = db.prepare(`
+      const row = db
+        .prepare(`
         SELECT
           cs.id AS id, cs.character_id AS character_id,
           cs.prepared AS prepared, cs.sort_order AS sort_order, cs.added_at AS added_at,
@@ -202,7 +208,8 @@ export async function characterSpellRoutes(app: FastifyInstance) {
         FROM character_spells cs
         JOIN spells s ON s.id = cs.spell_id
         WHERE cs.id = ?
-      `).get(link.id);
+      `)
+        .get(link.id);
 
       bus.emitChange({
         type: 'character:change',

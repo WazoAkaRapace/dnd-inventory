@@ -10,10 +10,11 @@
  * Echo suppression: the actor who triggered the change is NOT sent the
  * event (they already have the optimistic update from their own mutation).
  */
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+
 import type { WebSocket } from '@fastify/websocket';
-import { bus, type SyncEvent } from './bus.ts';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
+import { bus, type SyncEvent } from './bus.ts';
 
 interface ClientInfo {
   userId: number;
@@ -27,7 +28,9 @@ const clients = new Set<ClientInfo>();
 /** Get all party IDs a user belongs to (queried once at connection time). */
 function getUserPartyIds(userId: number): Set<number> {
   const db = getDb();
-  const rows = db.prepare('SELECT party_id FROM party_members WHERE user_id = ?').all(userId) as any[];
+  const rows = db
+    .prepare('SELECT party_id FROM party_members WHERE user_id = ?')
+    .all(userId) as any[];
   return new Set(rows.map((r) => r.party_id));
 }
 
@@ -83,7 +86,8 @@ export async function registerWsRoutes(app: FastifyInstance) {
     }
     const message = JSON.stringify(event);
     for (const client of clients) {
-      if (client.ws.readyState !== 1) { // OPEN
+      if (client.ws.readyState !== 1) {
+        // OPEN
         clients.delete(client);
         continue;
       }

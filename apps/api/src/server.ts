@@ -2,28 +2,29 @@
  * Fastify server entry point.
  * Runs the dev API on http://localhost:4000
  */
-import Fastify from 'fastify';
+
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import websocket from '@fastify/websocket';
+import Fastify from 'fastify';
 import { migrate } from './db/index.ts';
-import { seedItems, seedSpells, seedMonsters } from './db/seed.ts';
+import { seedItems, seedMonsters, seedSpells } from './db/seed.ts';
 import { errorRateLimit } from './rateLimit.ts';
 import { authRoutes } from './routes/auth.ts';
-import { partyRoutes } from './routes/parties.ts';
+import { characterFeatureRoutes } from './routes/character-features.ts';
+import { characterNoteRoutes } from './routes/character-notes.ts';
+import { characterSpellRoutes } from './routes/character-spells.ts';
 import { characterRoutes } from './routes/characters.ts';
+import { combatRoutes } from './routes/combat.ts';
+import { domainSpellRoutes } from './routes/domain-spells.ts';
 import { inventoryRoutes } from './routes/inventory.ts';
 import { itemRoutes } from './routes/items.ts';
 import { locationRoutes } from './routes/locations.ts';
-import { npcRoutes } from './routes/npcs.ts';
-import { spellRoutes } from './routes/spells.ts';
-import { characterSpellRoutes } from './routes/character-spells.ts';
-import { characterFeatureRoutes } from './routes/character-features.ts';
-import { characterNoteRoutes } from './routes/character-notes.ts';
 import { monsterRoutes } from './routes/monsters.ts';
-import { combatRoutes } from './routes/combat.ts';
+import { npcRoutes } from './routes/npcs.ts';
+import { partyRoutes } from './routes/parties.ts';
+import { spellRoutes } from './routes/spells.ts';
 import { wildShapeRoutes } from './routes/wildshape.ts';
-import { domainSpellRoutes } from './routes/domain-spells.ts';
 import { registerWsRoutes } from './sync/ws.ts';
 
 const PORT = parseInt(process.env.PORT || '4000', 10);
@@ -46,9 +47,10 @@ async function buildServer() {
       serializers: {
         // Strip the WS auth token (?token=<JWT>) from logged URLs.
         req(req: any) {
-          const url = typeof req.url === 'string'
-            ? req.url.replace(/([?&])token=[^&]*/, '$1token=***')
-            : req.url;
+          const url =
+            typeof req.url === 'string'
+              ? req.url.replace(/([?&])token=[^&]*/, '$1token=***')
+              : req.url;
           return {
             method: req.method,
             url,

@@ -3,15 +3,7 @@
  * Pages call useHeaderOverride(title, onBack) to set a custom header;
  * the Nav component reads it via useHeaderState().
  */
-import {
-  createContext,
-  useContext,
-  useState,
-  useCallback,
-  useRef,
-  useEffect,
-  type ReactNode,
-} from 'react';
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 
 interface HeaderAction {
   label: string; // desktop label

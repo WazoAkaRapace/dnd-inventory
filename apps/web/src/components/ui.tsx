@@ -1,16 +1,12 @@
-import React, { useEffect, useRef, useCallback } from 'react';
-import type {
-  ItemCategory,
-  Rarity,
-  CostUnit,
-  EncumbranceState,
-} from '@dnd-inventory/shared';
+import type { CostUnit, EncumbranceState, ItemCategory, Rarity } from '@dnd-inventory/shared';
 import {
   CATEGORY_LABELS_FR,
-  RARITY_LABELS_FR,
   COIN_LABELS_FR,
   ENCUMBRANCE_LABELS_FR,
+  RARITY_LABELS_FR,
 } from '@dnd-inventory/shared';
+import type React from 'react';
+import { useEffect, useRef } from 'react';
 
 export function RarityBadge({ rarity }: { rarity: Rarity }) {
   const cls = `rarity-${rarity}`;
@@ -44,7 +40,8 @@ export function CostBadge({ qty, unit }: { qty: number | null; unit: CostUnit | 
 }
 
 export function EncumbranceBar({ encumbrance }: { encumbrance: EncumbranceState }) {
-  const { totalWeightKg, coinWeightKg, encumberedKg, heavilyEncumberedKg, maxCarryKg, tier, pct } = encumbrance;
+  const { totalWeightKg, coinWeightKg, encumberedKg, heavilyEncumberedKg, maxCarryKg, tier, pct } =
+    encumbrance;
   const barColor = `bar-${tier}`;
   const encPos = Math.min(100, (encumberedKg / maxCarryKg) * 100);
   const heavyPos = Math.min(100, (heavilyEncumberedKg / maxCarryKg) * 100);
@@ -63,7 +60,9 @@ export function EncumbranceBar({ encumbrance }: { encumbrance: EncumbranceState 
         <span className="font-display text-sm font-semibold text-ink-900">
           {totalWeightKg.toFixed(1)} / {maxCarryKg} kg
         </span>
-        <span className={`text-xs font-medium ${tierColor(tier)}`}>{ENCUMBRANCE_LABELS_FR[tier]}</span>
+        <span className={`text-xs font-medium ${tierColor(tier)}`}>
+          {ENCUMBRANCE_LABELS_FR[tier]}
+        </span>
       </div>
       <div className="relative h-3 bg-parchment-200 rounded-full overflow-hidden">
         <div
@@ -71,10 +70,16 @@ export function EncumbranceBar({ encumbrance }: { encumbrance: EncumbranceState 
           style={{ width: `${Math.min(100, pct)}%` }}
         />
         {encPos > 0 && encPos < 100 && (
-          <div className="absolute top-0 h-full w-0.5 bg-yellow-700/40" style={{ left: `${encPos}%` }} />
+          <div
+            className="absolute top-0 h-full w-0.5 bg-yellow-700/40"
+            style={{ left: `${encPos}%` }}
+          />
         )}
         {heavyPos > 0 && heavyPos < 100 && (
-          <div className="absolute top-0 h-full w-0.5 bg-orange-700/40" style={{ left: `${heavyPos}%` }} />
+          <div
+            className="absolute top-0 h-full w-0.5 bg-orange-700/40"
+            style={{ left: `${heavyPos}%` }}
+          />
         )}
       </div>
       <div className="flex justify-between text-xs text-ink-400">
@@ -98,19 +103,27 @@ export function EncumbranceBar({ encumbrance }: { encumbrance: EncumbranceState 
 
 function tierColor(tier: EncumbranceState['tier']): string {
   switch (tier) {
-    case 'unencumbered': return 'text-green-700';
-    case 'encumbered': return 'text-yellow-700';
-    case 'heavilyEncumbered': return 'text-orange-700';
-    case 'overburdened': return 'text-red-700 font-semibold';
+    case 'unencumbered':
+      return 'text-green-700';
+    case 'encumbered':
+      return 'text-yellow-700';
+    case 'heavilyEncumbered':
+      return 'text-orange-700';
+    case 'overburdened':
+      return 'text-red-700 font-semibold';
   }
 }
 
 function tierBadge(tier: EncumbranceState['tier']): string {
   switch (tier) {
-    case 'encumbered': return 'bg-yellow-50 text-yellow-800 border border-yellow-200';
-    case 'heavilyEncumbered': return 'bg-orange-50 text-orange-800 border border-orange-200';
-    case 'overburdened': return 'bg-red-50 text-red-800 border border-red-200 font-semibold';
-    default: return '';
+    case 'encumbered':
+      return 'bg-yellow-50 text-yellow-800 border border-yellow-200';
+    case 'heavilyEncumbered':
+      return 'bg-orange-50 text-orange-800 border border-orange-200';
+    case 'overburdened':
+      return 'bg-red-50 text-red-800 border border-red-200 font-semibold';
+    default:
+      return '';
   }
 }
 
@@ -137,7 +150,10 @@ export function LoadingSpinner({ label = 'Chargement…' }: { label?: string }) 
 
 export function ErrorMsg({ message }: { message: string }) {
   return (
-    <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm" role="alert">
+    <div
+      className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm"
+      role="alert"
+    >
       {message}
     </div>
   );
@@ -146,7 +162,9 @@ export function ErrorMsg({ message }: { message: string }) {
 export function EmptyState({ icon, title, hint }: { icon: string; title: string; hint?: string }) {
   return (
     <div className="text-center py-12 px-4">
-      <div className="text-4xl mb-2" aria-hidden="true">{icon}</div>
+      <div className="text-4xl mb-2" aria-hidden="true">
+        {icon}
+      </div>
       <p className="text-ink-700 font-medium">{title}</p>
       {hint && <p className="text-ink-400 text-sm mt-1">{hint}</p>}
     </div>
@@ -161,7 +179,13 @@ export interface Toast {
   kind: 'success' | 'error';
 }
 
-export function ToastStack({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: number) => void }) {
+export function ToastStack({
+  toasts,
+  onDismiss,
+}: {
+  toasts: Toast[];
+  onDismiss: (id: number) => void;
+}) {
   return (
     <div
       className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 items-center pointer-events-none"
@@ -172,9 +196,7 @@ export function ToastStack({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: 
         <div
           key={t.id}
           className={`toast-enter pointer-events-auto px-4 py-2.5 rounded-xl shadow-lg text-sm font-medium max-w-sm ${
-            t.kind === 'success'
-              ? 'bg-green-600 text-white'
-              : 'bg-red-600 text-white'
+            t.kind === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
           }`}
           onClick={() => onDismiss(t.id)}
         >
@@ -256,6 +278,7 @@ export function Modal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40"
+      role="presentation"
       onClick={onClose}
     >
       <div
@@ -268,7 +291,14 @@ export function Modal({
       >
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display text-lg font-semibold">{title}</h2>
-          <button onClick={onClose} className="btn-ghost text-ink-500 p-1" aria-label="Fermer">✕</button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn-ghost text-ink-500 p-1"
+            aria-label="Fermer"
+          >
+            ✕
+          </button>
         </div>
         {children}
       </div>
@@ -308,6 +338,7 @@ export function BottomSheet({
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 lg:hidden"
+      role="presentation"
       onClick={onClose}
     >
       <div
@@ -320,7 +351,14 @@ export function BottomSheet({
       >
         <div className="flex items-center justify-between p-4 border-b border-parchment-200 shrink-0">
           <h2 className="font-display text-lg font-semibold">{title}</h2>
-          <button onClick={onClose} className="btn-ghost text-ink-500 p-1" aria-label="Fermer">✕</button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn-ghost text-ink-500 p-1"
+            aria-label="Fermer"
+          >
+            ✕
+          </button>
         </div>
         <div className="overflow-y-auto p-4 flex-1">{children}</div>
       </div>

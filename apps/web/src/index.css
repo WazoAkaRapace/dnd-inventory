@@ -30,37 +30,47 @@
   color-scheme: light;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
   margin: 0;
 }
 
 body {
   @apply bg-parchment-50 text-ink-900 font-body antialiased;
-  background-image: radial-gradient(at 20% 0%, rgba(184, 151, 90, 0.06) 0px, transparent 50%),
+  background-image:
+    radial-gradient(at 20% 0%, rgba(184, 151, 90, 0.06) 0px, transparent 50%),
     radial-gradient(at 80% 100%, rgba(122, 31, 31, 0.04) 0px, transparent 50%);
   background-attachment: fixed;
 }
 
 /* Mobile-first: large tap targets, prevent iOS zoom */
-button, a, input, select, textarea {
+button,
+a,
+input,
+select,
+textarea {
   @apply text-base;
 }
 
 /* Hide number input spinners */
-input[type='number']::-webkit-inner-spin-button,
-input[type='number']::-webkit-outer-spin-button {
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
-input[type='number'] {
+input[type="number"] {
   -moz-appearance: textfield;
 }
 
 /* Compact input for inline use (initiative, small numbers) — overrides .input w-full */
 .input-compact {
+  /* biome-ignore lint/complexity/noImportantStyles: overrides .input's width:100% and padding — same specificity, needs !important to win. */
   width: 3rem !important;
+  /* biome-ignore lint/complexity/noImportantStyles: see width above. */
   padding-left: 0.25rem !important;
+  /* biome-ignore lint/complexity/noImportantStyles: see width above. */
   padding-right: 0.25rem !important;
   text-align: center;
 }
@@ -74,28 +84,26 @@ input[type='number'] {
 /* Card shadow — real depth, not a zero-offset halo */
 .card {
   @apply bg-white/85 backdrop-blur-sm rounded-2xl border border-parchment-200;
-  box-shadow: 0 1px 2px rgba(42, 31, 20, 0.04), 0 4px 12px rgba(42, 31, 20, 0.03);
+  box-shadow:
+    0 1px 2px rgba(42, 31, 20, 0.04),
+    0 4px 12px rgba(42, 31, 20, 0.03);
 }
 
 /* Primary button */
 .btn-primary {
-  @apply bg-blood-600 text-white font-medium rounded-xl px-4 py-2.5 transition-all
-    hover:bg-blood-700 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
+  @apply bg-blood-600 text-white font-medium rounded-xl px-4 py-2.5 transition-all hover:bg-blood-700 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
 }
 
 .btn-secondary {
-  @apply bg-parchment-200 text-ink-900 font-medium rounded-xl px-4 py-2.5 transition-all
-    hover:bg-parchment-300 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
+  @apply bg-parchment-200 text-ink-900 font-medium rounded-xl px-4 py-2.5 transition-all hover:bg-parchment-300 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
 }
 
 .btn-ghost {
-  @apply font-medium rounded-xl px-3 py-2 transition-colors
-    hover:bg-parchment-100;
+  @apply font-medium rounded-xl px-3 py-2 transition-colors hover:bg-parchment-100;
 }
 
 .input {
-  @apply w-full bg-white border border-parchment-300 rounded-xl px-3 py-2.5 text-ink-900
-    placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-blood-500/30 focus:border-blood-500;
+  @apply w-full bg-white border border-parchment-300 rounded-xl px-3 py-2.5 text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-blood-500/30 focus:border-blood-500;
 }
 
 .label {
@@ -103,24 +111,50 @@ input[type='number'] {
 }
 
 /* Rarity badge colors — text tinted from the badge hue, never gray */
-.rarity-common { @apply bg-gray-100 text-gray-800; }
-.rarity-uncommon { @apply bg-green-100 text-green-900; }
-.rarity-rare { @apply bg-blue-100 text-blue-900; }
-.rarity-veryRare { @apply bg-purple-100 text-purple-900; }
-.rarity-legendary { @apply bg-orange-100 text-orange-900; }
-.rarity-artifact { @apply bg-red-100 text-red-900; }
-.rarity-none { @apply bg-parchment-100 text-ink-500; }
+.rarity-common {
+  @apply bg-gray-100 text-gray-800;
+}
+.rarity-uncommon {
+  @apply bg-green-100 text-green-900;
+}
+.rarity-rare {
+  @apply bg-blue-100 text-blue-900;
+}
+.rarity-veryRare {
+  @apply bg-purple-100 text-purple-900;
+}
+.rarity-legendary {
+  @apply bg-orange-100 text-orange-900;
+}
+.rarity-artifact {
+  @apply bg-red-100 text-red-900;
+}
+.rarity-none {
+  @apply bg-parchment-100 text-ink-500;
+}
 
 /* Encumbrance bar colors */
-.bar-unencumbered { @apply bg-green-500; }
-.bar-encumbered { @apply bg-yellow-500; }
-.bar-heavilyEncumbered { @apply bg-orange-500; }
-.bar-overburdened { @apply bg-red-600; }
+.bar-unencumbered {
+  @apply bg-green-500;
+}
+.bar-encumbered {
+  @apply bg-yellow-500;
+}
+.bar-heavilyEncumbered {
+  @apply bg-orange-500;
+}
+.bar-overburdened {
+  @apply bg-red-600;
+}
 
 /* Row highlight animation when item is added/mutated */
 @keyframes row-flash {
-  0% { background-color: rgba(122, 31, 31, 0.08); }
-  100% { background-color: transparent; }
+  0% {
+    background-color: rgba(122, 31, 31, 0.08);
+  }
+  100% {
+    background-color: transparent;
+  }
 }
 .row-flash {
   animation: row-flash 1.2s ease-out;
@@ -128,8 +162,14 @@ input[type='number'] {
 
 /* Toast entrance — authored moment, exponential ease-out */
 @keyframes toast-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.96); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 .toast-enter {
   animation: toast-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -137,8 +177,13 @@ input[type='number'] {
 
 /* Confirm-remove shake (draws attention to the destructive state) */
 @keyframes pulse-warn {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 .pulse-warn {
   animation: pulse-warn 1s ease-in-out infinite;
@@ -146,8 +191,12 @@ input[type='number'] {
 
 /* Bottom-sheet slide-up for mobile catalog */
 @keyframes sheet-up {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
 }
 .sheet-enter {
   animation: sheet-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -155,8 +204,14 @@ input[type='number'] {
 
 /* FAB entrance */
 @keyframes fab-in {
-  from { opacity: 0; transform: scale(0.8); }
-  to { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 .fab-enter {
   animation: fab-in 0.2s ease-out forwards;
@@ -185,8 +240,14 @@ input[type='number'] {
   animation: fade-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 @keyframes fade-slide-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 /* Chevron rotation utility for toggle indicators */
 .chevron {
@@ -215,13 +276,17 @@ input[type='number'] {
   transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 .hub-button {
-  transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1),
+  transition:
+    transform 300ms cubic-bezier(0.16, 1, 0.3, 1),
     background-color 200ms ease-out;
 }
 
 /* Dock entrance — one authored arrival on page load */
 @keyframes dock-rise {
-  from { transform: translateY(18px); opacity: 0; }
+  from {
+    transform: translateY(18px);
+    opacity: 0;
+  }
 }
 .dock-rise {
   animation: dock-rise 450ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
@@ -229,7 +294,9 @@ input[type='number'] {
 
 /* Hub → dial: scrim fades in */
 @keyframes scrim-fade {
-  from { opacity: 0; }
+  from {
+    opacity: 0;
+  }
 }
 .scrim-fade {
   animation: scrim-fade 200ms ease-out backwards;
@@ -237,7 +304,10 @@ input[type='number'] {
 
 /* Hub → dial: items rise out of the hub with a capped stagger */
 @keyframes dial-item-rise {
-  from { transform: translateY(14px) scale(0.95); opacity: 0; }
+  from {
+    transform: translateY(14px) scale(0.95);
+    opacity: 0;
+  }
 }
 .dial-item {
   animation: dial-item-rise 320ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
@@ -245,7 +315,10 @@ input[type='number'] {
 
 /* Hub face swap (☰ → tab icon → ✕) */
 @keyframes icon-swap {
-  from { transform: scale(0.5); opacity: 0; }
+  from {
+    transform: scale(0.5);
+    opacity: 0;
+  }
 }
 .icon-swap {
   animation: icon-swap 220ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -266,7 +339,9 @@ input[type='number'] {
 
 /* Combat mini-drawer (desktop): slides out from the left edge */
 @keyframes drawer-in {
-  from { transform: translateX(-100%); }
+  from {
+    transform: translateX(-100%);
+  }
 }
 .drawer-enter {
   animation: drawer-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
@@ -277,12 +352,15 @@ input[type='number'] {
 /* Persistent full-perimeter glow while it's your turn: state feedback,
    calm heartbeat (not decoration) — reuses the hub-button glow hue. */
 @keyframes combat-turn-glow {
-  0%, 100% {
-    box-shadow: 0 0 0 2px rgba(185, 28, 28, 0.30),
-      0 3px 10px 1px rgba(185, 28, 28, 0.30);
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px rgba(185, 28, 28, 0.3),
+      0 3px 10px 1px rgba(185, 28, 28, 0.3);
   }
   50% {
-    box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.55),
+    box-shadow:
+      0 0 0 3px rgba(185, 28, 28, 0.55),
       0 4px 18px 4px rgba(185, 28, 28, 0.45);
   }
 }
@@ -308,17 +386,19 @@ input[type='number'] {
   width: 42%;
   height: 160%;
   transform: rotate(16deg) translateX(-160%);
-  background: linear-gradient(90deg,
+  background: linear-gradient(
+    90deg,
     transparent 0%,
     rgba(139, 26, 26, 0.35) 30%,
     rgba(255, 243, 224, 0.95) 50%,
     rgba(139, 26, 26, 0.35) 70%,
-    transparent 100%);
+    transparent 100%
+  );
   animation: combat-slash-double 1.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 /* Trailing echo of the same double cut, fainter and late */
 .combat-slash-blade::after {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   background: inherit;
@@ -326,19 +406,30 @@ input[type='number'] {
   animation: combat-slash-double 1.15s cubic-bezier(0.16, 1, 0.3, 1) 110ms forwards;
 }
 @keyframes combat-slash-double {
-  0%   { transform: rotate(16deg) translateX(-160%); }
-  38%  { transform: rotate(16deg) translateX(360%); }
+  0% {
+    transform: rotate(16deg) translateX(-160%);
+  }
+  38% {
+    transform: rotate(16deg) translateX(360%);
+  }
   /* mirror while fully outside the bar, then cut back */
-  62%  { transform: rotate(-16deg) translateX(360%); }
-  100% { transform: rotate(-16deg) translateX(-160%); }
+  62% {
+    transform: rotate(-16deg) translateX(360%);
+  }
+  100% {
+    transform: rotate(-16deg) translateX(-160%);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .combat-turn-glow {
     animation: none;
     /* Keep a static state ring so "your turn" stays legible without motion */
-    box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.55),
+    box-shadow:
+      0 0 0 3px rgba(185, 28, 28, 0.55),
       0 4px 18px 4px rgba(185, 28, 28, 0.45);
   }
-  .combat-slash-overlay { display: none; }
+  .combat-slash-overlay {
+    display: none;
+  }
 }

@@ -2,18 +2,19 @@
  * Traits tab — free-form character features (class/racial/background/feat/custom)
  * with a {{template}} system that injects computed values from the character's stats.
  */
-import { useState, useEffect, useCallback } from 'react';
-import api from '../api';
-import { Modal, EmptyState } from '../components/ui';
-import { useSyncEvent } from '../sync';
+
 import {
   type Character,
   type CharacterFeature,
-  type FeatureCategory,
   FEATURE_CATEGORY_LABELS_FR,
-  TEMPLATE_VARIABLES,
+  type FeatureCategory,
   renderFeatureTemplate,
+  TEMPLATE_VARIABLES,
 } from '@dnd-inventory/shared';
+import { useCallback, useEffect, useState } from 'react';
+import api from '../api';
+import { EmptyState, Modal } from '../components/ui';
+import { useSyncEvent } from '../sync';
 
 interface Props {
   character: Character;
@@ -31,7 +32,13 @@ const CATEGORY_COLORS: Record<FeatureCategory, string> = {
   custom: 'bg-parchment-100 text-ink-600 border-parchment-300',
 };
 
-export default function CharacterFeaturesTab({ character, charId, partyId, onSaved, onError }: Props) {
+export default function CharacterFeaturesTab({
+  character,
+  charId,
+  partyId,
+  onSaved,
+  onError,
+}: Props) {
   const [features, setFeatures] = useState<CharacterFeature[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -58,15 +65,20 @@ export default function CharacterFeaturesTab({ character, charId, partyId, onSav
     }
   }, [charId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   // Real-time sync
   const currentPartyId = partyId ? Number(partyId) : undefined;
-  useSyncEvent((event) => {
-    if (event.type === 'character:change' && event.characterId === charId) {
-      load();
-    }
-  }, [charId, currentPartyId]);
+  useSyncEvent(
+    (event) => {
+      if (event.type === 'character:change' && event.characterId === charId) {
+        load();
+      }
+    },
+    [charId, currentPartyId],
+  );
 
   const openCreate = () => {
     setEditing(null);
@@ -94,7 +106,7 @@ export default function CharacterFeaturesTab({ character, charId, partyId, onSav
       return;
     }
     const cm = counterMax.trim() ? Math.max(0, Number(counterMax)) : null;
-    const cmVal = (cm !== null && cm > 0) ? cm : null;
+    const cmVal = cm !== null && cm > 0 ? cm : null;
     setSaving(true);
     try {
       if (editing) {
@@ -165,7 +177,7 @@ export default function CharacterFeaturesTab({ character, charId, partyId, onSav
         <h2 className="font-display text-lg font-semibold">
           Traits <span className="text-ink-400 text-sm font-normal">({features.length})</span>
         </h2>
-        <button onClick={openCreate} className="btn-primary text-sm px-3 py-1.5">
+        <button type="button" onClick={openCreate} className="btn-primary text-sm px-3 py-1.5">
           + Ajouter
         </button>
       </div>
@@ -196,6 +208,7 @@ export default function CharacterFeaturesTab({ character, charId, partyId, onSav
                         <h3 className="font-display font-semibold text-ink-800">{feature.title}</h3>
                         <div className="flex items-center gap-1 shrink-0">
                           <button
+                            type="button"
                             onClick={() => openEdit(feature)}
                             className="text-ink-400 hover:text-blood-600 text-sm p-1"
                             aria-label={`Modifier ${feature.title}`}
@@ -203,6 +216,7 @@ export default function CharacterFeaturesTab({ character, charId, partyId, onSav
                             ✎
                           </button>
                           <button
+                            type="button"
                             onClick={() => setConfirmDelete(feature.id)}
                             className="text-ink-400 hover:text-red-500 text-sm p-1"
                             aria-label={`Supprimer ${feature.title}`}
@@ -216,34 +230,55 @@ export default function CharacterFeaturesTab({ character, charId, partyId, onSav
                       )}
 
                       {/* Charge counter widget */}
-                      {feature.counterMax && feature.counterMax > 0 && (() => {
-                        const max = feature.counterMax;
-                        const current = feature.counterCurrent ?? max;
-                        const pct = Math.round((current / max) * 100);
-                        const barColor = current === 0 ? 'bg-red-500' : pct <= 50 ? 'bg-amber-500' : 'bg-green-500';
-                        return (
-                          <div className="flex items-center gap-2 bg-parchment-50 rounded-lg p-2">
-                            <button
-                              onClick={() => adjustCounter(feature, -1)}
-                              disabled={current <= 0}
-                              className="w-7 h-7 rounded-md bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center shrink-0"
-                              aria-label="Diminuer"
-                            >−</button>
-                            <span className="text-sm font-bold text-ink-800 tabular-nums">{current}<span className="text-ink-400 font-normal"> / {max}</span></span>
-                            <button
-                              onClick={() => adjustCounter(feature, 1)}
-                              disabled={current >= max}
-                              className="w-7 h-7 rounded-md bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center shrink-0"
-                              aria-label="Augmenter"
-                            >+</button>
-                            <div className="flex-1 h-2 bg-parchment-200 rounded-full overflow-hidden">
-                              <div className={`h-full ${barColor} transition-all rounded-full`} style={{ width: `${pct}%` }} />
+                      {feature.counterMax &&
+                        feature.counterMax > 0 &&
+                        (() => {
+                          const max = feature.counterMax;
+                          const current = feature.counterCurrent ?? max;
+                          const pct = Math.round((current / max) * 100);
+                          const barColor =
+                            current === 0
+                              ? 'bg-red-500'
+                              : pct <= 50
+                                ? 'bg-amber-500'
+                                : 'bg-green-500';
+                          return (
+                            <div className="flex items-center gap-2 bg-parchment-50 rounded-lg p-2">
+                              <button
+                                type="button"
+                                onClick={() => adjustCounter(feature, -1)}
+                                disabled={current <= 0}
+                                className="w-7 h-7 rounded-md bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center shrink-0"
+                                aria-label="Diminuer"
+                              >
+                                −
+                              </button>
+                              <span className="text-sm font-bold text-ink-800 tabular-nums">
+                                {current}
+                                <span className="text-ink-400 font-normal"> / {max}</span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => adjustCounter(feature, 1)}
+                                disabled={current >= max}
+                                className="w-7 h-7 rounded-md bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center shrink-0"
+                                aria-label="Augmenter"
+                              >
+                                +
+                              </button>
+                              <div className="flex-1 h-2 bg-parchment-200 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full ${barColor} transition-all rounded-full`}
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })()}
+                          );
+                        })()}
 
-                      <span className={`inline-block self-start text-[10px] px-2 py-0.5 rounded-full border ${CATEGORY_COLORS[feature.category]}`}>
+                      <span
+                        className={`inline-block self-start text-[10px] px-2 py-0.5 rounded-full border ${CATEGORY_COLORS[feature.category]}`}
+                      >
                         {FEATURE_CATEGORY_LABELS_FR[feature.category]}
                       </span>
 
@@ -252,12 +287,14 @@ export default function CharacterFeaturesTab({ character, charId, partyId, onSav
                         <div className="flex items-center gap-2 mt-1">
                           <span className="text-xs text-red-600">Supprimer ?</span>
                           <button
+                            type="button"
                             onClick={() => remove(feature.id)}
                             className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700"
                           >
                             Oui
                           </button>
                           <button
+                            type="button"
                             onClick={() => setConfirmDelete(null)}
                             className="text-xs px-2 py-1 rounded bg-parchment-200 hover:bg-parchment-300"
                           >
@@ -300,7 +337,9 @@ export default function CharacterFeaturesTab({ character, charId, partyId, onSav
               onChange={(e) => setCategory(e.target.value as FeatureCategory)}
             >
               {categories.map((cat) => (
-                <option key={cat} value={cat}>{FEATURE_CATEGORY_LABELS_FR[cat]}</option>
+                <option key={cat} value={cat}>
+                  {FEATURE_CATEGORY_LABELS_FR[cat]}
+                </option>
               ))}
             </select>
           </label>
@@ -344,6 +383,7 @@ export default function CharacterFeaturesTab({ character, charId, partyId, onSav
 
           {/* Template help */}
           <button
+            type="button"
             onClick={() => setShowTemplateHelp((s) => !s)}
             className="text-xs text-blood-600 hover:underline"
           >
@@ -352,8 +392,8 @@ export default function CharacterFeaturesTab({ character, charId, partyId, onSav
           {showTemplateHelp && (
             <div className="bg-parchment-50 rounded-lg p-3 border border-parchment-200">
               <p className="text-xs text-ink-500 mb-2">
-                Utilisez <code className="bg-parchment-200 px-1 rounded">{'{{variable}}'}</code> pour
-                insérer une valeur calculée depuis votre fiche :
+                Utilisez <code className="bg-parchment-200 px-1 rounded">{'{{variable}}'}</code>{' '}
+                pour insérer une valeur calculée depuis votre fiche :
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                 {TEMPLATE_VARIABLES.map((v) => (
@@ -370,6 +410,7 @@ export default function CharacterFeaturesTab({ character, charId, partyId, onSav
 
           <div className="flex gap-2 pt-1">
             <button
+              type="button"
               onClick={save}
               disabled={saving || !title.trim()}
               className="btn-primary flex-1 disabled:opacity-50"
@@ -377,6 +418,7 @@ export default function CharacterFeaturesTab({ character, charId, partyId, onSav
               {saving ? '…' : editing ? 'Enregistrer' : 'Créer'}
             </button>
             <button
+              type="button"
               onClick={() => setShowModal(false)}
               className="btn-ghost text-ink-700"
             >

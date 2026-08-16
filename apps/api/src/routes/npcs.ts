@@ -3,11 +3,12 @@
  * Any party member can create NPCs. Creator chooses shared/private.
  * Secrets are visible only to creator + GM.
  */
+
+import type { CreateNpcPayload, PatchNpcPayload } from '@dnd-inventory/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
-import { requireUser, isPartyMember, isPartyGM } from './helpers.ts';
-import type { CreateNpcPayload, PatchNpcPayload } from '@dnd-inventory/shared';
+import { isPartyGM, isPartyMember, requireUser } from './helpers.ts';
 
 export interface NpcRow {
   id: number;
@@ -39,7 +40,7 @@ function mapNpc(row: any, includeSecret: boolean): NpcRow {
     disposition: row.disposition,
     status: row.status,
     description: row.description,
-    secret: includeSecret ? (row.secret || null) : null,
+    secret: includeSecret ? row.secret || null : null,
     isShared: !!row.is_shared,
     sortOrder: row.sort_order ?? 0,
   };
@@ -59,17 +60,17 @@ export async function npcRoutes(app: FastifyInstance) {
       const db = getDb();
 
       // GM sees all; players see shared + their own private
-      const where = gm
-        ? 'party_id = ?'
-        : '(party_id = ? AND (is_shared = 1 OR created_by = ?))';
+      const where = gm ? 'party_id = ?' : '(party_id = ? AND (is_shared = 1 OR created_by = ?))';
       const params = gm ? [partyId] : [partyId, userId];
 
-      const rows = db.prepare(`
+      const rows = db
+        .prepare(`
         SELECT n.*, u.display_name AS creator_name
         FROM npcs n JOIN users u ON u.id = n.created_by
         WHERE ${where}
         ORDER BY n.sort_order, n.name COLLATE NOCASE ASC
-      `).all(...params);
+      `)
+        .all(...params);
 
       const npcs = rows.map((r: any) => {
         // Secret visible to creator + GM
@@ -94,36 +95,40 @@ export async function npcRoutes(app: FastifyInstance) {
       if (!isPartyMember(partyId, userId)) return reply.code(403).send({ error: 'not a member' });
 
       const body = req.body || ({} as CreateNpcPayload);
-      if (!body.name || !body.name.trim()) return reply.code(400).send({ error: 'name is required' });
+      if (!body.name?.trim()) return reply.code(400).send({ error: 'name is required' });
 
       const db = getDb();
-      const maxOrder = (db.prepare(
-        'SELECT MAX(sort_order) as m FROM npcs WHERE party_id = ?'
-      ).get(partyId) as any)?.m ?? 0;
+      const maxOrder =
+        (db.prepare('SELECT MAX(sort_order) as m FROM npcs WHERE party_id = ?').get(partyId) as any)
+          ?.m ?? 0;
 
-      const info = db.prepare(`
+      const info = db
+        .prepare(`
         INSERT INTO npcs (party_id, created_by, name, role, location, faction, disposition, status, description, secret, is_shared, sort_order)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        partyId,
-        userId,
-        body.name.trim(),
-        body.role || null,
-        body.location || null,
-        body.faction || null,
-        body.disposition || 'neutral',
-        body.status || 'alive',
-        body.description || null,
-        body.secret || null,
-        body.isShared === false ? 0 : 1,
-        maxOrder + 1,
-      );
+      `)
+        .run(
+          partyId,
+          userId,
+          body.name.trim(),
+          body.role || null,
+          body.location || null,
+          body.faction || null,
+          body.disposition || 'neutral',
+          body.status || 'alive',
+          body.description || null,
+          body.secret || null,
+          body.isShared === false ? 0 : 1,
+          maxOrder + 1,
+        );
 
-      const row = db.prepare(`
+      const row = db
+        .prepare(`
         SELECT n.*, u.display_name AS creator_name
         FROM npcs n JOIN users u ON u.id = n.created_by
         WHERE n.id = ?
-      `).get(info.lastInsertRowid);
+      `)
+        .get(info.lastInsertRowid);
 
       bus.emitChange({ type: 'party:change', partyId, action: 'custom-item', actorUserId: userId });
 
@@ -134,11 +139,16 @@ export async function npcRoutes(app: FastifyInstance) {
   // ---------- Update NPC (creator or GM) ----------
   app.patch(
     '/npcs/:npcId',
-    async (req: FastifyRequest<{ Params: { npcId: string }; Body: PatchNpcPayload }>, reply: FastifyReply) => {
+    async (
+      req: FastifyRequest<{ Params: { npcId: string }; Body: PatchNpcPayload }>,
+      reply: FastifyReply,
+    ) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const npc = db.prepare('SELECT * FROM npcs WHERE id = ?').get(Number(req.params.npcId)) as any;
+      const npc = db
+        .prepare('SELECT * FROM npcs WHERE id = ?')
+        .get(Number(req.params.npcId)) as any;
       if (!npc) return reply.code(404).send({ error: 'NPC not found' });
 
       const gm = isPartyGM(npc.party_id, userId);
@@ -174,13 +184,20 @@ export async function npcRoutes(app: FastifyInstance) {
       vals.push(npc.id);
       db.prepare(`UPDATE npcs SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
 
-      const row = db.prepare(`
+      const row = db
+        .prepare(`
         SELECT n.*, u.display_name AS creator_name
         FROM npcs n JOIN users u ON u.id = n.created_by
         WHERE n.id = ?
-      `).get(npc.id);
+      `)
+        .get(npc.id);
 
-      bus.emitChange({ type: 'party:change', partyId: npc.party_id, action: 'custom-item', actorUserId: userId });
+      bus.emitChange({
+        type: 'party:change',
+        partyId: npc.party_id,
+        action: 'custom-item',
+        actorUserId: userId,
+      });
 
       return reply.send({ npc: mapNpc(row, gm || row.created_by === userId) });
     },
@@ -193,7 +210,9 @@ export async function npcRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const npc = db.prepare('SELECT * FROM npcs WHERE id = ?').get(Number(req.params.npcId)) as any;
+      const npc = db
+        .prepare('SELECT * FROM npcs WHERE id = ?')
+        .get(Number(req.params.npcId)) as any;
       if (!npc) return reply.code(404).send({ error: 'NPC not found' });
 
       const gm = isPartyGM(npc.party_id, userId);
@@ -202,7 +221,12 @@ export async function npcRoutes(app: FastifyInstance) {
       }
 
       db.prepare('DELETE FROM npcs WHERE id = ?').run(npc.id);
-      bus.emitChange({ type: 'party:change', partyId: npc.party_id, action: 'custom-item', actorUserId: userId });
+      bus.emitChange({
+        type: 'party:change',
+        partyId: npc.party_id,
+        action: 'custom-item',
+        actorUserId: userId,
+      });
 
       return reply.code(204).send();
     },

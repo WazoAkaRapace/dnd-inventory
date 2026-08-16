@@ -1,29 +1,28 @@
 /**
  * Sorts tab — spell slots tracker, known/prepared spells, spell catalog browser.
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
-import api from '../api';
-import { BottomSheet } from '../components/ui';
-import CastSpellSheet from '../components/CastSpellSheet';
+
 import {
-  type Character,
-  type Spell,
-  type CharacterSpell,
-  type SpellSchool,
-  type SpellcastingType,
-  type ClassInfo,
-  SPELL_SCHOOL_LABELS_FR,
-  DND_CLASSES,
-  ABILITY_LABELS_FR,
   ABILITY_SHORT_FR,
   abilityModifier,
-  proficiencyBonus,
-  spellSaveDC,
+  type Character,
+  type CharacterSpell,
+  computePreparedSpellsLimit,
+  DND_CLASSES,
+  findClass,
   formatModifier,
   maxSpellSlots,
-  findClass,
-  computePreparedSpellsLimit,
+  proficiencyBonus,
+  SPELL_SCHOOL_LABELS_FR,
+  type Spell,
+  type SpellcastingType,
+  type SpellSchool,
+  spellSaveDC,
 } from '@dnd-inventory/shared';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import api from '../api';
+import CastSpellSheet from '../components/CastSpellSheet';
+import { BottomSheet } from '../components/ui';
 
 interface Props {
   character: Character;
@@ -79,20 +78,28 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
   const level = character.level ?? 1;
   const profBonus = proficiencyBonus(level);
   const castingAbility = classInfo?.spellcastingAbility;
-  const castingMod = isCaster && castingAbility
-    ? abilityModifier((character[castingAbility as keyof Character] as number) ?? 10)
-    : 0;
+  const castingMod =
+    isCaster && castingAbility
+      ? abilityModifier((character[castingAbility as keyof Character] as number) ?? 10)
+      : 0;
 
-  const slots = isCaster ? maxSpellSlots(level, castingType) : [0,0,0,0,0,0,0,0,0];
-  const slotsUsed = character.spellSlotsUsed ?? [0,0,0,0,0,0,0,0,0];
+  const slots = isCaster ? maxSpellSlots(level, castingType) : [0, 0, 0, 0, 0, 0, 0, 0, 0];
+  const slotsUsed = character.spellSlotsUsed ?? [0, 0, 0, 0, 0, 0, 0, 0, 0];
 
   // Spell preparation limit (classes that prepare: Magicien, Clerc, Druide, Paladin, Rôdeur, Artificier)
-  const preparedLimit = classInfo && castingAbility
-    ? computePreparedSpellsLimit(classInfo, level, (character[castingAbility as keyof Character] as number) ?? 10)
-    : null;
+  const preparedLimit =
+    classInfo && castingAbility
+      ? computePreparedSpellsLimit(
+          classInfo,
+          level,
+          (character[castingAbility as keyof Character] as number) ?? 10,
+        )
+      : null;
   // Domain spells are always prepared and don't count against the limit
   const domainIds = new Set(domainSpells.map((sp) => sp.id));
-  const preparedCount = charSpells.filter((cs) => cs.prepared && !domainIds.has(cs.spell.id)).length;
+  const preparedCount = charSpells.filter(
+    (cs) => cs.prepared && !domainIds.has(cs.spell.id),
+  ).length;
 
   // Fetch character's known spells
   const fetchCharSpells = useCallback(async () => {
@@ -116,16 +123,27 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
   // paladin oath (derived — refetched with the character)
   const clsName = findClass(character.characterClass)?.name ?? null;
   const hasBonusSource =
-    (clsName === 'Clerc' && !!character.divineDomain)
-    || (clsName === 'Druide' && character.druidCircle === 'terre' && !!character.landCircle)
-    || (clsName === 'Paladin' && !!character.sacredOath);
+    (clsName === 'Clerc' && !!character.divineDomain) ||
+    (clsName === 'Druide' && character.druidCircle === 'terre' && !!character.landCircle) ||
+    (clsName === 'Paladin' && !!character.sacredOath);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: character.level is a deliberate extra dep — domain spells are refetched on level-up.
   useEffect(() => {
-    if (!hasBonusSource) { setDomainSpells([]); return; }
+    if (!hasBonusSource) {
+      setDomainSpells([]);
+      return;
+    }
     let alive = true;
-    api.get(`/api/characters/${charId}/domain-spells`)
-      .then((res) => { if (alive) setDomainSpells(res.data.spells ?? []); })
-      .catch(() => { if (alive) setDomainSpells([]); });
-    return () => { alive = false; };
+    api
+      .get(`/api/characters/${charId}/domain-spells`)
+      .then((res) => {
+        if (alive) setDomainSpells(res.data.spells ?? []);
+      })
+      .catch(() => {
+        if (alive) setDomainSpells([]);
+      });
+    return () => {
+      alive = false;
+    };
   }, [hasBonusSource, charId, character.level]);
 
   // Debounce search input (same pattern as items catalog)
@@ -135,28 +153,36 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
   }, [catalogSearch]);
 
   // Fetch catalog with filters
-  const fetchCatalog = useCallback(async (offset = 0) => {
-    setCatalogLoading(true);
-    try {
-      const params: Record<string, string | number> = { limit: PAGE_SIZE, offset };
-      if (catalogClass) params.class = catalogClass;
-      if (catalogLevel !== '') params.level = catalogLevel;
-      if (catalogSchool) params.school = catalogSchool;
-      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
-      const res = await api.get('/api/spells', { params });
-      setCatalogSpells(res.data.spells);
-      setCatalogTotal(res.data.total);
-      setCatalogOffset(offset);
-    } catch {
-      setCatalogSpells([]);
-      setCatalogTotal(0);
-    } finally {
-      setCatalogLoading(false);
-    }
-  }, [catalogClass, catalogLevel, catalogSchool, debouncedSearch]);
+  const fetchCatalog = useCallback(
+    async (offset = 0) => {
+      setCatalogLoading(true);
+      try {
+        const params: Record<string, string | number> = { limit: PAGE_SIZE, offset };
+        if (catalogClass) params.class = catalogClass;
+        if (catalogLevel !== '') params.level = catalogLevel;
+        if (catalogSchool) params.school = catalogSchool;
+        if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+        const res = await api.get('/api/spells', { params });
+        setCatalogSpells(res.data.spells);
+        setCatalogTotal(res.data.total);
+        setCatalogOffset(offset);
+      } catch {
+        setCatalogSpells([]);
+        setCatalogTotal(0);
+      } finally {
+        setCatalogLoading(false);
+      }
+    },
+    [catalogClass, catalogLevel, catalogSchool, debouncedSearch],
+  );
 
   // Only fetch when there's a search query or active filters — don't preload all spells
-  const hasQuery = !!(debouncedSearch.trim() || catalogLevel !== '' || catalogSchool || catalogClass);
+  const hasQuery = !!(
+    debouncedSearch.trim() ||
+    catalogLevel !== '' ||
+    catalogSchool ||
+    catalogClass
+  );
 
   useEffect(() => {
     if (hasQuery) {
@@ -174,9 +200,11 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
       await fetchCharSpells();
       await onSaved();
     } catch (err) {
-      onError(err instanceof Error && err.message.includes('UNIQUE')
-        ? 'Sort déjà connu'
-        : 'Erreur lors de l\'ajout du sort');
+      onError(
+        err instanceof Error && err.message.includes('UNIQUE')
+          ? 'Sort déjà connu'
+          : "Erreur lors de l'ajout du sort",
+      );
     } finally {
       setAddingSpellId(null);
     }
@@ -230,7 +258,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
 
   const restoreAll = async () => {
     try {
-      await api.patch(`/api/characters/${charId}`, { spellSlotsUsed: [0,0,0,0,0,0,0,0,0] });
+      await api.patch(`/api/characters/${charId}`, { spellSlotsUsed: [0, 0, 0, 0, 0, 0, 0, 0, 0] });
       await onSaved();
     } catch {
       onError('Erreur de mise à jour');
@@ -276,14 +304,18 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
       sortOrder: 0,
       addedAt: '',
     }));
-  const spellsByLevel = [0,1,2,3,4,5,6,7,8,9].map((lvl) => ({
-    level: lvl,
-    spells: [...charSpells, ...domainOnly].filter((cs) => cs.spell.level === lvl)
-      .sort((a, b) =>
-        Number(b.prepared) - Number(a.prepared) ||
-        (a.spell.nameFr ?? a.spell.name).localeCompare(b.spell.nameFr ?? b.spell.name, 'fr'),
-      ),
-  })).filter((g) => g.spells.length > 0);
+  const spellsByLevel = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    .map((lvl) => ({
+      level: lvl,
+      spells: [...charSpells, ...domainOnly]
+        .filter((cs) => cs.spell.level === lvl)
+        .sort(
+          (a, b) =>
+            Number(b.prepared) - Number(a.prepared) ||
+            (a.spell.nameFr ?? a.spell.name).localeCompare(b.spell.nameFr ?? b.spell.name, 'fr'),
+        ),
+    }))
+    .filter((g) => g.spells.length > 0);
 
   if (!isCaster && charSpells.length === 0) {
     return (
@@ -291,7 +323,8 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
         <p className="text-4xl">✨</p>
         <p className="text-ink-500">Cette classe ne lance pas de sorts.</p>
         <p className="text-xs text-ink-400">
-          Définissez une classe de lanceur de sorts dans l'onglet Caractéristiques pour accéder aux sorts.
+          Définissez une classe de lanceur de sorts dans l'onglet Caractéristiques pour accéder aux
+          sorts.
         </p>
       </div>
     );
@@ -329,6 +362,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
           <div className="flex items-center justify-between">
             <h2 className="font-display text-lg font-semibold">Emplacements de sort</h2>
             <button
+              type="button"
               onClick={restoreAll}
               className="text-xs text-blood-600 hover:underline"
             >
@@ -346,20 +380,28 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                   <div className="text-xs font-semibold text-ink-500 mb-1">Niv. {spellLevel}</div>
                   <div className="flex items-center justify-center gap-1.5">
                     <button
+                      type="button"
                       onClick={() => restoreSlot(spellLevel)}
                       disabled={used <= 0}
                       className="w-6 h-6 rounded-md bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center transition-colors"
                       aria-label={`Restaurer un emplacement de niveau ${spellLevel}`}
-                    >−</button>
-                    <span className={`text-lg font-bold tabular-nums ${remaining === 0 ? 'text-red-500' : 'text-ink-800'}`}>
+                    >
+                      −
+                    </button>
+                    <span
+                      className={`text-lg font-bold tabular-nums ${remaining === 0 ? 'text-red-500' : 'text-ink-800'}`}
+                    >
                       {remaining}
                     </span>
                     <button
+                      type="button"
                       onClick={() => spendSlot(spellLevel)}
                       disabled={remaining <= 0}
                       className="w-6 h-6 rounded-md bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center transition-colors"
                       aria-label={`Dépenser un emplacement de niveau ${spellLevel}`}
-                    >+</button>
+                    >
+                      +
+                    </button>
                   </div>
                   <div className="text-xs text-ink-400 mt-0.5">/ {maxSlots}</div>
                 </div>
@@ -375,19 +417,23 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
         <section className="card p-4 sm:p-5 space-y-3 min-w-0">
           <div className="flex items-center justify-between">
             <h2 className="font-display text-lg font-semibold flex items-center gap-2">
-              Sorts connus <span className="text-ink-400 text-sm font-normal">({charSpells.length})</span>
+              Sorts connus{' '}
+              <span className="text-ink-400 text-sm font-normal">({charSpells.length})</span>
               {preparedLimit !== null && (
-                <span className={`text-xs px-2 py-0.5 rounded-full ${
-                  preparedCount > preparedLimit
-                    ? 'bg-red-100 text-red-700 border border-red-200'
-                    : 'bg-blood-50 text-blood-700 border border-blood-200'
-                }`}>
+                <span
+                  className={`text-xs px-2 py-0.5 rounded-full ${
+                    preparedCount > preparedLimit
+                      ? 'bg-red-100 text-red-700 border border-red-200'
+                      : 'bg-blood-50 text-blood-700 border border-blood-200'
+                  }`}
+                >
                   {preparedCount} / {preparedLimit} préparés
                 </span>
               )}
             </h2>
             {/* Mobile: open catalog as bottom sheet */}
             <button
+              type="button"
               onClick={() => setCatalogOpen(true)}
               className="btn-primary text-sm px-3 py-1.5 lg:hidden"
             >
@@ -398,7 +444,12 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
           {loadingSpells ? (
             <p className="text-sm text-ink-400 animate-pulse">Chargement…</p>
           ) : spellsByLevel.length === 0 ? (
-            <p className="text-sm text-ink-400 italic">Aucun sort. {typeof window !== 'undefined' && window.innerWidth >= 1024 ? 'Parcourez le grimoire →' : 'Cliquez sur « Ajouter » pour parcourir le grimoire.'}</p>
+            <p className="text-sm text-ink-400 italic">
+              Aucun sort.{' '}
+              {typeof window !== 'undefined' && window.innerWidth >= 1024
+                ? 'Parcourez le grimoire →'
+                : 'Cliquez sur « Ajouter » pour parcourir le grimoire.'}
+            </p>
           ) : (
             <div className="space-y-3">
               {spellsByLevel.map((group) => (
@@ -414,111 +465,125 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                       const canRemove = !domainIds.has(cs.spell.id);
                       return (
                         <li key={cs.id} className="rounded-lg overflow-hidden">
-                        <SwipeToReveal
-                          reveal={canRemove}
-                          onAction={() => removeSpell(cs.id)}
-                          actionLabel={`Oublier ${name}`}
-                        >
-                          <div className="bg-parchment-50 border border-parchment-200 rounded-lg flex items-center gap-2 p-2.5">
-                            {domainIds.has(cs.spell.id) ? (
-                              <span
-                                className="text-lg shrink-0 text-gold-500"
-                                title="Sort de domaine — toujours préparé, ne compte pas dans la limite"
-                                aria-label="Sort de domaine toujours préparé"
-                              >
-                                ◆
-                              </span>
-                            ) : (
+                          <SwipeToReveal
+                            reveal={canRemove}
+                            onAction={() => removeSpell(cs.id)}
+                            actionLabel={`Oublier ${name}`}
+                          >
+                            <div className="bg-parchment-50 border border-parchment-200 rounded-lg flex items-center gap-2 p-2.5">
+                              {domainIds.has(cs.spell.id) ? (
+                                <span
+                                  className="text-lg shrink-0 text-gold-500"
+                                  title="Sort de domaine — toujours préparé, ne compte pas dans la limite"
+                                  role="img"
+                                  aria-label="Sort de domaine toujours préparé"
+                                >
+                                  ◆
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => togglePrepared(cs.id, cs.prepared)}
+                                  className={`text-lg shrink-0 ${cs.prepared ? 'text-gold-400' : 'text-parchment-300 hover:text-parchment-400'}`}
+                                  aria-label={cs.prepared ? 'Sort préparé' : 'Sort non préparé'}
+                                  title={cs.prepared ? 'Préparé' : 'Non préparé'}
+                                >
+                                  {cs.prepared ? '★' : '☆'}
+                                </button>
+                              )}
                               <button
-                                onClick={() => togglePrepared(cs.id, cs.prepared)}
-                                className={`text-lg shrink-0 ${cs.prepared ? 'text-gold-400' : 'text-parchment-300 hover:text-parchment-400'}`}
-                                aria-label={cs.prepared ? 'Sort préparé' : 'Sort non préparé'}
-                                title={cs.prepared ? 'Préparé' : 'Non préparé'}
+                                type="button"
+                                onClick={() => setExpandedId(isExpanded ? null : cs.id)}
+                                className="min-w-0 flex-1 text-left"
+                                aria-expanded={isExpanded}
                               >
-                                {cs.prepared ? '★' : '☆'}
+                                <span className="font-medium text-sm text-ink-800 block truncate">
+                                  {name}
+                                </span>
+                                <span className="flex items-center gap-1.5 text-xs text-ink-400 min-w-0">
+                                  {spell.concentration && (
+                                    <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
+                                      🌀 Concentration
+                                    </span>
+                                  )}
+                                  {spell.ritual && (
+                                    <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700 border border-purple-200">
+                                      ⚗ Rituel
+                                    </span>
+                                  )}
+                                  <span className="truncate min-w-0">{spell.castingTime}</span>
+                                </span>
                               </button>
-                            )}
-                            <button
-                              onClick={() => setExpandedId(isExpanded ? null : cs.id)}
-                              className="min-w-0 flex-1 text-left"
-                              aria-expanded={isExpanded}
-                            >
-                              <span className="font-medium text-sm text-ink-800 block truncate">{name}</span>
-                              <span className="flex items-center gap-1.5 text-xs text-ink-400 min-w-0">
-                                {spell.concentration && (
-                                  <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
-                                    🌀 Concentration
-                                  </span>
-                                )}
-                                {spell.ritual && (
-                                  <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700 border border-purple-200">
-                                    ⚗ Rituel
-                                  </span>
-                                )}
-                                <span className="truncate min-w-0">{spell.castingTime}</span>
-                              </span>
-                            </button>
-                            <button
-                              onClick={() => setCastingSpell(spell)}
-                              className="text-sm shrink-0 px-1.5 py-1 rounded-md bg-parchment-100 hover:bg-gold-100 text-ink-500 hover:text-gold-600 border border-parchment-200 transition-colors"
-                              aria-label={`Lancer ${name}`}
-                              title="Lancer le sort"
-                            >
-                              🪄
-                            </button>
-                          </div>
-                          {isExpanded && (
-                            <div className="px-3 pb-3 pt-1 border-t border-parchment-200 text-xs text-ink-600 space-y-1.5 bg-parchment-50">
-                              {spell.descriptionFr ?? spell.description}
-                              {spell.higherLevelFr && (
-                                <p className="text-ink-400 italic"><strong>Aux niveaux supérieurs :</strong> {spell.higherLevelFr}</p>
-                              )}
-                              <SpellStatBadges
-                                spell={spell}
-                                castingMod={castingMod}
-                                profBonus={profBonus}
-                                isCaster={isCaster}
-                                charLevel={level}
-                              />
-                              {/* All carac chips on one bottom line */}
-                              <div className="flex flex-wrap gap-1.5 pt-1">
-                                <span className={`px-2 py-1 rounded-md text-[10px] font-medium ${SCHOOL_COLORS[spell.school] ?? 'bg-parchment-200'}`}>
-                                  {SPELL_SCHOOL_LABELS_FR[spell.school as SpellSchool] ?? spell.school}
-                                </span>
-                                {spell.ritual && (
-                                  <span className="px-2 py-1 rounded-md bg-purple-100 text-purple-800 text-[10px] font-semibold border border-purple-300">
-                                    ⚗ Rituel
-                                  </span>
-                                )}
-                                {spell.castingTime && (
-                                  <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full text-left">
-                                    ⏱ {spell.castingTime}
-                                  </span>
-                                )}
-                                {spell.rangeText && (
-                                  <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full text-left">
-                                    📡 {spell.rangeText}
-                                  </span>
-                                )}
-                                {(spell.duration || spell.concentration) && (
-                                  <span className={`px-2 py-1 rounded-md text-[10px] font-semibold max-w-full text-left ${
-                                    spell.concentration
-                                      ? 'bg-indigo-100 text-indigo-800 border border-indigo-300'
-                                      : 'bg-parchment-100 border border-parchment-200 text-ink-600 font-medium'
-                                  }`}>
-                                    {spell.concentration ? '🌀' : '⏳'} {spell.duration ?? 'Concentration'}
-                                  </span>
-                                )}
-                                <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full text-left">
-                                  📝 {spell.components.join(', ') || '—'}
-                                </span>
-                              </div>
-                              {spell.material && (
-                                <p className="text-ink-400 truncate">💎 {spell.material}</p>
-                              )}
+                              <button
+                                type="button"
+                                onClick={() => setCastingSpell(spell)}
+                                className="text-sm shrink-0 px-1.5 py-1 rounded-md bg-parchment-100 hover:bg-gold-100 text-ink-500 hover:text-gold-600 border border-parchment-200 transition-colors"
+                                aria-label={`Lancer ${name}`}
+                                title="Lancer le sort"
+                              >
+                                🪄
+                              </button>
                             </div>
-                          )}
-                        </SwipeToReveal>
+                            {isExpanded && (
+                              <div className="px-3 pb-3 pt-1 border-t border-parchment-200 text-xs text-ink-600 space-y-1.5 bg-parchment-50">
+                                {spell.descriptionFr ?? spell.description}
+                                {spell.higherLevelFr && (
+                                  <p className="text-ink-400 italic">
+                                    <strong>Aux niveaux supérieurs :</strong> {spell.higherLevelFr}
+                                  </p>
+                                )}
+                                <SpellStatBadges
+                                  spell={spell}
+                                  castingMod={castingMod}
+                                  profBonus={profBonus}
+                                  isCaster={isCaster}
+                                  charLevel={level}
+                                />
+                                {/* All carac chips on one bottom line */}
+                                <div className="flex flex-wrap gap-1.5 pt-1">
+                                  <span
+                                    className={`px-2 py-1 rounded-md text-[10px] font-medium ${SCHOOL_COLORS[spell.school] ?? 'bg-parchment-200'}`}
+                                  >
+                                    {SPELL_SCHOOL_LABELS_FR[spell.school as SpellSchool] ??
+                                      spell.school}
+                                  </span>
+                                  {spell.ritual && (
+                                    <span className="px-2 py-1 rounded-md bg-purple-100 text-purple-800 text-[10px] font-semibold border border-purple-300">
+                                      ⚗ Rituel
+                                    </span>
+                                  )}
+                                  {spell.castingTime && (
+                                    <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full text-left">
+                                      ⏱ {spell.castingTime}
+                                    </span>
+                                  )}
+                                  {spell.rangeText && (
+                                    <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full text-left">
+                                      📡 {spell.rangeText}
+                                    </span>
+                                  )}
+                                  {(spell.duration || spell.concentration) && (
+                                    <span
+                                      className={`px-2 py-1 rounded-md text-[10px] font-semibold max-w-full text-left ${
+                                        spell.concentration
+                                          ? 'bg-indigo-100 text-indigo-800 border border-indigo-300'
+                                          : 'bg-parchment-100 border border-parchment-200 text-ink-600 font-medium'
+                                      }`}
+                                    >
+                                      {spell.concentration ? '🌀' : '⏳'}{' '}
+                                      {spell.duration ?? 'Concentration'}
+                                    </span>
+                                  )}
+                                  <span className="px-2 py-1 rounded-md bg-parchment-100 border border-parchment-200 text-ink-600 text-[10px] font-medium max-w-full text-left">
+                                    📝 {spell.components.join(', ') || '—'}
+                                  </span>
+                                </div>
+                                {spell.material && (
+                                  <p className="text-ink-400 truncate">💎 {spell.material}</p>
+                                )}
+                              </div>
+                            )}
+                          </SwipeToReveal>
                         </li>
                       );
                     })}
@@ -563,10 +628,19 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
 
 // ---------- Damage type translations (English → French) ----------
 const DAMAGE_TYPE_FR: Record<string, string> = {
-  fire: 'feu', cold: 'froid', lightning: 'foudre', thunder: 'tonnerre',
-  acid: 'acide', poison: 'poison', necrotic: 'nécrotique', radiant: 'radiant',
-  force: 'force', psychic: 'psychique', bludgeoning: 'contondant',
-  piercing: 'perforant', slashing: 'tranchant',
+  fire: 'feu',
+  cold: 'froid',
+  lightning: 'foudre',
+  thunder: 'tonnerre',
+  acid: 'acide',
+  poison: 'poison',
+  necrotic: 'nécrotique',
+  radiant: 'radiant',
+  force: 'force',
+  psychic: 'psychique',
+  bludgeoning: 'contondant',
+  piercing: 'perforant',
+  slashing: 'tranchant',
 };
 
 // DC success type labels
@@ -579,7 +653,11 @@ const DC_SUCCESS_FR: Record<string, string> = {
 /** Parse JSON safely, returning null on failure. */
 function safeParse<T>(json: string | null): T | null {
   if (!json) return null;
-  try { return JSON.parse(json) as T; } catch { return null; }
+  try {
+    return JSON.parse(json) as T;
+  } catch {
+    return null;
+  }
 }
 
 /** Compute damage dice string for a spell based on character level / spell level. */
@@ -596,7 +674,9 @@ function computeDamageDice(spell: Spell, charLevel: number): string | null {
 
   if (dmg.damage_at_character_level) {
     // Cantrip — scale with character level. Pick highest key ≤ charLevel.
-    const levels = Object.keys(dmg.damage_at_character_level).map(Number).sort((a, b) => a - b);
+    const levels = Object.keys(dmg.damage_at_character_level)
+      .map(Number)
+      .sort((a, b) => a - b);
     const applicable = levels.filter((l) => l <= charLevel);
     const key = applicable.length > 0 ? applicable[applicable.length - 1] : levels[0];
     dice = dmg.damage_at_character_level[String(key)] ?? null;
@@ -608,7 +688,7 @@ function computeDamageDice(spell: Spell, charLevel: number): string | null {
 
   if (!dice) return null;
   const typeFr = DAMAGE_TYPE_FR[damageType] ?? damageType ?? '';
-  return `${dice}${typeFr ? ' ' + typeFr : ''}`;
+  return `${dice}${typeFr ? ` ${typeFr}` : ''}`;
 }
 
 /** Render spell stat badges: save DC, attack bonus, damage — computed from character stats. */
@@ -646,13 +726,13 @@ function SpellStatBadges({
           🛡 DD {dcValue}
           {dc.dc_type?.index && (
             <span className="text-blue-500">
-              · {ABILITY_SHORT_FR[dc.dc_type.index as keyof typeof ABILITY_SHORT_FR] ?? dc.dc_type.index.toUpperCase()}
+              ·{' '}
+              {ABILITY_SHORT_FR[dc.dc_type.index as keyof typeof ABILITY_SHORT_FR] ??
+                dc.dc_type.index.toUpperCase()}
             </span>
           )}
           {dc.dc_success && dc.dc_success !== 'none' && (
-            <span className="text-blue-400">
-              · {DC_SUCCESS_FR[dc.dc_success] ?? ''}
-            </span>
+            <span className="text-blue-400">· {DC_SUCCESS_FR[dc.dc_success] ?? ''}</span>
           )}
         </span>
       )}
@@ -739,7 +819,9 @@ function SpellCatalog({
         >
           <option value="">Toutes classes</option>
           {DND_CLASSES.map((c) => (
-            <option key={c.name} value={c.name}>{c.name}</option>
+            <option key={c.name} value={c.name}>
+              {c.name}
+            </option>
           ))}
         </select>
         <div className="flex gap-2">
@@ -750,8 +832,10 @@ function SpellCatalog({
             aria-label="Filtrer par niveau"
           >
             <option value="">Tous niveaux</option>
-            {[0,1,2,3,4,5,6,7,8,9].map((l) => (
-              <option key={l} value={String(l)}>{l === 0 ? 'Tours de magie' : `Niveau ${l}`}</option>
+            {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((l) => (
+              <option key={l} value={String(l)}>
+                {l === 0 ? 'Tours de magie' : `Niveau ${l}`}
+              </option>
             ))}
           </select>
           <select
@@ -762,7 +846,9 @@ function SpellCatalog({
           >
             <option value="">Toutes écoles</option>
             {Object.entries(SPELL_SCHOOL_LABELS_FR).map(([key, label]) => (
-              <option key={key} value={key}>{label}</option>
+              <option key={key} value={key}>
+                {label}
+              </option>
             ))}
           </select>
         </div>
@@ -778,7 +864,9 @@ function SpellCatalog({
           <div className="text-center py-8 space-y-1">
             <p className="text-3xl">📝</p>
             <p className="text-sm text-ink-400">Recherchez un sort</p>
-            <p className="text-xs text-ink-400">Tapez le nom d'un sort ou filtrez par niveau/école.</p>
+            <p className="text-xs text-ink-400">
+              Tapez le nom d'un sort ou filtrez par niveau/école.
+            </p>
           </div>
         )
       ) : (
@@ -790,16 +878,24 @@ function SpellCatalog({
               const isKnown = knownSpellIds.has(spell.id);
               const name = spell.nameFr ?? spell.name;
               return (
-                <li key={spell.id} className="bg-parchment-50 rounded-lg border border-parchment-200 overflow-hidden">
+                <li
+                  key={spell.id}
+                  className="bg-parchment-50 rounded-lg border border-parchment-200 overflow-hidden"
+                >
                   <div className="flex items-center gap-2 p-2.5">
                     <button
+                      type="button"
                       onClick={() => setExpandedSpellId(isExpanded ? null : spell.id)}
                       className="min-w-0 flex-1 text-left"
                       aria-expanded={isExpanded}
                     >
-                      <span className="font-medium text-sm text-ink-800 block truncate">{name}</span>
+                      <span className="font-medium text-sm text-ink-800 block truncate">
+                        {name}
+                      </span>
                       <span className="flex items-center gap-1.5 text-xs text-ink-400 min-w-0">
-                        <span className="shrink-0">{spell.level === 0 ? 'Tour' : `Niv. ${spell.level}`}</span>
+                        <span className="shrink-0">
+                          {spell.level === 0 ? 'Tour' : `Niv. ${spell.level}`}
+                        </span>
                         {spell.concentration && (
                           <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200">
                             🌀 Concentration
@@ -813,6 +909,7 @@ function SpellCatalog({
                       </span>
                     </button>
                     <button
+                      type="button"
                       onClick={() => onAdd(spell.id)}
                       disabled={isKnown || addingSpellId === spell.id}
                       className="text-xs px-2.5 py-1.5 rounded-lg bg-blood-600 text-white hover:bg-blood-700 disabled:opacity-40 disabled:cursor-not-allowed shrink-0 transition-colors"
@@ -824,7 +921,9 @@ function SpellCatalog({
                     <div className="px-3 pb-3 pt-1 border-t border-parchment-200 text-xs text-ink-600 space-y-1.5">
                       <p>{spell.descriptionFr ?? spell.description}</p>
                       {spell.higherLevelFr && (
-                        <p className="text-ink-400 italic"><strong>Aux niveaux supérieurs :</strong> {spell.higherLevelFr}</p>
+                        <p className="text-ink-400 italic">
+                          <strong>Aux niveaux supérieurs :</strong> {spell.higherLevelFr}
+                        </p>
                       )}
                       <SpellStatBadges
                         spell={spell}
@@ -835,7 +934,9 @@ function SpellCatalog({
                       />
                       {/* All carac chips on one bottom line */}
                       <div className="flex flex-wrap gap-1.5 pt-1">
-                        <span className={`px-2 py-1 rounded-md text-[10px] font-medium ${SCHOOL_COLORS[spell.school] ?? 'bg-parchment-200'}`}>
+                        <span
+                          className={`px-2 py-1 rounded-md text-[10px] font-medium ${SCHOOL_COLORS[spell.school] ?? 'bg-parchment-200'}`}
+                        >
                           {SPELL_SCHOOL_LABELS_FR[spell.school as SpellSchool] ?? spell.school}
                         </span>
                         {spell.ritual && (
@@ -854,11 +955,13 @@ function SpellCatalog({
                           </span>
                         )}
                         {(spell.duration || spell.concentration) && (
-                          <span className={`px-2 py-1 rounded-md text-[10px] font-semibold max-w-full text-left ${
-                            spell.concentration
-                              ? 'bg-indigo-100 text-indigo-800 border border-indigo-300'
-                              : 'bg-parchment-100 border border-parchment-200 text-ink-600 font-medium'
-                          }`}>
+                          <span
+                            className={`px-2 py-1 rounded-md text-[10px] font-semibold max-w-full text-left ${
+                              spell.concentration
+                                ? 'bg-indigo-100 text-indigo-800 border border-indigo-300'
+                                : 'bg-parchment-100 border border-parchment-200 text-ink-600 font-medium'
+                            }`}
+                          >
                             {spell.concentration ? '🌀' : '⏳'} {spell.duration ?? 'Concentration'}
                           </span>
                         )}
@@ -877,6 +980,7 @@ function SpellCatalog({
           </ul>
           {offset + PAGE_SIZE < total && (
             <button
+              type="button"
               onClick={onLoadMore}
               className="btn-ghost text-ink-700 w-full text-sm py-2"
             >
@@ -889,7 +993,6 @@ function SpellCatalog({
   );
 }
 
-
 // ---------- Swipe-to-reveal row action (mobile pattern) ----------
 
 /**
@@ -898,7 +1001,12 @@ function SpellCatalog({
  * anywhere on the row (including over its buttons) while plain taps and
  * vertical scrolling pass through untouched. Tapping an open row closes it.
  */
-function SwipeToReveal({ reveal, onAction, actionLabel, children }: {
+function SwipeToReveal({
+  reveal,
+  onAction,
+  actionLabel,
+  children,
+}: {
   reveal: boolean;
   onAction: () => void;
   actionLabel: string;
@@ -913,7 +1021,10 @@ function SwipeToReveal({ reveal, onAction, actionLabel, children }: {
   if (!reveal) return <>{children}</>;
 
   const swallowClick = (el: HTMLElement) => {
-    const swallow = (ev: Event) => { ev.stopPropagation(); ev.preventDefault(); };
+    const swallow = (ev: Event) => {
+      ev.stopPropagation();
+      ev.preventDefault();
+    };
     el.addEventListener('click', swallow, { capture: true, once: true });
     setTimeout(() => el.removeEventListener('click', swallow, true), 100);
   };
@@ -929,7 +1040,9 @@ function SwipeToReveal({ reveal, onAction, actionLabel, children }: {
       if (Math.abs(delta) < 8) return; // taps/vertical scrolls pass through
       d.captured = true;
       setDragging(true);
-      try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
+      try {
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      } catch {}
     }
     const base = Math.min(0, d.base + delta);
     setDx(Math.max(-WIDTH, base));
@@ -960,7 +1073,12 @@ function SwipeToReveal({ reveal, onAction, actionLabel, children }: {
           no sub-pixel seam at any device pixel ratio). */}
       <div className="absolute inset-y-0 right-0 w-[76px] overflow-hidden">
         <button
-          onClick={() => { setOpen(false); setDx(0); onAction(); }}
+          type="button"
+          onClick={() => {
+            setOpen(false);
+            setDx(0);
+            onAction();
+          }}
           className={`w-full h-full bg-red-600 hover:bg-red-700 text-white text-xs font-semibold flex flex-col items-center justify-center gap-0.5 ${dragging ? '' : 'transition-transform duration-200'}`}
           style={{ transform: `translateX(${WIDTH + dx}px)` }}
           aria-label={actionLabel}

@@ -8,13 +8,14 @@
  * Only renders on the player's own character sheet page.
  * The GM uses the full CombatPage route.
  */
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useLocation, Link } from 'react-router-dom';
+
+import type { Combatant, EncounterDetail } from '@dnd-inventory/shared';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../auth';
 import { useSyncEvent } from '../sync';
 import TurnSlash, { useTurnSlash } from './TurnSlash';
-import type { EncounterDetail, Combatant } from '@dnd-inventory/shared';
 
 interface ActiveCombat {
   encounter: EncounterDetail;
@@ -59,7 +60,9 @@ export default function CombatWidget() {
             const encRes = await api.get(`/api/parties/${p.id}/encounters`);
             const encounters = encRes.data.encounters || [];
             // Find active encounters AND setup encounters (where initiative may be pending)
-            const relevant = encounters.filter((e: any) => e.status === 'active' || e.status === 'setup');
+            const relevant = encounters.filter(
+              (e: any) => e.status === 'active' || e.status === 'setup',
+            );
             for (const encSummary of relevant) {
               const detailRes = await api.get(`/api/encounters/${encSummary.id}`);
               const encounter: EncounterDetail = detailRes.data.encounter;
@@ -86,9 +89,10 @@ export default function CombatWidget() {
           const myCharIds = (partyRes.data.characters || [])
             .filter((c: any) => c.ownerId === user.id)
             .map((c: any) => c.id);
-          combat.myCombatant = combat.encounter.combatants.find(
-            (c) => c.characterId !== null && myCharIds.includes(c.characterId),
-          ) ?? null;
+          combat.myCombatant =
+            combat.encounter.combatants.find(
+              (c) => c.characterId !== null && myCharIds.includes(c.characterId),
+            ) ?? null;
         } catch {
           // skip
         }
@@ -129,8 +133,12 @@ export default function CombatWidget() {
   // Only show on the player's OWN character sheet
   const [isMyCharacter, setIsMyCharacter] = useState(false);
   useEffect(() => {
-    if (!user || !charId) { setIsMyCharacter(false); return; }
-    api.get(`/api/characters/${charId}`)
+    if (!user || !charId) {
+      setIsMyCharacter(false);
+      return;
+    }
+    api
+      .get(`/api/characters/${charId}`)
       .then((res) => setIsMyCharacter(res.data.character?.ownerId === user.id))
       .catch(() => setIsMyCharacter(false));
   }, [user, charId]);
@@ -138,8 +146,10 @@ export default function CombatWidget() {
   // Priority: my turn > needs initiative > active combat
   // Nobody's turn is active while the encounter is still in setup.
   const myTurn = combats.find(
-    (c) => c.encounter.status === 'active' &&
-      c.myCombatant && c.currentCombatant?.id === c.myCombatant.id,
+    (c) =>
+      c.encounter.status === 'active' &&
+      c.myCombatant &&
+      c.currentCombatant?.id === c.myCombatant.id,
   );
   const isMyTurn = !!myTurn;
 
@@ -163,6 +173,7 @@ export default function CombatWidget() {
         : 'shadow-lg';
     return (
       <button
+        type="button"
         onClick={() => setCollapsed(false)}
         className={`hidden lg:flex fixed left-0 top-1/2 -translate-y-1/2 z-40 w-10 h-16 rounded-r-xl rounded-l-none shadow-lg items-center justify-center text-xl leading-none transition-all active:scale-95 border-2 border-l-0 border-parchment-50 ${
           isMyTurn
@@ -172,9 +183,11 @@ export default function CombatWidget() {
               : 'bg-ink-900 hover:bg-ink-800 text-parchment-50'
         } ${glowColor}`}
         title={
-          isMyTurn ? 'À toi de jouer !'
-          : needsInitiative ? 'Saisis ton initiative'
-          : 'Combat en cours'
+          isMyTurn
+            ? 'À toi de jouer !'
+            : needsInitiative
+              ? 'Saisis ton initiative'
+              : 'Combat en cours'
         }
       >
         ⚔
@@ -198,115 +211,119 @@ export default function CombatWidget() {
         }`}
       >
         <TurnSlash active={slashActive} />
-      <div className="flex items-center justify-between p-3 border-b border-parchment-200">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">⚔</span>
-          <div>
-            <div className="text-xs font-semibold text-ink-700">{combat.partyName}</div>
-            <div className="text-xs text-ink-400">
-              {isSetup ? 'Préparation' : `Tour ${combat.encounter.round}`}
+        <div className="flex items-center justify-between p-3 border-b border-parchment-200">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">⚔</span>
+            <div>
+              <div className="text-xs font-semibold text-ink-700">{combat.partyName}</div>
+              <div className="text-xs text-ink-400">
+                {isSetup ? 'Préparation' : `Tour ${combat.encounter.round}`}
+              </div>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => setCollapsed(true)}
+            className="text-ink-400 hover:text-ink-700 text-sm"
+            title="Réduire"
+          >
+            ◀
+          </button>
         </div>
-        <button
-          onClick={() => setCollapsed(true)}
-          className="text-ink-400 hover:text-ink-700 text-sm"
-          title="Réduire"
-        >
-          ◀
-        </button>
-      </div>
 
-      <div className="p-3 space-y-2">
-        {/* Initiative request banner */}
-        {needsInitiative && (
-          <div className="text-center py-2 px-3 rounded-lg bg-yellow-400 text-ink-900 font-bold">
-            🎲 Lance ton initiative !
-          </div>
-        )}
-
-        {/* My turn banner */}
-        {isMyTurn && (
-          <div className="text-center py-2 px-3 rounded-lg bg-blood-600 text-parchment-50 font-bold">
-            ⚔ À toi de jouer !
-          </div>
-        )}
-
-        {/* Current actor (only during active combat) */}
-        {combat.currentCombatant && !isMyTurn && !needsInitiative && (
-          <div className="text-sm text-ink-600">
-            Au tour de : <strong>{combat.currentCombatant.name}</strong>
-            <span className="text-ink-400 ml-1">
-              (init {combat.currentCombatant.initiative ?? '—'})
-            </span>
-          </div>
-        )}
-
-        {/* Initiative entry */}
-        {needsInitiative && combat.myCombatant && (
-          <div className="p-2 rounded-lg bg-yellow-50 border border-yellow-200">
-            <p className="text-xs text-ink-600 mb-1">
-              {combat.myCombatant.name} — saisis ton initiative :
-            </p>
-            <div className="flex items-center gap-1">
-              <input
-                type="number"
-                min={1}
-                max={40}
-                value={initInput}
-                onChange={(e) => setInitInput(e.target.value)}
-                placeholder="—"
-                className="input input-compact text-sm py-1"
-                autoFocus
-              />
-              <button
-                onClick={() => {
-                  const v = parseInt(initInput, 10);
-                  if (!isNaN(v)) setInitiative(combat.encounter.id, combat.myCombatant!.id, v);
-                  setInitInput('');
-                }}
-                className="btn-primary text-xs px-2 py-1"
-              >
-                OK
-              </button>
-              <button
-                onClick={() =>
-                  setInitiative(
-                    combat.encounter.id,
-                    combat.myCombatant!.id,
-                    rollD20(combat.myCombatant!.initiativeBonus),
-                  )
-                }
-                className="btn-secondary text-xs px-2 py-1"
-                title="Lancer d20 + DEX"
-              >
-                🎲
-              </button>
+        <div className="p-3 space-y-2">
+          {/* Initiative request banner */}
+          {needsInitiative && (
+            <div className="text-center py-2 px-3 rounded-lg bg-yellow-400 text-ink-900 font-bold">
+              🎲 Lance ton initiative !
             </div>
-          </div>
-        )}
+          )}
 
-        {/* My combatant status */}
-        {combat.myCombatant && !needsInitiative && (
-          <div className="flex items-center justify-between text-xs text-ink-500">
-            <span>
-              {combat.myCombatant.name} · init {combat.myCombatant.initiative}
-            </span>
-            <span>
-              ❤ {combat.myCombatant.hitPoints}/{combat.myCombatant.maxHitPoints}
-            </span>
-          </div>
-        )}
+          {/* My turn banner */}
+          {isMyTurn && (
+            <div className="text-center py-2 px-3 rounded-lg bg-blood-600 text-parchment-50 font-bold">
+              ⚔ À toi de jouer !
+            </div>
+          )}
 
-        {/* Link to combat page — enc param opens the encounter directly
+          {/* Current actor (only during active combat) */}
+          {combat.currentCombatant && !isMyTurn && !needsInitiative && (
+            <div className="text-sm text-ink-600">
+              Au tour de : <strong>{combat.currentCombatant.name}</strong>
+              <span className="text-ink-400 ml-1">
+                (init {combat.currentCombatant.initiative ?? '—'})
+              </span>
+            </div>
+          )}
+
+          {/* Initiative entry */}
+          {needsInitiative && combat.myCombatant && (
+            <div className="p-2 rounded-lg bg-yellow-50 border border-yellow-200">
+              <p className="text-xs text-ink-600 mb-1">
+                {combat.myCombatant.name} — saisis ton initiative :
+              </p>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={1}
+                  max={40}
+                  value={initInput}
+                  onChange={(e) => setInitInput(e.target.value)}
+                  placeholder="—"
+                  className="input input-compact text-sm py-1"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const v = parseInt(initInput, 10);
+                    if (!Number.isNaN(v))
+                      setInitiative(combat.encounter.id, combat.myCombatant!.id, v);
+                    setInitInput('');
+                  }}
+                  className="btn-primary text-xs px-2 py-1"
+                >
+                  OK
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setInitiative(
+                      combat.encounter.id,
+                      combat.myCombatant!.id,
+                      rollD20(combat.myCombatant!.initiativeBonus),
+                    )
+                  }
+                  className="btn-secondary text-xs px-2 py-1"
+                  title="Lancer d20 + DEX"
+                >
+                  🎲
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* My combatant status */}
+          {combat.myCombatant && !needsInitiative && (
+            <div className="flex items-center justify-between text-xs text-ink-500">
+              <span>
+                {combat.myCombatant.name} · init {combat.myCombatant.initiative}
+              </span>
+              <span>
+                ❤ {combat.myCombatant.hitPoints}/{combat.myCombatant.maxHitPoints}
+              </span>
+            </div>
+          )}
+
+          {/* Link to combat page — enc param opens the encounter directly
             (CombatPage reads it, then strips it from the URL) */}
-        <Link
-          to={`/party/${combat.partyId}/combat?enc=${combat.encounter.id}`}
-          className="block text-center text-xs text-blood-600 hover:text-blood-700 pt-1"
-        >
-          Voir le combat →
-        </Link>
-      </div>
+          <Link
+            to={`/party/${combat.partyId}/combat?enc=${combat.encounter.id}`}
+            className="block text-center text-xs text-blood-600 hover:text-blood-700 pt-1"
+          >
+            Voir le combat →
+          </Link>
+        </div>
       </div>
     </div>
   );

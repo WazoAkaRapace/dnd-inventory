@@ -3,10 +3,11 @@
  * Debounced search calls /api/monsters (DB-filtered). Shows a mini stat preview
  * on selection. Lets the GM set a count for grouped monsters.
  */
-import { useState, useEffect, useCallback } from 'react';
-import api from '../api';
+
 import type { MonsterSummary } from '@dnd-inventory/shared';
 import { formatCR, MONSTER_SIZE_LABELS_FR } from '@dnd-inventory/shared';
+import { useCallback, useEffect, useState } from 'react';
+import api from '../api';
 import { Modal } from './ui';
 
 interface Props {
@@ -31,7 +32,9 @@ export default function AddMonsterModal({ open, onClose, onAdd }: Props) {
     setLoading(true);
     const t = setTimeout(async () => {
       try {
-        const res = await api.get('/api/monsters', { params: { search: search.trim(), limit: 30 } });
+        const res = await api.get('/api/monsters', {
+          params: { search: search.trim(), limit: 30 },
+        });
         setResults(res.data.monsters || []);
       } catch {
         setResults([]);
@@ -77,6 +80,7 @@ export default function AddMonsterModal({ open, onClose, onAdd }: Props) {
           <div className="mt-3 max-h-[50vh] overflow-y-auto space-y-1">
             {results.map((m) => (
               <button
+                type="button"
                 key={m.slug}
                 onClick={() => setSelected(m)}
                 className="w-full text-left p-3 rounded-lg border border-parchment-200 hover:border-blood-300 hover:bg-blood-50 transition-colors"
@@ -103,10 +107,12 @@ export default function AddMonsterModal({ open, onClose, onAdd }: Props) {
               <div>
                 <h3 className="font-display text-lg font-semibold">{selected.nameFr}</h3>
                 <p className="text-sm text-ink-500">
-                  {selected.type} · {MONSTER_SIZE_LABELS_FR[selected.size] ?? selected.size} · FP {formatCR(selected.challengeRating)}
+                  {selected.type} · {MONSTER_SIZE_LABELS_FR[selected.size] ?? selected.size} · FP{' '}
+                  {formatCR(selected.challengeRating)}
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setSelected(null)}
                 className="text-ink-400 hover:text-ink-700 text-sm"
               >
@@ -114,28 +120,39 @@ export default function AddMonsterModal({ open, onClose, onAdd }: Props) {
               </button>
             </div>
             <div className="flex gap-4 mt-3 text-sm">
-              <span className="px-2 py-1 rounded bg-blood-50 text-blood-700">🛡 CA {selected.armorClass}</span>
-              <span className="px-2 py-1 rounded bg-red-50 text-red-700">❤ PV {selected.hitPoints}</span>
+              <span className="px-2 py-1 rounded bg-blood-50 text-blood-700">
+                🛡 CA {selected.armorClass}
+              </span>
+              <span className="px-2 py-1 rounded bg-red-50 text-red-700">
+                ❤ PV {selected.hitPoints}
+              </span>
             </div>
           </div>
           <div className="mt-4">
-            <label className="label">Quantité (groupe)</label>
+            <label className="label" htmlFor="monster-count">
+              Quantité (groupe)
+            </label>
             <div className="flex items-center gap-2">
               <button
+                type="button"
                 onClick={() => setCount(Math.max(1, count - 1))}
                 className="btn-secondary w-10 h-10 p-0 text-lg"
               >
                 −
               </button>
               <input
+                id="monster-count"
                 type="number"
                 min={1}
                 max={50}
                 value={count}
-                onChange={(e) => setCount(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
+                onChange={(e) =>
+                  setCount(Math.max(1, Math.min(50, parseInt(e.target.value, 10) || 1)))
+                }
                 className="input w-20 text-center"
               />
               <button
+                type="button"
                 onClick={() => setCount(Math.min(50, count + 1))}
                 className="btn-secondary w-10 h-10 p-0 text-lg"
               >
@@ -147,10 +164,10 @@ export default function AddMonsterModal({ open, onClose, onAdd }: Props) {
             </div>
           </div>
           <div className="flex gap-2 mt-4">
-            <button onClick={handleClose} className="btn-secondary flex-1">
+            <button type="button" onClick={handleClose} className="btn-secondary flex-1">
               Annuler
             </button>
-            <button onClick={handleAdd} className="btn-primary flex-1">
+            <button type="button" onClick={handleAdd} className="btn-primary flex-1">
               + Ajouter
             </button>
           </div>

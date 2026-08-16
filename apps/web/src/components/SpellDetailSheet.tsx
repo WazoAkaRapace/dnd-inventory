@@ -3,11 +3,12 @@
  * Fetches the spell by id on open and renders name, level, school,
  * casting time, range, components, duration, and the French description.
  */
-import { useState, useEffect } from 'react';
+
+import type { Spell, SpellSchool } from '@dnd-inventory/shared';
+import { SPELL_SCHOOL_LABELS_FR } from '@dnd-inventory/shared';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import api from '../api';
-import { SPELL_SCHOOL_LABELS_FR } from '@dnd-inventory/shared';
-import type { Spell, SpellSchool } from '@dnd-inventory/shared';
 
 interface Props {
   open: boolean;
@@ -41,7 +42,10 @@ export default function SpellDetailSheet({ open, spellId, onClose }: Props) {
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
-      onClick={(e) => { e.stopPropagation(); onClose(); }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
     >
       <div
         className="card w-full max-w-md rounded-b-none flex flex-col sheet-enter bg-white"
@@ -53,28 +57,42 @@ export default function SpellDetailSheet({ open, spellId, onClose }: Props) {
           <h2 className="font-display text-lg font-semibold">
             {spell?.nameFr ?? (loading ? 'Chargement…' : 'Sort')}
           </h2>
-          <button onClick={onClose} className="btn-ghost text-ink-500 p-1" aria-label="Fermer">✕</button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn-ghost text-ink-500 p-1"
+            aria-label="Fermer"
+          >
+            ✕
+          </button>
         </div>
 
         {/* Body */}
         <div className="overflow-y-auto p-4 flex-1">
           {loading && <p className="text-sm text-ink-400 text-center py-8">Chargement du sort…</p>}
-          {!loading && !spell && <p className="text-sm text-ink-400 text-center py-8">Sort introuvable.</p>}
+          {!loading && !spell && (
+            <p className="text-sm text-ink-400 text-center py-8">Sort introuvable.</p>
+          )}
           {spell && (
             <div className="space-y-3">
               {/* Level + school */}
               <p className="text-sm italic text-ink-500">
                 {levelLabel}
-                {spell.school && ` de ${SPELL_SCHOOL_LABELS_FR[spell.school as SpellSchool] ?? spell.school}`}
+                {spell.school &&
+                  ` de ${SPELL_SCHOOL_LABELS_FR[spell.school as SpellSchool] ?? spell.school}`}
               </p>
 
               {/* Badges */}
               <div className="flex flex-wrap gap-1.5 text-xs">
                 {spell.concentration && (
-                  <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200 font-semibold">🌀 Concentration</span>
+                  <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200 font-semibold">
+                    🌀 Concentration
+                  </span>
                 )}
                 {spell.ritual && (
-                  <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200 font-medium">⚗ Rituel</span>
+                  <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200 font-medium">
+                    ⚗ Rituel
+                  </span>
                 )}
               </div>
 

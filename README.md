@@ -92,6 +92,18 @@ Le serveur auto-migre et sème la base au démarrage : 646 objets, 490 sorts, 96
 - `data/` — seeds JSON + SQLite
 - Tests de règles : `npm run test-weapon-stats` / `npm run test-armor-stats`
 
+## 🧹 Lint & format (Biome)
+
+[Biome](https://biomejs.dev) gère le linter **et** le formateur du monorepo (config : `biome.jsonc` — 2 espaces, simples quotes, LF, imports triés).
+
+```bash
+npm run lint       # vérifie lint + format (CI)
+npm run lint:fix   # corrige et formate tout
+npm run format     # formate uniquement
+```
+
+Sous VS Code : l'extension `biomejs.biome` formate à la sauvegarde (réglages dans `.vscode/`, non versionnés).
+
 ## 📜 Licence & données
 
 Objets/monstres du SRD 5.1 (usage personnel, pas de revente). Traductions françaises de [5e-drs.fr](https://5e-drs.fr) et [AideDD.org](https://www.aidedd.org).

@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import type { User } from '@dnd-inventory/shared';
+import type React from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
 // ---------- Types ----------
 
@@ -66,78 +67,84 @@ export function SyncProvider({ user, children }: { user: User | null; children: 
 
   const dispatchToHandlers = useCallback((event: SyncEvent) => {
     for (const handler of handlersRef.current) {
-      try { handler(event); } catch {}
+      try {
+        handler(event);
+      } catch {}
     }
   }, []);
 
-  const connect = useCallback((token: string) => {
-    // Clean up existing connection
-    if (wsRef.current) {
-      wsRef.current.onclose = null; // prevent reconnect trigger
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-
-    setStatus('connecting');
-    const url = buildWsUrl();
-    // Auth via subprotocol header keeps the JWT out of URLs and proxy logs.
-    const ws = new WebSocket(url, [token]);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setStatus('connected');
-      reconnectDelay.current = 1000; // reset backoff
-    };
-
-    ws.onmessage = (e) => {
-      try {
-        const event = JSON.parse(e.data) as SyncEvent;
-        // Concentration alerts are one-shot and must not be coalesced away
-        // by the debounce below (a follow-up character:change would replace
-        // them before the timer fires).
-        if (event.concentration) {
-          dispatchToHandlers(event);
-          return;
-        }
-        // Collapse same-kind events; keep different kinds side by side
-        const last = pendingEvents.current[pendingEvents.current.length - 1];
-        const sameKind = last
-          && last.type === event.type
-          && last.characterId === event.characterId
-          && last.toCharacterId === event.toCharacterId
-          && last.partyId === event.partyId;
-        if (sameKind) {
-          pendingEvents.current[pendingEvents.current.length - 1] = event;
-        } else {
-          pendingEvents.current.push(event);
-        }
-        if (debounceTimer.current) return; // already scheduled, will pick up latest
-        debounceTimer.current = setTimeout(() => {
-          debounceTimer.current = null;
-          const events = pendingEvents.current;
-          pendingEvents.current = [];
-          for (const ev of events) dispatchToHandlers(ev);
-        }, 300);
-      } catch {}
-    };
-
-    ws.onclose = () => {
-      setStatus('disconnected');
-      wsRef.current = null;
-      // Auto-reconnect with exponential backoff (1s → 2s → 4s → ... → 10s max)
-      if (reconnectDelay.current < 10000) {
-        reconnectDelay.current = Math.min(reconnectDelay.current * 2, 10000);
+  const connect = useCallback(
+    (token: string) => {
+      // Clean up existing connection
+      if (wsRef.current) {
+        wsRef.current.onclose = null; // prevent reconnect trigger
+        wsRef.current.close();
+        wsRef.current = null;
       }
-      reconnectTimeout.current = setTimeout(() => {
-        const savedToken = localStorage.getItem('dnd-inv-token');
-        if (savedToken) connect(savedToken);
-      }, reconnectDelay.current);
-    };
 
-    ws.onerror = () => {
-      // onclose will handle reconnect
-    };
-  }, [dispatchToHandlers]);
+      setStatus('connecting');
+      const url = buildWsUrl();
+      // Auth via subprotocol header keeps the JWT out of URLs and proxy logs.
+      const ws = new WebSocket(url, [token]);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setStatus('connected');
+        reconnectDelay.current = 1000; // reset backoff
+      };
+
+      ws.onmessage = (e) => {
+        try {
+          const event = JSON.parse(e.data) as SyncEvent;
+          // Concentration alerts are one-shot and must not be coalesced away
+          // by the debounce below (a follow-up character:change would replace
+          // them before the timer fires).
+          if (event.concentration) {
+            dispatchToHandlers(event);
+            return;
+          }
+          // Collapse same-kind events; keep different kinds side by side
+          const last = pendingEvents.current[pendingEvents.current.length - 1];
+          const sameKind =
+            last &&
+            last.type === event.type &&
+            last.characterId === event.characterId &&
+            last.toCharacterId === event.toCharacterId &&
+            last.partyId === event.partyId;
+          if (sameKind) {
+            pendingEvents.current[pendingEvents.current.length - 1] = event;
+          } else {
+            pendingEvents.current.push(event);
+          }
+          if (debounceTimer.current) return; // already scheduled, will pick up latest
+          debounceTimer.current = setTimeout(() => {
+            debounceTimer.current = null;
+            const events = pendingEvents.current;
+            pendingEvents.current = [];
+            for (const ev of events) dispatchToHandlers(ev);
+          }, 300);
+        } catch {}
+      };
+
+      ws.onclose = () => {
+        setStatus('disconnected');
+        wsRef.current = null;
+        // Auto-reconnect with exponential backoff (1s → 2s → 4s → ... → 10s max)
+        if (reconnectDelay.current < 10000) {
+          reconnectDelay.current = Math.min(reconnectDelay.current * 2, 10000);
+        }
+        reconnectTimeout.current = setTimeout(() => {
+          const savedToken = localStorage.getItem('dnd-inv-token');
+          if (savedToken) connect(savedToken);
+        }, reconnectDelay.current);
+      };
+
+      ws.onerror = () => {
+        // onclose will handle reconnect
+      };
+    },
+    [dispatchToHandlers],
+  );
 
   // Connect on login, disconnect on logout
   useEffect(() => {
@@ -166,7 +173,9 @@ export function SyncProvider({ user, children }: { user: User | null; children: 
 
   const subscribe = useCallback((handler: (event: SyncEvent) => void) => {
     handlersRef.current.add(handler);
-    return () => { handlersRef.current.delete(handler); };
+    return () => {
+      handlersRef.current.delete(handler);
+    };
   }, []);
 
   // markLocalMutation is kept for backward compatibility but is now a no-op.
@@ -185,10 +194,7 @@ export function useSync() {
 }
 
 /** Convenience hook: subscribe to sync events filtered by partyId/characterId. */
-export function useSyncEvent(
-  handler: (event: SyncEvent) => void,
-  deps: React.DependencyList = [],
-) {
+export function useSyncEvent(handler: (event: SyncEvent) => void, deps: React.DependencyList = []) {
   const { subscribe } = useSync();
   const handlerRef = useRef(handler);
   handlerRef.current = handler;

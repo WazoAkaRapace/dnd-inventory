@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import api from './api';
 import type { User } from '@dnd-inventory/shared';
+import type React from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import api from './api';
 
 interface AuthState {
   user: User | null;
@@ -25,15 +26,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setToken(savedToken);
       setUser(JSON.parse(savedUser));
       // Verify token is still valid
-      api.get('/api/auth/me').then((res) => {
-        setUser(res.data.user);
-        localStorage.setItem('dnd-inv-user', JSON.stringify(res.data.user));
-      }).catch(() => {
-        localStorage.removeItem('dnd-inv-token');
-        localStorage.removeItem('dnd-inv-user');
-        setToken(null);
-        setUser(null);
-      }).finally(() => setLoading(false));
+      api
+        .get('/api/auth/me')
+        .then((res) => {
+          setUser(res.data.user);
+          localStorage.setItem('dnd-inv-user', JSON.stringify(res.data.user));
+        })
+        .catch(() => {
+          localStorage.removeItem('dnd-inv-token');
+          localStorage.removeItem('dnd-inv-user');
+          setToken(null);
+          setUser(null);
+        })
+        .finally(() => setLoading(false));
     } else {
       setLoading(false);
     }

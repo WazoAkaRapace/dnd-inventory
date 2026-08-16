@@ -6,8 +6,8 @@
  * Reads: tomb-of-annihilation-site/data/stat-blocks/*.json
  * Merges into: data/monsters-seed.json (appends, deduplicates by slug)
  */
-import { readFileSync, writeFileSync, readdirSync, mkdirSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -24,11 +24,6 @@ const TOA_STATBLOCKS = resolve(
 );
 
 // ---------- Types ----------
-
-interface ToAAbility {
-  value: number;
-  mod: number;
-}
 
 interface ToAStatBlock {
   name: string;
@@ -95,16 +90,20 @@ interface SeedMonster {
 
 const SIZE_MAP: Record<string, string> = {
   'très petit': 'T',
-  'petit': 'P',
-  'moyen': 'M',
-  'grand': 'G',
+  petit: 'P',
+  moyen: 'M',
+  grand: 'G',
   'très grand': 'TG',
-  'gigantesque': 'Gig',
-  'colossal': 'C',
+  gigantesque: 'Gig',
+  colossal: 'C',
 };
 
 /** Parse "Créature monstrueuse de taille Moyenne, loyale neutre" → type, size, alignment */
-function parseTypeSizeAlignment(raw: string): { type: string; size: string; alignment: string | null } {
+function parseTypeSizeAlignment(raw: string): {
+  type: string;
+  size: string;
+  alignment: string | null;
+} {
   const lower = raw.toLowerCase();
   let size = 'M';
   for (const [word, code] of Object.entries(SIZE_MAP)) {
@@ -141,7 +140,16 @@ function parseSpeed(raw: string): Record<string, number> {
       const mode = m[1] ? m[1].toLowerCase() : 'walk';
       const val = parseInt(m[2], 10);
       // Normalize French mode names
-      const normalized = mode === 'vol' ? 'fly' : mode === 'nage' ? 'swim' : mode === 'escalade' ? 'climb' : mode === 'creusement' ? 'burrow' : mode;
+      const normalized =
+        mode === 'vol'
+          ? 'fly'
+          : mode === 'nage'
+            ? 'swim'
+            : mode === 'escalade'
+              ? 'climb'
+              : mode === 'creusement'
+                ? 'burrow'
+                : mode;
       speed[normalized] = val;
     }
   }
@@ -164,7 +172,9 @@ function parseCr(raw: string): number {
  * Example: "Cimeterre. Attaque...\nCrachat enflammé (rechargement...).\nLe triton..."
  * → splits into [{name: "Cimeterre", ...}, {name: "Crachat enflammé", ...}]
  */
-function splitFusedActions(entries: { name: string; text: string }[]): { name: string; text: string }[] {
+function splitFusedActions(
+  entries: { name: string; text: string }[],
+): { name: string; text: string }[] {
   const result: { name: string; text: string }[] = [];
   for (const entry of entries) {
     const lines = entry.text.split('\n');
@@ -176,9 +186,8 @@ function splitFusedActions(entries: { name: string; text: string }[]): { name: s
       // Check if this line is a new action name: starts with capital, ends with '.'
       // and is short enough to be a name (not a full sentence).
       // Must also NOT look like a continuation of a sentence (no lowercase start, no colon).
-      const isNameLine = /^([A-ZÀ-Ÿ][a-zà-ÿ''\s-]+(?:\s*\([^)]+\))?\.)$/.test(line)
-        && line.length < 80
-        && i > 0; // not the first line (that's the continuation of the current entry's name)
+      const isNameLine =
+        /^([A-ZÀ-Ÿ][a-zà-ÿ''\s-]+(?:\s*\([^)]+\))?\.)$/.test(line) && line.length < 80 && i > 0; // not the first line (that's the continuation of the current entry's name)
 
       if (isNameLine) {
         // Flush current action
@@ -227,7 +236,10 @@ function parseActionInfo(action: { name: string; text: string }): SeedMonsterAct
 /** Parse comma-separated string into array, null if empty */
 function parseList(raw: string | null): string[] | null {
   if (!raw || raw.trim() === '—' || raw.trim() === '-') return null;
-  return raw.split(/,\s*/).map((s) => s.trim()).filter(Boolean);
+  return raw
+    .split(/,\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 /** Parse skills string "Perception +4, Survie +4" → array */
@@ -285,7 +297,7 @@ function convertToA(slug: string, raw: ToAStatBlock): SeedMonster {
     traits: splitFusedActions(raw.traits || []).map(parseActionInfo),
     actions: splitFusedActions(raw.actions || []).map(parseActionInfo),
     legendaryActions: splitFusedActions(raw.legendary_actions || []).map(parseActionInfo),
-    source: 'Tombe de l\'Annihilation',
+    source: "Tombe de l'Annihilation",
     sourcePage: raw.page ?? null,
   };
 }
@@ -337,7 +349,7 @@ function main() {
     const m = toaMonsters.find((a) => a.slug === slug);
     if (m) {
       console.log(`  ✓ ${m.nameFr} — CA ${m.armorClass} PV ${m.hitPoints} CR ${m.challengeRating}`);
-      console.log(`    Actions: ${m.actions.map(a => a.name).join(', ')}`);
+      console.log(`    Actions: ${m.actions.map((a) => a.name).join(', ')}`);
     }
   }
 }

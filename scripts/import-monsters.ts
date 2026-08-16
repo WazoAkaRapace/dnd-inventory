@@ -11,8 +11,8 @@
  *
  * Run: npx tsx scripts/import-monsters.ts
  */
-import { writeFileSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -154,7 +154,11 @@ function parseYaml(text: string): Record<string, any> {
 }
 
 /** Parse a nested map starting at lineIdx with the given expected indent. */
-function parseNestedMap(lines: string[], startIdx: number, indent: number): { obj: Record<string, any>; consumed: number } {
+function parseNestedMap(
+  lines: string[],
+  startIdx: number,
+  indent: number,
+): { obj: Record<string, any>; consumed: number } {
   const obj: Record<string, any> = {};
   let i = startIdx;
   let consumed = 0;
@@ -222,7 +226,12 @@ function parseNestedMap(lines: string[], startIdx: number, indent: number): { ob
 }
 
 /** Parse a list item that starts as `- name: "foo"` possibly with more keys on following indented lines. */
-function parseInlineMap(firstItemRaw: string, lines: string[], idx: number, listIndent: number): Record<string, any> {
+function parseInlineMap(
+  firstItemRaw: string,
+  lines: string[],
+  idx: number,
+  listIndent: number,
+): Record<string, any> {
   const obj: Record<string, any> = {};
   const colon = firstItemRaw.indexOf(':');
   if (colon !== -1) {
@@ -409,9 +418,13 @@ async function fetchRenderedStats(slug: string): Promise<RenderedStats> {
     const html = await res.text();
 
     // AC: <div class="monster-armor-class"><strong>Classe d'armure</strong> <span>17 (armure naturelle)</span>
-    const acMatch = html.match(/monster-armor-class"><strong>[^<]*<\/strong>\s*<span>([^<]*)<\/span>/);
+    const acMatch = html.match(
+      /monster-armor-class"><strong>[^<]*<\/strong>\s*<span>([^<]*)<\/span>/,
+    );
     // HP: <div class="monster-hit-points"><strong>Points de vie</strong> <span>135 (18d10+36)</span>
-    const hpMatch = html.match(/monster-hit-points"><strong>[^<]*<\/strong>\s*<span>([^<]*)<\/span>/);
+    const hpMatch = html.match(
+      /monster-hit-points"><strong>[^<]*<\/strong>\s*<span>([^<]*)<\/span>/,
+    );
 
     let armorClass: number | null = null;
     let armorDesc: string | null = null;
@@ -493,7 +506,11 @@ function crToNumber(cr: string): number {
 
 // ---------- Main conversion ----------
 
-export function convertMonster(slug: string, md: string, rendered: RenderedStats): SeedMonster | null {
+export function convertMonster(
+  slug: string,
+  md: string,
+  rendered: RenderedStats,
+): SeedMonster | null {
   const fm = parseFrontmatter(md);
   // Include all sources from 5e-drs (SRD + Livre des monstres + others)
 
@@ -556,7 +573,11 @@ function buildSensesString(senses: any): string {
 
 // ---------- Concurrency helper ----------
 
-async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, idx: number) => Promise<R>): Promise<R[]> {
+async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, idx: number) => Promise<R>,
+): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let next = 0;
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
@@ -570,7 +591,7 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, idx: numb
   return results;
 }
 
-async function fetchText(url: string): Promise<string> {
+async function _fetchText(url: string): Promise<string> {
   const res = await fetch(url, {
     headers: { 'User-Agent': 'DnDInventoryApp/1.0 (monster-importer)' },
     signal: AbortSignal.timeout(20000),
@@ -589,9 +610,13 @@ async function ensureRepoClone(): Promise<string> {
   }
   console.log(`→ Cloning em-squared/5e-drs (shallow) to ${repoDir}...`);
   const { execFileSync } = await import('node:child_process');
-  execFileSync('git', ['clone', '--depth', '1', 'https://github.com/em-squared/5e-drs.git', repoDir], {
-    stdio: 'pipe',
-  });
+  execFileSync(
+    'git',
+    ['clone', '--depth', '1', 'https://github.com/em-squared/5e-drs.git', repoDir],
+    {
+      stdio: 'pipe',
+    },
+  );
   console.log('  clone complete');
   return repoDir;
 }
@@ -684,10 +709,11 @@ async function main() {
 }
 
 // Export for tests / reuse
-export { emptyStats, fetchRenderedStats, type SeedMonster, type RenderedStats };
+export { emptyStats, fetchRenderedStats, type RenderedStats, type SeedMonster };
 
 // Only run main() when this file is executed directly (not when imported)
 import { pathToFileURL } from 'node:url';
+
 const isMainModule = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
 if (isMainModule) {
   main().catch((err) => {

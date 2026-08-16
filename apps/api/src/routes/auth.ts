@@ -2,10 +2,11 @@
  * Auth routes: register, login, me, logout.
  * Passwords hashed with bcrypt. JWT issued on login/register.
  */
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import bcrypt from 'bcryptjs';
-import { getDb } from '../db/index.ts';
+
 import type { User } from '@dnd-inventory/shared';
+import bcrypt from 'bcryptjs';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { getDb } from '../db/index.ts';
 
 const BCRYPT_ROUNDS = 10;
 
@@ -39,9 +40,9 @@ export async function authRoutes(app: FastifyInstance) {
     if (existing) return reply.code(409).send({ error: 'username already taken' });
 
     const hash = bcrypt.hashSync(password, BCRYPT_ROUNDS);
-    const info = db.prepare(
-      'INSERT INTO users (username, password_hash, display_name) VALUES (?, ?, ?)',
-    ).run(username, hash, displayName);
+    const info = db
+      .prepare('INSERT INTO users (username, password_hash, display_name) VALUES (?, ?, ?)')
+      .run(username, hash, displayName);
     const row = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
     const user = sanitizeUser(row);
     const token = app.jwt.sign({ sub: user.id, username: user.username });
@@ -51,7 +52,8 @@ export async function authRoutes(app: FastifyInstance) {
   // ---------- Login ----------
   app.post('/login', async (req: FastifyRequest<{ Body: AuthBody }>, reply: FastifyReply) => {
     const { username, password } = req.body || {};
-    if (!username || !password) return reply.code(400).send({ error: 'username and password required' });
+    if (!username || !password)
+      return reply.code(400).send({ error: 'username and password required' });
 
     const db = getDb();
     const row = db.prepare('SELECT * FROM users WHERE username = ?').get(username) as any;
@@ -66,14 +68,18 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   // ---------- Me (current user) ----------
-  app.get('/me', { onRequest: [(app as any).authenticate] }, async (req: FastifyRequest, reply: FastifyReply) => {
-    const userId = (req as any).user?.sub;
-    if (!userId) return reply.code(401).send({ error: 'unauthorized' });
-    const db = getDb();
-    const row = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
-    if (!row) return reply.code(404).send({ error: 'user not found' });
-    return reply.send({ user: sanitizeUser(row) });
-  });
+  app.get(
+    '/me',
+    { onRequest: [(app as any).authenticate] },
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      const userId = (req as any).user?.sub;
+      if (!userId) return reply.code(401).send({ error: 'unauthorized' });
+      const db = getDb();
+      const row = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+      if (!row) return reply.code(404).send({ error: 'user not found' });
+      return reply.send({ user: sanitizeUser(row) });
+    },
+  );
 
   // ---------- Logout ----------
   app.post('/logout', async (_req, reply) => {

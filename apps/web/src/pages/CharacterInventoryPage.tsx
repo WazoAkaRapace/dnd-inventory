@@ -1,56 +1,71 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { createPortal } from 'react-dom';
-import { useParams, Link } from 'react-router-dom';
-import api from '../api';
-import { useSyncEvent, useSync } from '../sync';
-import { useAuth } from '../auth';
 import type {
+  Character,
   CharacterInventory,
+  CharacterSummary,
+  ConcentrationCheck,
   InventoryEntry,
   Item,
   ItemCategory,
-  Rarity,
-  Character,
-  CharacterSummary,
+  LocationWeight,
   PartyDetail,
+  Rarity,
   StorageLocation,
   StorageType,
-  LocationWeight,
-  ConcentrationCheck,
 } from '@dnd-inventory/shared';
 import {
   CATEGORY_LABELS_FR,
-  RARITY_LABELS_FR,
   COIN_LABELS_FR,
-  DND_CONDITIONS_FR,
-  computeWeaponStats,
   computeUnarmedStats,
-  sneakAttackDice,
+  computeWeaponStats,
+  DND_CONDITIONS_FR,
   extraAttacks,
   findClass,
+  formatModifier,
+  proficiencyBonus,
+  RARITY_LABELS_FR,
+  resolveMagicArmorBase,
+  sneakAttackDice,
+  WEAPON_PROPERTY_LABELS_FR,
+  type WildShapeFormSummary,
   wildShapeDurationHours,
   wildShapeMaxCR,
-  type WildShapeFormSummary,
-  WEAPON_PROPERTY_LABELS_FR,
-  resolveMagicArmorBase,
-  proficiencyBonus,
-  formatModifier,
 } from '@dnd-inventory/shared';
-import CharacterStatsTab from './CharacterStatsTab';
-import CharacterSkillsTab from './CharacterSkillsTab';
-import CharacterSpellsTab from './CharacterSpellsTab';
-import CharacterFeaturesTab from './CharacterFeaturesTab';
-import CharacterDescriptionTab from './CharacterDescriptionTab';
-import NpcPage from './NpcPage';
-import CharacterNotesTab from './CharacterNotesTab';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Link, useParams } from 'react-router-dom';
+import api from '../api';
+import { useAuth } from '../auth';
 import ConcentrationAlert from '../components/ConcentrationAlert';
 import MonsterStatBlock from '../components/MonsterStatBlock';
 import TurnSlash, { useTurnSlash } from '../components/TurnSlash';
+import { useSync, useSyncEvent } from '../sync';
+import CharacterDescriptionTab from './CharacterDescriptionTab';
+import CharacterFeaturesTab from './CharacterFeaturesTab';
+import CharacterNotesTab from './CharacterNotesTab';
+import CharacterSkillsTab from './CharacterSkillsTab';
+import CharacterSpellsTab from './CharacterSpellsTab';
+import CharacterStatsTab from './CharacterStatsTab';
+import NpcPage from './NpcPage';
 
-type CharacterTab = 'inventory' | 'survival' | 'stats' | 'spells' | 'skills' | 'features' | 'description' | 'npcs' | 'notes';
+type CharacterTab =
+  | 'inventory'
+  | 'survival'
+  | 'stats'
+  | 'spells'
+  | 'skills'
+  | 'features'
+  | 'description'
+  | 'npcs'
+  | 'notes';
 
 /** Character sheet tabs (shared by the desktop top bar and the mobile bottom dock). */
-const CHARACTER_TABS: { key: CharacterTab; label: string; icon: string; primary: boolean; short?: string }[] = [
+const CHARACTER_TABS: {
+  key: CharacterTab;
+  label: string;
+  icon: string;
+  primary: boolean;
+  short?: string;
+}[] = [
   { key: 'inventory', label: 'Inventaire', icon: '🎒', primary: false },
   { key: 'survival', label: 'Survie', icon: '🩸', primary: true, short: 'Survie' },
   { key: 'stats', label: 'Caractéristiques', icon: '⚔️', primary: true, short: 'Caract.' },
@@ -61,21 +76,20 @@ const CHARACTER_TABS: { key: CharacterTab; label: string; icon: string; primary:
   { key: 'npcs', label: 'PNJ', icon: '🎭', primary: false },
   { key: 'notes', label: 'Notes', icon: '📝', primary: false },
 ];
-/** Dock slot order: the 4 essentials split around the center button. */
-const DOCK_PRIMARY: CharacterTab[] = ['survival', 'stats', 'spells', 'skills'];
+
 import {
-  LoadingSpinner,
-  ErrorMsg,
-  EmptyState,
-  Modal,
   BottomSheet,
-  RarityBadge,
   CategoryBadge,
-  WeightBadge,
   CostBadge,
+  EmptyState,
   EncumbranceBar,
-  ToastStack,
+  ErrorMsg,
+  LoadingSpinner,
+  Modal,
+  RarityBadge,
   type Toast,
+  ToastStack,
+  WeightBadge,
 } from '../components/ui';
 
 // ---------- Icons ----------
@@ -83,7 +97,11 @@ import {
 function SettingsIcon({ className = '' }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-      <path fillRule="evenodd" clipRule="evenodd" d="M11.49 3.17a.75.75 0 0 0-1.48 0l-.13 1.02a6.5 6.5 0 0 0-1.4.57l-.82-.62a.75.75 0 0 0-.98.06l-.7.7a.75.75 0 0 0-.06.98l.62.82a6.5 6.5 0 0 0-.57 1.4l-1.02.13a.75.75 0 0 0 0 1.48l1.02.13c.14.49.33.96.57 1.4l-.62.82a.75.75 0 0 0 .06.98l.7.7c.28.28.72.31 1.04.06l.76-.57c.44.24.91.43 1.4.57l.13 1.02a.75.75 0 0 0 1.48 0l.13-1.02c.49-.14.96-.33 1.4-.57l.76.57c.32.25.76.22 1.04-.06l.7-.7a.75.75 0 0 0 .06-.98l-.62-.82c.24-.44.43-.91.57-1.4l1.02-.13a.75.75 0 0 0 0-1.48l-1.02-.13a6.5 6.5 0 0 0-.57-1.4l.62-.82a.75.75 0 0 0-.06-.98l-.7-.7a.75.75 0 0 0-.98-.06l-.82.62a6.5 6.5 0 0 0-1.4-.57l-.13-1.02ZM10 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" />
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M11.49 3.17a.75.75 0 0 0-1.48 0l-.13 1.02a6.5 6.5 0 0 0-1.4.57l-.82-.62a.75.75 0 0 0-.98.06l-.7.7a.75.75 0 0 0-.06.98l.62.82a6.5 6.5 0 0 0-.57 1.4l-1.02.13a.75.75 0 0 0 0 1.48l1.02.13c.14.49.33.96.57 1.4l-.62.82a.75.75 0 0 0 .06.98l.7.7c.28.28.72.31 1.04.06l.76-.57c.44.24.91.43 1.4.57l.13 1.02a.75.75 0 0 0 1.48 0l.13-1.02c.49-.14.96-.33 1.4-.57l.76.57c.32.25.76.22 1.04-.06l.7-.7a.75.75 0 0 0 .06-.98l-.62-.82c.24-.44.43-.91.57-1.4l1.02-.13a.75.75 0 0 0 0-1.48l-1.02-.13a6.5 6.5 0 0 0-.57-1.4l.62-.82a.75.75 0 0 0-.06-.98l-.7-.7a.75.75 0 0 0-.98-.06l-.82.62a6.5 6.5 0 0 0-1.4-.57l-.13-1.02ZM10 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"
+      />
     </svg>
   );
 }
@@ -99,18 +117,23 @@ const CATEGORY_OPTIONS: { value: '' | ItemCategory; label: string }[] = [
 
 const RARITY_OPTIONS: { value: '' | Rarity; label: string }[] = [
   { value: '', label: 'Toutes raretés' },
-  ...(['common', 'uncommon', 'rare', 'veryRare', 'legendary', 'artifact'] as Rarity[]).map(
-    (r) => ({ value: r, label: RARITY_LABELS_FR[r] }),
-  ),
+  ...(['common', 'uncommon', 'rare', 'veryRare', 'legendary', 'artifact'] as Rarity[]).map((r) => ({
+    value: r,
+    label: RARITY_LABELS_FR[r],
+  })),
 ];
 
 // Coin fields with distinct CSS-colored glyphs instead of identical emoji
-const COIN_FIELDS: { key: keyof Pick<Character, 'copper' | 'silver' | 'electrum' | 'gold' | 'platinum'>; unit: 'cp' | 'sp' | 'ep' | 'gp' | 'pp'; color: string }[] = [
-  { key: 'copper', unit: 'cp', color: '#b87333' },    // copper
-  { key: 'silver', unit: 'sp', color: '#c0c0c0' },    // silver
-  { key: 'electrum', unit: 'ep', color: '#a89968' },  // electrum (pale gold-silver)
-  { key: 'gold', unit: 'gp', color: '#d4af37' },      // gold
-  { key: 'platinum', unit: 'pp', color: '#e5e4e2' },  // platinum (white-silver)
+const COIN_FIELDS: {
+  key: keyof Pick<Character, 'copper' | 'silver' | 'electrum' | 'gold' | 'platinum'>;
+  unit: 'cp' | 'sp' | 'ep' | 'gp' | 'pp';
+  color: string;
+}[] = [
+  { key: 'copper', unit: 'cp', color: '#b87333' }, // copper
+  { key: 'silver', unit: 'sp', color: '#c0c0c0' }, // silver
+  { key: 'electrum', unit: 'ep', color: '#a89968' }, // electrum (pale gold-silver)
+  { key: 'gold', unit: 'gp', color: '#d4af37' }, // gold
+  { key: 'platinum', unit: 'pp', color: '#e5e4e2' }, // platinum (white-silver)
 ];
 
 const CATALOG_PAGE_SIZE = 30;
@@ -185,9 +208,15 @@ export default function CharacterInventoryPage() {
   const [moreOpen, setMoreOpen] = useState(false); // mobile « Plus » tabs sheet
   // Mobile combat: the dock hub doubles as the combat indicator
   const [hubCombat, setHubCombat] = useState<{
-    encounterId: number; partyId: number; status: string; round: number;
-    needsInitiative: boolean; isMyTurn: boolean; currentCombatantName: string | null;
-    myCombatantId: number | null; initiativeBonus: number;
+    encounterId: number;
+    partyId: number;
+    status: string;
+    round: number;
+    needsInitiative: boolean;
+    isMyTurn: boolean;
+    currentCombatantName: string | null;
+    myCombatantId: number | null;
+    initiativeBonus: number;
   } | null>(null);
   const [hubInitOpen, setHubInitOpen] = useState(false);
   const [hubInitInput, setHubInitInput] = useState('');
@@ -231,12 +260,17 @@ export default function CharacterInventoryPage() {
   useEffect(() => {
     if (!partyId || !user) return;
     let alive = true;
-    api.get<PartyDetail>(`/api/parties/${partyId}`)
+    api
+      .get<PartyDetail>(`/api/parties/${partyId}`)
       .then((res) => {
         if (alive) setIsGM(res.data.members.some((m) => m.userId === user.id && m.role === 'gm'));
       })
-      .catch(() => { if (alive) setIsGM(false); });
-    return () => { alive = false; };
+      .catch(() => {
+        if (alive) setIsGM(false);
+      });
+    return () => {
+      alive = false;
+    };
   }, [partyId, user]);
 
   // ---------- Load inventory ----------
@@ -254,7 +288,7 @@ export default function CharacterInventoryPage() {
         gold: res.data.character.gold,
         platinum: res.data.character.platinum,
       });
-      setMultDraft(String(res.data.character.capacityMultiplier ?? 1));      // Default the active tab to the carried location
+      setMultDraft(String(res.data.character.capacityMultiplier ?? 1)); // Default the active tab to the carried location
       setActiveLocationId((prev) => {
         const stillExists = prev !== null && res.data.locations.some((l) => l.id === prev);
         if (stillExists) return prev;
@@ -281,27 +315,34 @@ export default function CharacterInventoryPage() {
   // mutation (the echo of our own character:change arrives ~300ms later).
   const lastLocalRefresh = useRef(0);
 
-  useSyncEvent((event) => {
-    // Only react to events for this character or this party
-    if (event.partyId !== currentPartyId) return;
-    if (event.type === 'inventory:change') {
-      // If it involves this character (either as source or transfer target)
-      if (event.characterId === currentCharId || event.toCharacterId === currentCharId) {
-        refreshInventory();
-        // Notify on incoming transfer
-        if (event.action === 'transfer' && event.toCharacterId === currentCharId && event.itemName) {
-          pushToast(`Objet reçu : ${event.itemName}`);
+  useSyncEvent(
+    (event) => {
+      // Only react to events for this character or this party
+      if (event.partyId !== currentPartyId) return;
+      if (event.type === 'inventory:change') {
+        // If it involves this character (either as source or transfer target)
+        if (event.characterId === currentCharId || event.toCharacterId === currentCharId) {
+          refreshInventory();
+          // Notify on incoming transfer
+          if (
+            event.action === 'transfer' &&
+            event.toCharacterId === currentCharId &&
+            event.itemName
+          ) {
+            pushToast(`Objet reçu : ${event.itemName}`);
+          }
+        }
+      } else if (event.type === 'character:change') {
+        if (event.characterId === currentCharId) {
+          // Skip the echo of our own edit — we already refreshed after the PATCH.
+          // Concentration payloads always pass through (they're one-shot alerts).
+          if (!event.concentration && Date.now() - lastLocalRefresh.current < 600) return;
+          refreshInventory();
         }
       }
-    } else if (event.type === 'character:change') {
-      if (event.characterId === currentCharId) {
-        // Skip the echo of our own edit — we already refreshed after the PATCH.
-        // Concentration payloads always pass through (they're one-shot alerts).
-        if (!event.concentration && Date.now() - lastLocalRefresh.current < 600) return;
-        refreshInventory();
-      }
-    }
-  }, [currentCharId, currentPartyId]);
+    },
+    [currentCharId, currentPartyId],
+  );
 
   // ---------- Debounced catalog search ----------
   useEffect(() => {
@@ -362,45 +403,48 @@ export default function CharacterInventoryPage() {
     }
   };
 
-  const refreshInventory = useCallback(async (flashId?: number) => {
-    if (!charId) return;
-    lastLocalRefresh.current = Date.now();
-    try {
-      const res = await api.get<CharacterInventory>(`/api/characters/${charId}/inventory`);
-      // Diff guard: only update state if data actually changed.
-      // This prevents deep re-renders when the response is identical
-      // (e.g. after a no-op sync event or unchanged data).
-      const newDataStr = JSON.stringify(res.data);
-      setData((prev) => {
-        if (prev && JSON.stringify(prev) === newDataStr) return prev;
-        return res.data;
-      });
-      // Sync coins only if values changed
-      setCoins((prev) => {
-        const next = {
-          copper: res.data.character.copper,
-          silver: res.data.character.silver,
-          electrum: res.data.character.electrum,
-          gold: res.data.character.gold,
-          platinum: res.data.character.platinum,
-        };
-        return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
-      });
-      // Update active tab if the active location was deleted (fall back to carried)
-      setActiveLocationId((prev) => {
-        const stillExists = prev !== null && res.data.locations.some((l) => l.id === prev);
-        if (stillExists) return prev;
-        const carried = findCarriedLocation(res.data.locations);
-        return carried ? carried.id : (res.data.locations[0]?.id ?? null);
-      });
-      if (flashId !== undefined) {
-        setFlashEntryId(flashId);
-        setTimeout(() => setFlashEntryId(null), 1200);
+  const refreshInventory = useCallback(
+    async (flashId?: number) => {
+      if (!charId) return;
+      lastLocalRefresh.current = Date.now();
+      try {
+        const res = await api.get<CharacterInventory>(`/api/characters/${charId}/inventory`);
+        // Diff guard: only update state if data actually changed.
+        // This prevents deep re-renders when the response is identical
+        // (e.g. after a no-op sync event or unchanged data).
+        const newDataStr = JSON.stringify(res.data);
+        setData((prev) => {
+          if (prev && JSON.stringify(prev) === newDataStr) return prev;
+          return res.data;
+        });
+        // Sync coins only if values changed
+        setCoins((prev) => {
+          const next = {
+            copper: res.data.character.copper,
+            silver: res.data.character.silver,
+            electrum: res.data.character.electrum,
+            gold: res.data.character.gold,
+            platinum: res.data.character.platinum,
+          };
+          return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+        });
+        // Update active tab if the active location was deleted (fall back to carried)
+        setActiveLocationId((prev) => {
+          const stillExists = prev !== null && res.data.locations.some((l) => l.id === prev);
+          if (stillExists) return prev;
+          const carried = findCarriedLocation(res.data.locations);
+          return carried ? carried.id : (res.data.locations[0]?.id ?? null);
+        });
+        if (flashId !== undefined) {
+          setFlashEntryId(flashId);
+          setTimeout(() => setFlashEntryId(null), 1200);
+        }
+      } catch {
+        // keep stale data
       }
-    } catch {
-      // keep stale data
-    }
-  }, [charId]);
+    },
+    [charId],
+  );
 
   // Stepper: -1 / +1. At 0, enter confirm-delete state instead of silent delete.
   const stepQuantity = async (entry: InventoryEntry, delta: number) => {
@@ -456,7 +500,7 @@ export default function CharacterInventoryPage() {
     });
   };
 
-  const cancelDelete = (entryId: number) => {
+  const cancelDelete = (_entryId: number) => {
     setConfirmDeleteId(null);
     if (confirmDeleteTimer.current) clearTimeout(confirmDeleteTimer.current);
   };
@@ -538,7 +582,9 @@ export default function CharacterInventoryPage() {
         await api.patch(`/api/inventory/${entry.id}`, { storageLocationId: locationId });
         await refreshInventory(entry.id);
         const target = data?.locations.find((l) => l.id === locationId);
-        pushToast(`${entry.item.nameFr || entry.item.name} déplacé vers ${target?.name ?? 'l\'emplacement'}`);
+        pushToast(
+          `${entry.item.nameFr || entry.item.name} déplacé vers ${target?.name ?? "l'emplacement"}`,
+        );
       } catch (err: any) {
         pushToast(err.response?.data?.error || 'Erreur lors du déplacement', 'error');
       }
@@ -557,7 +603,7 @@ export default function CharacterInventoryPage() {
     } catch (err: any) {
       pushToast(err.response?.data?.error || 'Erreur de sauvegarde', 'error');
     }
-  }, [charId, coins, coinsDirty, pushToast, refreshInventory]);
+  }, [charId, coins, coinsDirty, pushToast, refreshInventory, markLocalMutation]);
 
   // Commit capacity multiplier change on blur
   const commitMult = async () => {
@@ -604,36 +650,41 @@ export default function CharacterInventoryPage() {
   // change the hook count between renders and crash React (#310).
   // The sync listener bumps a counter that re-runs the effect below.
   const [combatRefresh, setCombatRefresh] = useState(0);
-  useSyncEvent((event) => {
-    if (event.partyId === Number(partyId) && event.type === 'combat:change') {
-      setCombatRefresh(n => n + 1);
-    }
-  }, [partyId]);
+  useSyncEvent(
+    (event) => {
+      if (event.partyId === Number(partyId) && event.type === 'combat:change') {
+        setCombatRefresh((n) => n + 1);
+      }
+    },
+    [partyId],
+  );
 
   // Mobile combat: check if this character is in an active/setup encounter.
   // Only setState when the combat status actually changes to avoid re-render loops.
   const hubCombatRef = useRef<string>('');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: deps narrowed on purpose — full data?.character would refetch encounters on every inventory refresh; the hubCombatRef snapshot guard makes extra runs safe, and combatRefresh is a manual bump that works around the server-side echo suppression.
   useEffect(() => {
     if (!user || !data?.character) return;
-    const ownerId = data.character.ownerId;
     let alive = true;
     const load = async () => {
       try {
         const encRes = await api.get(`/api/parties/${partyId}/encounters`);
         const encounters = encRes.data.encounters || [];
-        const relevant = encounters.filter((e: any) => e.status === 'active' || e.status === 'setup');
+        const relevant = encounters.filter(
+          (e: any) => e.status === 'active' || e.status === 'setup',
+        );
         for (const enc of relevant) {
           const det = await api.get(`/api/encounters/${enc.id}`);
           const detail = det.data.encounter;
-          const mine = detail.combatants.find(
-            (c: any) => c.characterId === Number(charId),
-          );
+          const mine = detail.combatants.find((c: any) => c.characterId === Number(charId));
           if (mine) {
             const current = detail.combatants[detail.turnIndex];
             const dexMod = Math.floor(((data?.character?.dexterity ?? 10) - 10) / 2);
             const next = {
-              encounterId: detail.id, partyId: detail.partyId,
-              status: detail.status, round: detail.round,
+              encounterId: detail.id,
+              partyId: detail.partyId,
+              status: detail.status,
+              round: detail.round,
               needsInitiative: mine.initiative === null,
               isMyTurn: detail.status === 'active' && current?.id === mine.id,
               currentCombatantName: current?.name ?? null,
@@ -653,10 +704,14 @@ export default function CharacterInventoryPage() {
           hubCombatRef.current = '';
           setHubCombat(null);
         }
-      } catch { /* silent */ }
+      } catch {
+        /* silent */
+      }
     };
     load();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [user, partyId, charId, data?.character?.ownerId, combatRefresh]);
 
   // "Your turn" sword-cut on the mobile combat indicator (dock card + hub)
@@ -673,7 +728,9 @@ export default function CharacterInventoryPage() {
   const canEdit = data.character.ownerId === user?.id || isGM;
 
   // Non-casters never open Sorts: Traits takes its dock slot, Sorts moves to the hub
-  const isCasterClass = !!findClass(character.characterClass) && findClass(character.characterClass)!.spellcasting !== 'none';
+  const isCasterClass =
+    !!findClass(character.characterClass) &&
+    findClass(character.characterClass)!.spellcasting !== 'none';
   const dockPrimaryList: CharacterTab[] = isCasterClass
     ? ['survival', 'stats', 'spells', 'skills']
     : ['survival', 'stats', 'features', 'skills'];
@@ -687,9 +744,7 @@ export default function CharacterInventoryPage() {
   const isActiveCarried = activeLocation?.type === 'carried';
 
   // Filter entries to the active location (each entry has a storageLocationId)
-  const entries = data.entries.filter(
-    (e) => e.storageLocationId === activeLocationResolvedId,
-  );
+  const entries = data.entries.filter((e) => e.storageLocationId === activeLocationResolvedId);
 
   // Active location's weight info (for the per-location bar)
   const activeLocationWeight: LocationWeight | undefined = locationWeights.find(
@@ -742,13 +797,19 @@ export default function CharacterInventoryPage() {
                   onBlur={commitName}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                    if (e.key === 'Escape') { setEditingName(false); }
+                    if (e.key === 'Escape') {
+                      setEditingName(false);
+                    }
                   }}
                   autoFocus
                 />
               ) : canEdit ? (
                 <button
-                  onClick={() => { setNameDraft(character.name); setEditingName(true); }}
+                  type="button"
+                  onClick={() => {
+                    setNameDraft(character.name);
+                    setEditingName(true);
+                  }}
                   className="hover:text-blood-600 transition-colors truncate"
                   title="Cliquer pour renommer"
                 >
@@ -758,12 +819,18 @@ export default function CharacterInventoryPage() {
                 <span className="truncate">{character.name}</span>
               )}
               {character.concentrating && (
-                <span className="shrink-0 text-base" title="Concentration en cours" aria-label="En concentration">
+                <span
+                  className="shrink-0 text-base"
+                  title="Concentration en cours"
+                  role="img"
+                  aria-label="En concentration"
+                >
                   🌀
                 </span>
               )}
               {canEdit && (
                 <button
+                  type="button"
                   onClick={() => setShowCarryModal(true)}
                   className="ml-auto shrink-0 text-ink-400 hover:text-blood-600 transition-colors"
                   aria-label="Portage"
@@ -796,24 +863,43 @@ export default function CharacterInventoryPage() {
                   value={multDraft}
                   onChange={(e) => setMultDraft(e.target.value)}
                   onBlur={commitMult}
-                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                  }}
                   aria-label="Multiplicateur de capacité de portage"
                 />
                 <button
-                  onClick={() => setShowMultHelp(s => !s)}
+                  type="button"
+                  onClick={() => setShowMultHelp((s) => !s)}
                   className="text-ink-400 hover:text-blood-600 text-sm w-6 h-6 flex items-center justify-center rounded-full hover:bg-parchment-100"
                   aria-label="Aide sur le multiplicateur de portage"
                   title="Aide"
-                >?</button>
+                >
+                  ?
+                </button>
               </span>
             </label>
             {showMultHelp && (
               <div className="mt-2 text-xs text-ink-600 bg-parchment-100 rounded-lg p-3 space-y-1.5">
-                <p><strong>×1 (défaut)</strong> : créature de taille M sans capacité spéciale.</p>
-                <p><strong>×2</strong> : Construction massive (Goliath, Firbolg, Demi-Orc, Bugbear, Orc, Loxodon) ou créature de taille G. Le personnage compte comme une catégorie de taille supérieure pour le calcul du poids transportable.</p>
-                <p><strong>×3</strong> : Créature de taille TG.</p>
-                <p><strong>×4</strong> : Créature de taille Gig.</p>
-                <p className="text-ink-400">Ce multiplicateur s'applique aux trois paliers (encombré, lourdement encombré, max). Modifiez-le si votre personnage a un trait qui augmente sa capacité de portage.</p>
+                <p>
+                  <strong>×1 (défaut)</strong> : créature de taille M sans capacité spéciale.
+                </p>
+                <p>
+                  <strong>×2</strong> : Construction massive (Goliath, Firbolg, Demi-Orc, Bugbear,
+                  Orc, Loxodon) ou créature de taille G. Le personnage compte comme une catégorie de
+                  taille supérieure pour le calcul du poids transportable.
+                </p>
+                <p>
+                  <strong>×3</strong> : Créature de taille TG.
+                </p>
+                <p>
+                  <strong>×4</strong> : Créature de taille Gig.
+                </p>
+                <p className="text-ink-400">
+                  Ce multiplicateur s'applique aux trois paliers (encombré, lourdement encombré,
+                  max). Modifiez-le si votre personnage a un trait qui augmente sa capacité de
+                  portage.
+                </p>
               </div>
             )}
           </div>
@@ -830,6 +916,7 @@ export default function CharacterInventoryPage() {
         <div className="flex items-center gap-1 bg-parchment-100 rounded-xl p-1 overflow-x-auto no-scrollbar">
           {CHARACTER_TABS.map((tab) => (
             <button
+              type="button"
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
@@ -850,12 +937,15 @@ export default function CharacterInventoryPage() {
       <div className="lg:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-30 max-w-[calc(100vw-2rem)]">
         {/* Combat status card — always visible, attached to the top of the dock.
             Initiative pending: expands inline with input + dice. */}
-        {hubCombat && hubCombat.needsInitiative && hubCombat.myCombatantId ? (
-          <div className={`mb-[-6px] mx-auto w-fit max-w-full rounded-t-xl rounded-b-md shadow-md border border-b-0 overflow-hidden transition-all duration-300 bg-yellow-400 border-yellow-500 ${
-            hubInitOpen ? 'max-h-44' : 'max-h-12'
-          }`}>
+        {hubCombat?.needsInitiative && hubCombat.myCombatantId ? (
+          <div
+            className={`mb-[-6px] mx-auto w-fit max-w-full rounded-t-xl rounded-b-md shadow-md border border-b-0 overflow-hidden transition-all duration-300 bg-yellow-400 border-yellow-500 ${
+              hubInitOpen ? 'max-h-44' : 'max-h-12'
+            }`}
+          >
             <button
-              onClick={() => setHubInitOpen(o => !o)}
+              type="button"
+              onClick={() => setHubInitOpen((o) => !o)}
               className="block w-full px-3 py-1.5 text-xs font-semibold text-ink-900"
               aria-expanded={hubInitOpen}
             >
@@ -875,9 +965,10 @@ export default function CharacterInventoryPage() {
                   aria-label="Ton initiative"
                 />
                 <button
+                  type="button"
                   onClick={async () => {
                     const v = parseInt(hubInitInput, 10);
-                    if (isNaN(v)) return;
+                    if (Number.isNaN(v)) return;
                     try {
                       await api.patch(
                         `/api/encounters/${hubCombat.encounterId}/combatants/${hubCombat.myCombatantId}/initiative`,
@@ -888,15 +979,18 @@ export default function CharacterInventoryPage() {
                       // The combat:change echo is suppressed server-side for the
                       // actor, so the hub card would keep asking for initiative.
                       // Bump the refresh counter to reload the combat status now.
-                      setCombatRefresh(n => n + 1);
+                      setCombatRefresh((n) => n + 1);
                       await refreshInventory();
-                    } catch { /* silent */ }
+                    } catch {
+                      /* silent */
+                    }
                   }}
                   className="btn-primary text-xs px-3 py-1"
                 >
                   OK
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     const roll = Math.floor(Math.random() * 20) + 1;
                     setHubInitInput(String(roll + hubCombat.initiativeBonus));
@@ -909,86 +1003,112 @@ export default function CharacterInventoryPage() {
               </div>
             )}
           </div>
-        ) : hubCombat && (
-          <Link
-            to={`/party/${hubCombat.partyId}/combat?enc=${hubCombat.encounterId}`}
-            className={`relative block mb-[-6px] mx-auto w-fit max-w-full px-3 py-1.5 rounded-t-xl rounded-b-md text-xs font-semibold shadow-md border border-b-0 transition-colors ${
-              hubCombat.isMyTurn
-                ? 'bg-blood-600 text-parchment-50 border-blood-700 combat-turn-glow'
-                : 'bg-ink-900 text-parchment-200 border-ink-700'
-            }`}
-            aria-label="Combat en cours — ouvrir le traqueur"
-          >
-            {hubCombat.isMyTurn
-              ? '⚔ À toi de jouer !'
-              : hubCombat.currentCombatantName
-                ? `⚔ ${hubCombat.currentCombatantName}`
-                : '⚔ Combat en préparation'}
-            <TurnSlash active={turnSlash} />
-          </Link>
+        ) : (
+          hubCombat && (
+            <Link
+              to={`/party/${hubCombat.partyId}/combat?enc=${hubCombat.encounterId}`}
+              className={`relative block mb-[-6px] mx-auto w-fit max-w-full px-3 py-1.5 rounded-t-xl rounded-b-md text-xs font-semibold shadow-md border border-b-0 transition-colors ${
+                hubCombat.isMyTurn
+                  ? 'bg-blood-600 text-parchment-50 border-blood-700 combat-turn-glow'
+                  : 'bg-ink-900 text-parchment-200 border-ink-700'
+              }`}
+              aria-label="Combat en cours — ouvrir le traqueur"
+            >
+              {hubCombat.isMyTurn
+                ? '⚔ À toi de jouer !'
+                : hubCombat.currentCombatantName
+                  ? `⚔ ${hubCombat.currentCombatantName}`
+                  : '⚔ Combat en préparation'}
+              <TurnSlash active={turnSlash} />
+            </Link>
+          )
         )}
         {(() => {
           const dockPrimary = dockPrimaryList;
           const primaries = dockPrimary.map((k) => CHARACTER_TABS.find((t) => t.key === k)!);
           const left = primaries.slice(0, 2);
           const right = primaries.slice(2);
-          const secondary = CHARACTER_TABS.find((t) => t.key === activeTab && !dockPrimary.includes(t.key));
+          const secondary = CHARACTER_TABS.find(
+            (t) => t.key === activeTab && !dockPrimary.includes(t.key),
+          );
           // Flex order: [slot][slot][hub][slot][slot] — equal 56px blocks with
           // 4px gaps after an 8px padding. The hub occupies visual slot 2, so
           // right-side tabs skip it; the indicator slides behind the hub only
           // when a secondary tab is selected.
           const activeIdx = primaries.findIndex((p) => p.key === activeTab);
           const indicatorIdx = activeIdx === -1 ? 2 : activeIdx <= 1 ? activeIdx : activeIdx + 1;
-            const slot = (tab: typeof primaries[number]) => {
-              const active = activeTab === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
-                  className={`relative z-10 flex flex-col items-center gap-0.5 w-14 py-1 rounded-full transition-[color,transform] duration-200 active:scale-95 whitespace-nowrap ${
-                    active ? 'text-white' : 'text-ink-400 hover:text-ink-700'
-                  }`}
-                  aria-pressed={active}
-                  aria-label={tab.label}
-                >
-                  <span className="text-lg leading-none" aria-hidden="true">{tab.icon}</span>
-                  <span className="text-[9px] font-medium leading-none">{tab.short ?? tab.label}</span>
-                </button>
-              );
-            };
+          const slot = (tab: (typeof primaries)[number]) => {
+            const active = activeTab === tab.key;
             return (
-              <div className={`dock-rise relative flex items-center gap-1 bg-white/95 backdrop-blur rounded-full shadow-xl border border-parchment-200 px-2 py-1.5 ${
-                hubCombat?.isMyTurn ? 'combat-turn-glow' : ''
-              }`}>
-                {/* Sliding active indicator — 8px padding + 60px per block */}
-                <span
-                  className="dock-indicator absolute top-1 bottom-1 left-2 w-14 rounded-full bg-blood-600 shadow-sm"
-                  style={{ transform: `translateX(${indicatorIdx * 60}px)` }}
-                  aria-hidden="true"
-                />
-                {left.map(slot)}
-                {/* Center: expandable button — doubles as the combat indicator */}
-                <button
-                  onClick={() => setMoreOpen((o) => !o)}
-                  className={`hub-button relative z-10 mx-1 -my-3 w-12 h-12 shrink-0 rounded-full shadow-lg flex items-center justify-center text-xl leading-none active:scale-90 border-4 border-parchment-50 ${
-                    moreOpen ? 'bg-ink-900 rotate-90 text-white'
-                    : hubCombat?.isMyTurn ? 'bg-blood-700 text-white'
-                    : hubCombat?.needsInitiative ? 'bg-yellow-500 text-ink-900 shadow-[0_0_0_3px_rgba(202,138,4,0.5),0_0_18px_rgba(202,138,4,0.5)]'
-                    : hubCombat ? 'bg-blood-600 text-white shadow-[0_0_0_2px_rgba(185,28,28,0.3),0_0_12px_rgba(185,28,28,0.25)]'
-                    : 'bg-blood-600 hover:bg-blood-700 text-white'
-                  }`}
-                  aria-expanded={moreOpen}
-                  aria-label={hubCombat ? 'Combat en cours' : moreOpen ? 'Fermer les autres onglets' : 'Autres onglets'}
-                >
-                  <span key={moreOpen ? 'x' : hubCombat ? 'combat' : secondary ? secondary.key : 'menu'} className="icon-swap" aria-hidden="true">
-                    {moreOpen ? '✕' : hubCombat ? '⚔' : secondary ? secondary.icon : '☰'}
-                  </span>
-                </button>
-                {right.map(slot)}
-                {/* Sword-cut sweeps the full dock bar on the your-turn edge */}
-                <TurnSlash active={turnSlash && !moreOpen} />
-              </div>
+              <button
+                type="button"
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`relative z-10 flex flex-col items-center gap-0.5 w-14 py-1 rounded-full transition-[color,transform] duration-200 active:scale-95 whitespace-nowrap ${
+                  active ? 'text-white' : 'text-ink-400 hover:text-ink-700'
+                }`}
+                aria-pressed={active}
+                aria-label={tab.label}
+              >
+                <span className="text-lg leading-none" aria-hidden="true">
+                  {tab.icon}
+                </span>
+                <span className="text-[9px] font-medium leading-none">
+                  {tab.short ?? tab.label}
+                </span>
+              </button>
             );
+          };
+          return (
+            <div
+              className={`dock-rise relative flex items-center gap-1 bg-white/95 backdrop-blur rounded-full shadow-xl border border-parchment-200 px-2 py-1.5 ${
+                hubCombat?.isMyTurn ? 'combat-turn-glow' : ''
+              }`}
+            >
+              {/* Sliding active indicator — 8px padding + 60px per block */}
+              <span
+                className="dock-indicator absolute top-1 bottom-1 left-2 w-14 rounded-full bg-blood-600 shadow-sm"
+                style={{ transform: `translateX(${indicatorIdx * 60}px)` }}
+                aria-hidden="true"
+              />
+              {left.map(slot)}
+              {/* Center: expandable button — doubles as the combat indicator */}
+              <button
+                type="button"
+                onClick={() => setMoreOpen((o) => !o)}
+                className={`hub-button relative z-10 mx-1 -my-3 w-12 h-12 shrink-0 rounded-full shadow-lg flex items-center justify-center text-xl leading-none active:scale-90 border-4 border-parchment-50 ${
+                  moreOpen
+                    ? 'bg-ink-900 rotate-90 text-white'
+                    : hubCombat?.isMyTurn
+                      ? 'bg-blood-700 text-white'
+                      : hubCombat?.needsInitiative
+                        ? 'bg-yellow-500 text-ink-900 shadow-[0_0_0_3px_rgba(202,138,4,0.5),0_0_18px_rgba(202,138,4,0.5)]'
+                        : hubCombat
+                          ? 'bg-blood-600 text-white shadow-[0_0_0_2px_rgba(185,28,28,0.3),0_0_12px_rgba(185,28,28,0.25)]'
+                          : 'bg-blood-600 hover:bg-blood-700 text-white'
+                }`}
+                aria-expanded={moreOpen}
+                aria-label={
+                  hubCombat
+                    ? 'Combat en cours'
+                    : moreOpen
+                      ? 'Fermer les autres onglets'
+                      : 'Autres onglets'
+                }
+              >
+                <span
+                  key={moreOpen ? 'x' : hubCombat ? 'combat' : secondary ? secondary.key : 'menu'}
+                  className="icon-swap"
+                  aria-hidden="true"
+                >
+                  {moreOpen ? '✕' : hubCombat ? '⚔' : secondary ? secondary.icon : '☰'}
+                </span>
+              </button>
+              {right.map(slot)}
+              {/* Sword-cut sweeps the full dock bar on the your-turn edge */}
+              <TurnSlash active={turnSlash && !moreOpen} />
+            </div>
+          );
         })()}
       </div>
 
@@ -996,7 +1116,10 @@ export default function CharacterInventoryPage() {
           with the same sliding indicator (vertical) behind the active tab */}
       {moreOpen && (
         <>
-          <div className="scrim-fade lg:hidden fixed inset-0 z-40 bg-black/40" onClick={() => setMoreOpen(false)} />
+          <div
+            className="scrim-fade lg:hidden fixed inset-0 z-40 bg-black/40"
+            onClick={() => setMoreOpen(false)}
+          />
           {(() => {
             const secondaryTabs = CHARACTER_TABS.filter((t) => !dockPrimaryList.includes(t.key));
             const activeIdx = secondaryTabs.findIndex((t) => t.key === activeTab);
@@ -1015,38 +1138,44 @@ export default function CharacterInventoryPage() {
             const p = activeIdx >= 0 ? indPos(activeIdx) : null;
             return (
               <div className="lg:hidden fixed z-50 bottom-24 left-1/2 -translate-x-1/2">
-              <div className="w-[296px] grid grid-cols-2 gap-2">
-                {p && (
-                  <span
-                    className="dock-indicator absolute top-0 left-0 h-10 rounded-full bg-blood-600 shadow-sm"
-                    style={{ width: p.w, transform: `translate(${p.x}px, ${p.y}px)` }}
-                    aria-hidden="true"
-                  />
-                )}
-                {secondaryTabs.map((tab, i) => {
-                  const active = activeTab === tab.key;
-                  const span = i === 4;
-                  return (
-                    <button
-                      key={tab.key}
-                      onClick={() => { setActiveTab(tab.key); setMoreOpen(false); }}
-                      className={`dial-item relative z-10 ${span ? 'col-span-2 w-full' : 'w-36'} h-10 flex items-center justify-center gap-2 rounded-full border shadow-lg text-sm font-medium whitespace-nowrap transition-[color,border-color,background-color] duration-200 active:scale-95 ${
-                        active
-                          ? 'bg-transparent text-white border-blood-700'
-                          : 'bg-white text-ink-700 border-parchment-200 hover:border-blood-400'
-                      }`}
-                      style={{ animationDelay: `${i * 30}ms` }}
-                    >
-                      <span className="text-lg leading-none" aria-hidden="true">{tab.icon}</span>
-                      {tab.label}
-                    </button>
-                  );
-                })}
+                <div className="w-[296px] grid grid-cols-2 gap-2">
+                  {p && (
+                    <span
+                      className="dock-indicator absolute top-0 left-0 h-10 rounded-full bg-blood-600 shadow-sm"
+                      style={{ width: p.w, transform: `translate(${p.x}px, ${p.y}px)` }}
+                      aria-hidden="true"
+                    />
+                  )}
+                  {secondaryTabs.map((tab, i) => {
+                    const active = activeTab === tab.key;
+                    const span = i === 4;
+                    return (
+                      <button
+                        type="button"
+                        key={tab.key}
+                        onClick={() => {
+                          setActiveTab(tab.key);
+                          setMoreOpen(false);
+                        }}
+                        className={`dial-item relative z-10 ${span ? 'col-span-2 w-full' : 'w-36'} h-10 flex items-center justify-center gap-2 rounded-full border shadow-lg text-sm font-medium whitespace-nowrap transition-[color,border-color,background-color] duration-200 active:scale-95 ${
+                          active
+                            ? 'bg-transparent text-white border-blood-700'
+                            : 'bg-white text-ink-700 border-parchment-200 hover:border-blood-400'
+                        }`}
+                        style={{ animationDelay: `${i * 30}ms` }}
+                      >
+                        <span className="text-lg leading-none" aria-hidden="true">
+                          {tab.icon}
+                        </span>
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              </div>
-          );
-        })()}
-      </>
+            );
+          })()}
+        </>
       )}
 
       {/* ---------- Non-inventory tabs (rendered when selected) ---------- */}
@@ -1104,9 +1233,7 @@ export default function CharacterInventoryPage() {
           onError={(msg) => pushToast(msg, 'error')}
         />
       )}
-      {activeTab === 'npcs' && (
-        <NpcPage embedded />
-      )}
+      {activeTab === 'npcs' && <NpcPage embedded />}
       {activeTab === 'notes' && (
         <CharacterNotesTab
           character={character}
@@ -1120,184 +1247,210 @@ export default function CharacterInventoryPage() {
       {/* ---------- Inventory tab content ---------- */}
       {activeTab === 'inventory' && (
         <>
-      {/* ---------- Storage location tabs ---------- */}
-      <div className="-mx-4 px-4 sm:mx-0 sm:px-0">
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-          {locations.map((loc) => {
-            const isActive = loc.id === activeLocationResolvedId;
-            const lw = locationWeights.find((w) => w.locationId === loc.id);
-            const pct = lw ? Math.round(lw.pct) : 0;
-            const isConfirming = confirmDeleteLocationId === loc.id;
-            return (
-              <div key={loc.id} className="flex items-center shrink-0">
+          {/* ---------- Storage location tabs ---------- */}
+          <div className="-mx-4 px-4 sm:mx-0 sm:px-0">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+              {locations.map((loc) => {
+                const isActive = loc.id === activeLocationResolvedId;
+                const lw = locationWeights.find((w) => w.locationId === loc.id);
+                const pct = lw ? Math.round(lw.pct) : 0;
+                const isConfirming = confirmDeleteLocationId === loc.id;
+                return (
+                  <div key={loc.id} className="flex items-center shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setActiveLocationId(loc.id)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                        isActive
+                          ? 'bg-blood-600 text-white'
+                          : 'bg-parchment-200 text-ink-700 hover:bg-parchment-300'
+                      }`}
+                      aria-pressed={isActive}
+                    >
+                      <span aria-hidden="true">{LOCATION_TYPE_ICON[loc.type]}</span>
+                      <span>{loc.name}</span>
+                      <span
+                        className={`text-xs px-1.5 py-0.5 rounded-full ${
+                          isActive ? 'bg-white/25' : 'bg-parchment-100 text-ink-500'
+                        }`}
+                      >
+                        {pct}%
+                      </span>
+                    </button>
+                    {/* Delete button for non-carried locations */}
+                    {loc.type !== 'carried' && isActive && canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isConfirming) {
+                            deleteLocation(loc);
+                          } else {
+                            setConfirmDeleteLocationId(loc.id);
+                            setTimeout(() => setConfirmDeleteLocationId(null), 4000);
+                          }
+                        }}
+                        onBlur={() => setConfirmDeleteLocationId(null)}
+                        className={`ml-1 w-7 h-7 rounded-full flex items-center justify-center text-sm transition-colors ${
+                          isConfirming
+                            ? 'bg-red-600 text-white hover:bg-red-700'
+                            : 'bg-parchment-200 text-ink-500 hover:bg-red-100 hover:text-red-600'
+                        }`}
+                        aria-label={
+                          isConfirming
+                            ? `Confirmer la suppression de ${loc.name}`
+                            : `Supprimer ${loc.name}`
+                        }
+                        title={isConfirming ? 'Confirmer ?' : 'Supprimer ce transport'}
+                      >
+                        {isConfirming ? '✓' : '🗑'}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+              {/* Add new transport */}
+              {canEdit && (
                 <button
-                  onClick={() => setActiveLocationId(loc.id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                    isActive
-                      ? 'bg-blood-600 text-white'
-                      : 'bg-parchment-200 text-ink-700 hover:bg-parchment-300'
-                  }`}
-                  aria-pressed={isActive}
+                  type="button"
+                  onClick={() => setShowNewLocationModal(true)}
+                  className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium border border-dashed border-parchment-300 text-ink-500 hover:border-blood-400 hover:text-blood-600 transition-colors"
+                  aria-label="Ajouter un transport"
+                  title="Ajouter un transport"
                 >
-                  <span aria-hidden="true">{LOCATION_TYPE_ICON[loc.type]}</span>
-                  <span>{loc.name}</span>
-                  <span
-                    className={`text-xs px-1.5 py-0.5 rounded-full ${
-                      isActive ? 'bg-white/25' : 'bg-parchment-100 text-ink-500'
-                    }`}
-                  >
-                    {pct}%
-                  </span>
+                  <span aria-hidden="true">+</span> Transport
                 </button>
-                {/* Delete button for non-carried locations */}
-                {loc.type !== 'carried' && isActive && canEdit && (
-                  <button
-                    onClick={() => {
-                      if (isConfirming) {
-                        deleteLocation(loc);
-                      } else {
-                        setConfirmDeleteLocationId(loc.id);
-                        setTimeout(() => setConfirmDeleteLocationId(null), 4000);
-                      }
-                    }}
-                    onBlur={() => setConfirmDeleteLocationId(null)}
-                    className={`ml-1 w-7 h-7 rounded-full flex items-center justify-center text-sm transition-colors ${
-                      isConfirming
-                        ? 'bg-red-600 text-white hover:bg-red-700'
-                        : 'bg-parchment-200 text-ink-500 hover:bg-red-100 hover:text-red-600'
-                    }`}
-                    aria-label={isConfirming ? `Confirmer la suppression de ${loc.name}` : `Supprimer ${loc.name}`}
-                    title={isConfirming ? 'Confirmer ?' : 'Supprimer ce transport'}
-                  >
-                    {isConfirming ? '✓' : '🗑'}
-                  </button>
-                )}
-              </div>
-            );
-          })}
-          {/* Add new transport */}
-          {canEdit && (
-            <button
-              onClick={() => setShowNewLocationModal(true)}
-              className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium border border-dashed border-parchment-300 text-ink-500 hover:border-blood-400 hover:text-blood-600 transition-colors"
-              aria-label="Ajouter un transport"
-              title="Ajouter un transport"
-            >
-              <span aria-hidden="true">+</span> Transport
-            </button>
-          )}
-        </div>
+              )}
+            </div>
 
-        {/* Per-location weight bar (non-carried only — carried uses the header bar) */}
-        {!isActiveCarried && activeLocationWeight && activeLocationWeight.maxCapacityKg !== null && (
-          <LocationWeightBar weight={activeLocationWeight} />
-        )}
-      </div>
+            {/* Per-location weight bar (non-carried only — carried uses the header bar) */}
+            {!isActiveCarried &&
+              activeLocationWeight &&
+              activeLocationWeight.maxCapacityKg !== null && (
+                <LocationWeightBar weight={activeLocationWeight} />
+              )}
+          </div>
 
-      {/* Error toast (non-blocking) */}
-      {error && (
-        <div className="flex items-start justify-between gap-3">
-          <ErrorMsg message={error} />
-          <button onClick={dismissError} className="btn-ghost text-ink-500 text-sm shrink-0" aria-label="Fermer l'erreur">✕</button>
-        </div>
-      )}
-
-      {/* First-run tour hint */}
-      {showTour && data.entries.length === 0 && (
-        <div className="card p-4 border-blood-200 bg-blood-50/50">
-          <div className="flex items-start gap-3">
-            <span className="text-2xl shrink-0" aria-hidden="true">🎲</span>
-            <div className="flex-1">
-              <p className="font-medium text-ink-900">Bienvenue !</p>
-              <p className="text-sm text-ink-700 mt-1">
-                Appuyez sur le bouton <strong>+ Ajouter</strong> en bas de l'écran pour chercher un objet dans le catalogue,
-                puis suivez la barre de poids pour voir si votre personnage est encombré.
-              </p>
-              <button onClick={dismissTour} className="btn-primary text-sm mt-2 px-3 py-1.5">
-                Compris
+          {/* Error toast (non-blocking) */}
+          {error && (
+            <div className="flex items-start justify-between gap-3">
+              <ErrorMsg message={error} />
+              <button
+                type="button"
+                onClick={dismissError}
+                className="btn-ghost text-ink-500 text-sm shrink-0"
+                aria-label="Fermer l'erreur"
+              >
+                ✕
               </button>
             </div>
-          </div>
-        </div>
-      )}
+          )}
 
-      {/* Two-column layout: backpack (3fr) + catalog (2fr) on desktop */}
-      <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
-        {/* ---------- LEFT: inventory grouped by category ---------- */}
-        <section className="space-y-3">
-          <h2 className="font-display text-lg font-semibold">
-            {activeLocation ? activeLocation.name : 'Sac à dos'}{' '}
-            <span className="text-ink-400 text-sm font-normal">({entries.length})</span>
-          </h2>
-
-          {entries.length === 0 ? (
-            <div className="card p-4">
-              <EmptyState
-                icon={isActiveCarried ? '🎒' : LOCATION_TYPE_ICON[activeLocation?.type ?? 'carried']}
-                title={isActiveCarried ? 'Sac à dos vide' : 'Aucun objet ici'}
-                hint="Appuyez sur + Ajouter pour chercher un objet."
-              />
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {grouped.map((group) => (
-                <CategoryGroup
-                  key={group.category}
-                  category={group.category}
-                  entries={group.entries}
-                  character={character}
-                  busyEntryIds={busyEntryIds}
-                  expandedId={expandedId}
-                  flashEntryId={flashEntryId}
-                  confirmDeleteId={confirmDeleteId}
-                  locations={locations}
-                  activeLocationId={activeLocationResolvedId}
-                  canEdit={canEdit}
-                  onToggleExpand={(id) => setExpandedId(expandedId === id ? null : id)}
-                  onStep={stepQuantity}
-                  onSetQuantity={setQuantity}
-                  onToggleEquipped={toggleEquipped}
-                  onConfirmDelete={confirmDelete}
-                  onCancelDelete={cancelDelete}
-                  onTransfer={(entry) => setTransferEntry(entry)}
-                  onMoveLocation={moveEntryToLocation}
-                />
-              ))}
+          {/* First-run tour hint */}
+          {showTour && data.entries.length === 0 && (
+            <div className="card p-4 border-blood-200 bg-blood-50/50">
+              <div className="flex items-start gap-3">
+                <span className="text-2xl shrink-0" aria-hidden="true">
+                  🎲
+                </span>
+                <div className="flex-1">
+                  <p className="font-medium text-ink-900">Bienvenue !</p>
+                  <p className="text-sm text-ink-700 mt-1">
+                    Appuyez sur le bouton <strong>+ Ajouter</strong> en bas de l'écran pour chercher
+                    un objet dans le catalogue, puis suivez la barre de poids pour voir si votre
+                    personnage est encombré.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={dismissTour}
+                    className="btn-primary text-sm mt-2 px-3 py-1.5"
+                  >
+                    Compris
+                  </button>
+                </div>
+              </div>
             </div>
           )}
-        </section>
 
-        {/* ---------- RIGHT: catalog (desktop only — mobile uses FAB + bottom sheet) ---------- */}
-        <section className="hidden lg:block space-y-3">
-          <h2 className="font-display text-lg font-semibold">Catalogue</h2>
-          {catalogContent}
-        </section>
-      </div>
+          {/* Two-column layout: backpack (3fr) + catalog (2fr) on desktop */}
+          <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
+            {/* ---------- LEFT: inventory grouped by category ---------- */}
+            <section className="space-y-3">
+              <h2 className="font-display text-lg font-semibold">
+                {activeLocation ? activeLocation.name : 'Sac à dos'}{' '}
+                <span className="text-ink-400 text-sm font-normal">({entries.length})</span>
+              </h2>
 
-      {/* ---------- Coin purse (auto-save on blur) ---------- */}
-      <section className="card p-4 sm:p-5">
-        <CoinPurse
-          coins={coins}
-          readOnly={!canEdit}
-          onChange={(key, val) => {
-            setCoins((c) => ({ ...c, [key]: Math.max(0, val) }));
-            setCoinsDirty(true);
-          }}
-          onBlur={saveCoins}
-        />
-      </section>
+              {entries.length === 0 ? (
+                <div className="card p-4">
+                  <EmptyState
+                    icon={
+                      isActiveCarried ? '🎒' : LOCATION_TYPE_ICON[activeLocation?.type ?? 'carried']
+                    }
+                    title={isActiveCarried ? 'Sac à dos vide' : 'Aucun objet ici'}
+                    hint="Appuyez sur + Ajouter pour chercher un objet."
+                  />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {grouped.map((group) => (
+                    <CategoryGroup
+                      key={group.category}
+                      category={group.category}
+                      entries={group.entries}
+                      character={character}
+                      busyEntryIds={busyEntryIds}
+                      expandedId={expandedId}
+                      flashEntryId={flashEntryId}
+                      confirmDeleteId={confirmDeleteId}
+                      locations={locations}
+                      activeLocationId={activeLocationResolvedId}
+                      canEdit={canEdit}
+                      onToggleExpand={(id) => setExpandedId(expandedId === id ? null : id)}
+                      onStep={stepQuantity}
+                      onSetQuantity={setQuantity}
+                      onToggleEquipped={toggleEquipped}
+                      onConfirmDelete={confirmDelete}
+                      onCancelDelete={cancelDelete}
+                      onTransfer={(entry) => setTransferEntry(entry)}
+                      onMoveLocation={moveEntryToLocation}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* ---------- RIGHT: catalog (desktop only — mobile uses FAB + bottom sheet) ---------- */}
+            <section className="hidden lg:block space-y-3">
+              <h2 className="font-display text-lg font-semibold">Catalogue</h2>
+              {catalogContent}
+            </section>
+          </div>
+
+          {/* ---------- Coin purse (auto-save on blur) ---------- */}
+          <section className="card p-4 sm:p-5">
+            <CoinPurse
+              coins={coins}
+              readOnly={!canEdit}
+              onChange={(key, val) => {
+                setCoins((c) => ({ ...c, [key]: Math.max(0, val) }));
+                setCoinsDirty(true);
+              }}
+              onBlur={saveCoins}
+            />
+          </section>
         </>
       )}
 
       {/* ---------- Mobile FAB: open catalog as bottom sheet (inventory tab only) ---------- */}
       {activeTab === 'inventory' && canEdit && (
-      <button
-        onClick={() => setCatalogOpen(true)}
-        className="lg:hidden fab-enter fixed bottom-24 right-5 z-30 w-14 h-14 rounded-full bg-blood-600 text-white shadow-lg flex items-center justify-center text-2xl font-light hover:bg-blood-700 active:scale-95 transition-all"
-        aria-label="Ajouter un objet au catalogue"
-      >
-        +
-      </button>
+        <button
+          type="button"
+          onClick={() => setCatalogOpen(true)}
+          className="lg:hidden fab-enter fixed bottom-24 right-5 z-30 w-14 h-14 rounded-full bg-blood-600 text-white shadow-lg flex items-center justify-center text-2xl font-light hover:bg-blood-700 active:scale-95 transition-all"
+          aria-label="Ajouter un objet au catalogue"
+        >
+          +
+        </button>
       )}
 
       {/* ---------- Mobile catalog bottom sheet ---------- */}
@@ -1359,7 +1512,16 @@ function groupByCategory(entries: InventoryEntry[]): CategoryGroupData[] {
     result.push({ category, entries: items });
   }
   // Sort categories in display order
-  const order: ItemCategory[] = ['weapon', 'armor', 'ammunition', 'gear', 'tool', 'mount', 'magic', 'custom'];
+  const order: ItemCategory[] = [
+    'weapon',
+    'armor',
+    'ammunition',
+    'gear',
+    'tool',
+    'mount',
+    'magic',
+    'custom',
+  ];
   result.sort((a, b) => order.indexOf(a.category) - order.indexOf(b.category));
   return result;
 }
@@ -1418,12 +1580,17 @@ function CategoryGroup({
   return (
     <div>
       <button
+        type="button"
         onClick={() => setCollapsed((c) => !c)}
         className="w-full flex items-center justify-between mb-1.5 px-1"
         aria-expanded={!collapsed}
       >
         <span className="flex items-center gap-2">
-          <span className={`text-xs text-ink-400 w-4 chevron ${collapsed ? 'is-closed' : 'is-open'}`}>▼</span>
+          <span
+            className={`text-xs text-ink-400 w-4 chevron ${collapsed ? 'is-closed' : 'is-open'}`}
+          >
+            ▼
+          </span>
           <span className="font-display text-sm font-semibold text-ink-700">
             {CATEGORY_LABELS_FR[category]}
           </span>
@@ -1512,9 +1679,14 @@ function InventoryRow({
   const isEmptyWater = !!(entry.notes?.includes('empty') && item.survivalTags?.includes('water'));
   const effectiveWeightKg = isEmptyWater ? EMPTY_WATERSKIN_KG : item.weightKg;
   const totalWeight = effectiveWeightKg !== null ? effectiveWeightKg * quantity : null;
-  const hasDetails = !!item.description || item.damageDice || item.acBase !== null ||
-    item.strMin !== null || item.stealthDisadvantage ||
-    (item.properties && item.properties.length > 0) || !!entry.notes;
+  const hasDetails =
+    !!item.description ||
+    item.damageDice ||
+    item.acBase !== null ||
+    item.strMin !== null ||
+    item.stealthDisadvantage ||
+    (item.properties && item.properties.length > 0) ||
+    !!entry.notes;
   const itemName = item.nameFr || item.name;
 
   // Locations available to move this item to (everything except the active one)
@@ -1551,10 +1723,18 @@ function InventoryRow({
           <div className="flex items-center justify-between gap-3 py-1">
             <span className="text-sm font-medium text-red-700">Retirer {itemName} ?</span>
             <div className="flex gap-2">
-              <button onClick={onCancelDelete} className="btn-ghost text-ink-700 text-sm">
+              <button
+                type="button"
+                onClick={onCancelDelete}
+                className="btn-ghost text-ink-700 text-sm"
+              >
                 Annuler
               </button>
-              <button onClick={onConfirmDelete} className="btn-primary text-sm bg-red-600 hover:bg-red-700">
+              <button
+                type="button"
+                onClick={onConfirmDelete}
+                className="btn-primary text-sm bg-red-600 hover:bg-red-700"
+              >
                 Retirer
               </button>
             </div>
@@ -1566,12 +1746,11 @@ function InventoryRow({
               {/* Equipped toggle — star icon */}
               {canEdit ? (
                 <button
+                  type="button"
                   onClick={onToggleEquipped}
                   disabled={busy}
                   className={`shrink-0 mt-0.5 text-lg leading-none transition-colors ${
-                    entry.equipped
-                      ? 'text-gold-400'
-                      : 'text-ink-400/40 hover:text-ink-400'
+                    entry.equipped ? 'text-gold-400' : 'text-ink-400/40 hover:text-ink-400'
                   }`}
                   aria-label={`${entry.equipped ? 'Déséquiper' : 'Équiper'} ${itemName}`}
                   aria-pressed={entry.equipped}
@@ -1600,7 +1779,11 @@ function InventoryRow({
                   <span className="font-medium truncate">{itemName}</span>
                   {item.rarity !== 'none' && <RarityBadge rarity={item.rarity} />}
                   {canExpand && (
-                    <span className={`text-ink-400 text-xs chevron ${expanded ? 'is-open' : 'is-closed'}`}>▼</span>
+                    <span
+                      className={`text-ink-400 text-xs chevron ${expanded ? 'is-open' : 'is-closed'}`}
+                    >
+                      ▼
+                    </span>
                   )}
                 </div>
               </button>
@@ -1609,27 +1792,36 @@ function InventoryRow({
               {canEdit ? (
                 <div className="hidden sm:flex items-center gap-1 shrink-0">
                   <button
+                    type="button"
                     onClick={() => onStep(-1)}
                     disabled={busy}
                     className="w-8 h-8 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-sm font-medium flex items-center justify-center transition-colors"
                     aria-label={`Diminuer ${itemName}`}
-                  >−</button>
+                  >
+                    −
+                  </button>
                   <input
-                    type="number" min={1}
+                    type="number"
+                    min={1}
                     className="w-10 h-8 text-center text-sm bg-white border border-parchment-300 rounded-md focus:outline-none focus:border-blood-500"
                     value={draftQty}
                     disabled={busy}
                     onChange={(e) => setDraftQty(e.target.value)}
                     onBlur={commitDraft}
-                    onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                    }}
                     aria-label={`Quantité de ${itemName}`}
                   />
                   <button
+                    type="button"
                     onClick={() => onStep(1)}
                     disabled={busy}
                     className="w-8 h-8 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-sm font-medium flex items-center justify-center transition-colors"
                     aria-label={`Augmenter ${itemName}`}
-                  >+</button>
+                  >
+                    +
+                  </button>
                 </div>
               ) : (
                 <span className="hidden sm:inline text-sm text-ink-500 shrink-0">× {quantity}</span>
@@ -1641,10 +1833,18 @@ function InventoryRow({
               <div className="flex items-center gap-2 text-xs text-ink-500 min-w-0">
                 <WeightBadge weightKg={effectiveWeightKg} />
                 {totalWeight !== null && quantity > 1 && (
-                  <span className="text-ink-400">× {quantity} = {totalWeight.toFixed(1)} kg</span>
+                  <span className="text-ink-400">
+                    × {quantity} = {totalWeight.toFixed(1)} kg
+                  </span>
                 )}
                 {canEdit && (
-                  <button onClick={onTransfer} disabled={busy} className="text-ink-400 hover:text-blood-600 text-xs underline" aria-label={`Transférer ${itemName}`}>
+                  <button
+                    type="button"
+                    onClick={onTransfer}
+                    disabled={busy}
+                    className="text-ink-400 hover:text-blood-600 text-xs underline"
+                    aria-label={`Transférer ${itemName}`}
+                  >
                     ↗
                   </button>
                 )}
@@ -1652,27 +1852,36 @@ function InventoryRow({
               {canEdit ? (
                 <div className="flex items-center gap-0.5 shrink-0">
                   <button
+                    type="button"
                     onClick={() => onStep(-1)}
                     disabled={busy}
                     className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-sm font-medium flex items-center justify-center transition-colors"
                     aria-label={`Diminuer ${itemName}`}
-                  >−</button>
+                  >
+                    −
+                  </button>
                   <input
-                    type="number" min={1}
+                    type="number"
+                    min={1}
                     className="w-8 h-7 text-center text-sm bg-white border border-parchment-300 rounded-md focus:outline-none focus:border-blood-500"
                     value={draftQty}
                     disabled={busy}
                     onChange={(e) => setDraftQty(e.target.value)}
                     onBlur={commitDraft}
-                    onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                    }}
                     aria-label={`Quantité de ${itemName}`}
                   />
                   <button
+                    type="button"
                     onClick={() => onStep(1)}
                     disabled={busy}
                     className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-50 text-sm font-medium flex items-center justify-center transition-colors"
                     aria-label={`Augmenter ${itemName}`}
-                  >+</button>
+                  >
+                    +
+                  </button>
                 </div>
               ) : (
                 <span className="text-sm text-ink-500 shrink-0">× {quantity}</span>
@@ -1683,10 +1892,18 @@ function InventoryRow({
             <div className="hidden sm:flex items-center gap-3 mt-1 ml-7 text-xs text-ink-500">
               <WeightBadge weightKg={effectiveWeightKg} />
               {totalWeight !== null && quantity > 1 && (
-                <span className="text-ink-400">× {quantity} = {totalWeight.toFixed(1)} kg</span>
+                <span className="text-ink-400">
+                  × {quantity} = {totalWeight.toFixed(1)} kg
+                </span>
               )}
               {canEdit && (
-                <button onClick={onTransfer} disabled={busy} className="text-ink-400 hover:text-blood-600 underline" aria-label={`Transférer ${itemName}`}>
+                <button
+                  type="button"
+                  onClick={onTransfer}
+                  disabled={busy}
+                  className="text-ink-400 hover:text-blood-600 underline"
+                  aria-label={`Transférer ${itemName}`}
+                >
                   ↗ Transférer
                 </button>
               )}
@@ -1706,78 +1923,92 @@ function InventoryRow({
                       </p>
                     )}
                     {/* Computed attack & damage from character stats (weapons) */}
-                    {item.category === 'weapon' && (() => {
-                      const stats = computeWeaponStats(item, character);
-                      if (!stats) return null;
-                      const abilityLabel = stats.ability === 'dexterity' ? 'DEX' : 'FOR';
-                      const archery = character.fightingStyle === 'archery' && stats.ranged ? 2 : 0;
-                      const profBonus = proficiencyBonus(character.level ?? 1);
-                      const breakdown = `d20 ${formatModifier(stats.attackBonus - (stats.proficient ? profBonus : 0) - stats.magicBonus - archery)} (${abilityLabel})`
-                        + (stats.proficient ? ` + ${profBonus} (maîtrise)` : '')
-                        + (archery > 0 ? ` + ${archery} (archerie)` : '')
-                        + (stats.magicBonus > 0 ? ` + ${stats.magicBonus} (magique)` : '');
-                      return (
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span
-                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium border ${
-                              stats.proficient
-                                ? 'bg-red-50 text-red-800 border-red-200'
-                                : 'bg-amber-50 text-amber-800 border-amber-300'
-                            }`}
-                            title={stats.proficient ? `Attaque : ${breakdown}` : `Attaque : ${breakdown} — non qualifié avec cette arme (pas de bonus de maîtrise)`}
-                          >
-                            🎯 {formatModifier(stats.attackBonus)}{!stats.proficient && ' ⚠'}
-                          </span>
-                          {stats.damageStr && (
-                            <span
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50 text-orange-800 text-[11px] font-medium border border-orange-200"
-                              title={`Dégâts : ${stats.damageStr} (${abilityLabel})${stats.magicBonus > 0 ? ` + ${stats.magicBonus} magique` : ''}`}
-                            >
-                              ⚔ {stats.damageStr}{stats.damageTypeFr ? ` ${stats.damageTypeFr}` : ''}
-                            </span>
-                          )}
-                          {stats.versatileDamageStr && (
-                            <span
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50/60 text-orange-700 text-[11px] font-medium border border-orange-200"
-                              title="Dégâts à deux mains"
-                            >
-                              {stats.versatileDamageStr} · deux mains
-                            </span>
-                          )}
-                          {stats.magicBonus > 0 && (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gold-100 text-gold-700 text-[11px] font-semibold border border-gold-300">
-                              ✨ +{stats.magicBonus}
-                            </span>
-                          )}
-                          {stats.presumedBase && (
-                            <span className="text-[10px] text-ink-400 italic">base présumée</span>
-                          )}
-                        </div>
-                      );
-                    })()}
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-500">
-                      {item.acBase !== null && <span>🛡 CA : {item.acBase}</span>}
-                      {item.acBase === null && item.category === 'armor' && (() => {
-                        const magic = resolveMagicArmorBase(item);
-                        if (magic.shield) return <span>🛡 Bouclier (+2 à la CA)</span>;
-                        if (!magic.base) return null;
+                    {item.category === 'weapon' &&
+                      (() => {
+                        const stats = computeWeaponStats(item, character);
+                        if (!stats) return null;
+                        const abilityLabel = stats.ability === 'dexterity' ? 'DEX' : 'FOR';
+                        const archery =
+                          character.fightingStyle === 'archery' && stats.ranged ? 2 : 0;
+                        const profBonus = proficiencyBonus(character.level ?? 1);
+                        const breakdown =
+                          `d20 ${formatModifier(stats.attackBonus - (stats.proficient ? profBonus : 0) - stats.magicBonus - archery)} (${abilityLabel})` +
+                          (stats.proficient ? ` + ${profBonus} (maîtrise)` : '') +
+                          (archery > 0 ? ` + ${archery} (archerie)` : '') +
+                          (stats.magicBonus > 0 ? ` + ${stats.magicBonus} (magique)` : '');
                         return (
-                          <span>
-                            🛡 CA : {magic.base.acBase}
-                            {magic.magicBonus > 0 && ` +${magic.magicBonus}`} · base {magic.base.nameFr}
-                          </span>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium border ${
+                                stats.proficient
+                                  ? 'bg-red-50 text-red-800 border-red-200'
+                                  : 'bg-amber-50 text-amber-800 border-amber-300'
+                              }`}
+                              title={
+                                stats.proficient
+                                  ? `Attaque : ${breakdown}`
+                                  : `Attaque : ${breakdown} — non qualifié avec cette arme (pas de bonus de maîtrise)`
+                              }
+                            >
+                              🎯 {formatModifier(stats.attackBonus)}
+                              {!stats.proficient && ' ⚠'}
+                            </span>
+                            {stats.damageStr && (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50 text-orange-800 text-[11px] font-medium border border-orange-200"
+                                title={`Dégâts : ${stats.damageStr} (${abilityLabel})${stats.magicBonus > 0 ? ` + ${stats.magicBonus} magique` : ''}`}
+                              >
+                                ⚔ {stats.damageStr}
+                                {stats.damageTypeFr ? ` ${stats.damageTypeFr}` : ''}
+                              </span>
+                            )}
+                            {stats.versatileDamageStr && (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50/60 text-orange-700 text-[11px] font-medium border border-orange-200"
+                                title="Dégâts à deux mains"
+                              >
+                                {stats.versatileDamageStr} · deux mains
+                              </span>
+                            )}
+                            {stats.magicBonus > 0 && (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gold-100 text-gold-700 text-[11px] font-semibold border border-gold-300">
+                                ✨ +{stats.magicBonus}
+                              </span>
+                            )}
+                            {stats.presumedBase && (
+                              <span className="text-[10px] text-ink-400 italic">base présumée</span>
+                            )}
+                          </div>
                         );
                       })()}
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-500">
+                      {item.acBase !== null && <span>🛡 CA : {item.acBase}</span>}
+                      {item.acBase === null &&
+                        item.category === 'armor' &&
+                        (() => {
+                          const magic = resolveMagicArmorBase(item);
+                          if (magic.shield) return <span>🛡 Bouclier (+2 à la CA)</span>;
+                          if (!magic.base) return null;
+                          return (
+                            <span>
+                              🛡 CA : {magic.base.acBase}
+                              {magic.magicBonus > 0 && ` +${magic.magicBonus}`} · base{' '}
+                              {magic.base.nameFr}
+                            </span>
+                          );
+                        })()}
                       {item.strMin !== null && <span>💪 FOR min. : {item.strMin}</span>}
                       {item.stealthDisadvantage && <span>🤫 Désavantage Discrétion</span>}
-                      {item.properties && item.properties.filter((p) => p !== 'monk').length > 0 && (
-                        <span>
-                          Propriétés : {item.properties
-                            .filter((p) => p !== 'monk')
-                            .map((p) => WEAPON_PROPERTY_LABELS_FR[p] ?? p)
-                            .join(', ')}
-                        </span>
-                      )}
+                      {item.properties &&
+                        item.properties.filter((p) => p !== 'monk').length > 0 && (
+                          <span>
+                            Propriétés :{' '}
+                            {item.properties
+                              .filter((p) => p !== 'monk')
+                              .map((p) => WEAPON_PROPERTY_LABELS_FR[p] ?? p)
+                              .join(', ')}
+                          </span>
+                        )}
                     </div>
                     {entry.notes && (
                       <p className="text-xs text-ink-500 italic">Note : {entry.notes}</p>
@@ -1798,7 +2029,9 @@ function InventoryRow({
                           }}
                           aria-label={`Déplacer ${itemName} vers un autre emplacement`}
                         >
-                          <option value="" disabled>— Choisir —</option>
+                          <option value="" disabled>
+                            — Choisir —
+                          </option>
                           {otherLocations.map((l) => (
                             <option key={l.id} value={l.id}>
                               {LOCATION_TYPE_ICON[l.type]} {l.name}
@@ -1811,6 +2044,7 @@ function InventoryRow({
                     {canEdit && (
                       <div className="flex items-center gap-2 pt-1">
                         <button
+                          type="button"
                           onClick={() => onStep(-1)}
                           disabled={busy}
                           className="btn-ghost text-sm text-red-600 hover:bg-red-50"
@@ -1886,7 +2120,9 @@ function CatalogSearch({
             aria-label="Filtrer par catégorie"
           >
             {CATEGORY_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
             ))}
           </select>
           <select
@@ -1896,7 +2132,9 @@ function CatalogSearch({
             aria-label="Filtrer par rareté"
           >
             {RARITY_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
             ))}
           </select>
         </div>
@@ -1905,9 +2143,17 @@ function CatalogSearch({
       {items.length === 0 && !loading ? (
         <div className="card p-4">
           {search.trim() || category || rarity ? (
-            <EmptyState icon="🔍" title="Aucun objet trouvé" hint="Modifiez votre recherche ou vos filtres." />
+            <EmptyState
+              icon="🔍"
+              title="Aucun objet trouvé"
+              hint="Modifiez votre recherche ou vos filtres."
+            />
           ) : (
-            <EmptyState icon="📝" title="Recherchez un objet" hint="Tapez le nom d'un objet pour l'ajouter à votre sac à dos." />
+            <EmptyState
+              icon="📝"
+              title="Recherchez un objet"
+              hint="Tapez le nom d'un objet pour l'ajouter à votre sac à dos."
+            />
           )}
         </div>
       ) : (
@@ -1934,6 +2180,7 @@ function CatalogSearch({
                 </div>
                 {!readOnly && (
                   <button
+                    type="button"
                     onClick={() => onAdd(item)}
                     disabled={addingItemId === item.id}
                     className="btn-primary text-sm px-3 py-2 shrink-0"
@@ -1949,7 +2196,7 @@ function CatalogSearch({
           {loading && <LoadingSpinner label="Recherche…" />}
 
           {offset + items.length < total && !loading && (
-            <button onClick={onLoadMore} className="btn-secondary w-full">
+            <button type="button" onClick={onLoadMore} className="btn-secondary w-full">
               Charger plus ({total - offset - items.length} restants)
             </button>
           )}
@@ -1974,13 +2221,19 @@ function CoinPurse({
   onBlur: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const totalCp = coins.copper + coins.silver * 10 + coins.electrum * 50 + coins.gold * 100 + coins.platinum * 1000;
+  const totalCp =
+    coins.copper +
+    coins.silver * 10 +
+    coins.electrum * 50 +
+    coins.gold * 100 +
+    coins.platinum * 1000;
   const totalGp = Math.floor(totalCp / 100);
   const remCp = totalCp % 100;
 
   return (
     <div>
       <button
+        type="button"
         onClick={() => setExpanded((e) => !e)}
         className="w-full flex items-center justify-between"
         aria-expanded={expanded}
@@ -1991,7 +2244,9 @@ function CoinPurse({
             ({totalGp} PO{remCp > 0 ? ` ${remCp} PC` : ''})
           </span>
         </h2>
-        <span className={`text-ink-400 text-sm chevron ${expanded ? 'is-open' : 'is-closed'}`}>▼</span>
+        <span className={`text-ink-400 text-sm chevron ${expanded ? 'is-open' : 'is-closed'}`}>
+          ▼
+        </span>
       </button>
 
       <div className={`expand-grid ${expanded ? '' : 'is-collapsed'}`}>
@@ -1999,7 +2254,7 @@ function CoinPurse({
           <div className="mt-4">
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               {COIN_FIELDS.map(({ key, unit, color }) => (
-                <label key={key} className="block">
+                <label key={key} className="block" htmlFor={`coin-${key}`}>
                   <span className="label flex items-center gap-1.5">
                     <span
                       className="inline-block w-3 h-3 rounded-full border border-parchment-300 shrink-0"
@@ -2011,6 +2266,7 @@ function CoinPurse({
                   {readOnly ? (
                     <div
                       className="input bg-parchment-100 text-ink-700 flex items-center justify-between"
+                      role="img"
                       aria-label={`Quantité de ${COIN_LABELS_FR[unit]}`}
                     >
                       <span>{coins[key]}</span>
@@ -2018,11 +2274,14 @@ function CoinPurse({
                     </div>
                   ) : (
                     <input
+                      id={`coin-${key}`}
                       type="number"
                       min={0}
                       className="input"
                       value={coins[key] === 0 ? '' : coins[key]}
-                      onChange={(e) => onChange(key, e.target.value === '' ? 0 : (Number(e.target.value) || 0))}
+                      onChange={(e) =>
+                        onChange(key, e.target.value === '' ? 0 : Number(e.target.value) || 0)
+                      }
                       onBlur={(e) => {
                         if (e.target.value === '' || e.target.value === '0') onChange(key, 0);
                         onBlur();
@@ -2052,7 +2311,15 @@ interface TransferModalProps {
   onError: (msg: string) => void;
 }
 
-function TransferModal({ open, entry, charId, partyId, onClose, onTransferred, onError }: TransferModalProps) {
+function TransferModal({
+  open,
+  entry,
+  charId,
+  partyId,
+  onClose,
+  onTransferred,
+  onError,
+}: TransferModalProps) {
   const [party, setParty] = useState<PartyDetail | null>(null);
   const [loadingParty, setLoadingParty] = useState(false);
   const [targetId, setTargetId] = useState<number | null>(null);
@@ -2116,12 +2383,19 @@ function TransferModal({ open, entry, charId, partyId, onClose, onTransferred, o
       {loadingParty ? (
         <LoadingSpinner label="Chargement du groupe…" />
       ) : others.length === 0 ? (
-        <EmptyState icon="👤" title="Aucun autre personnage" hint="Aucun destinataire dans ce groupe." />
+        <EmptyState
+          icon="👤"
+          title="Aucun autre personnage"
+          hint="Aucun destinataire dans ce groupe."
+        />
       ) : (
         <form onSubmit={submit} className="space-y-4">
           <div>
-            <label className="label">Destinataire</label>
+            <label className="label" htmlFor="give-target">
+              Destinataire
+            </label>
             <select
+              id="give-target"
               className="input"
               value={targetId ?? ''}
               onChange={(e) => setTargetId(e.target.value === '' ? null : Number(e.target.value))}
@@ -2136,8 +2410,11 @@ function TransferModal({ open, entry, charId, partyId, onClose, onTransferred, o
             </select>
           </div>
           <div>
-            <label className="label">Quantité (max {maxQty})</label>
+            <label className="label" htmlFor="give-qty">
+              Quantité (max {maxQty})
+            </label>
             <input
+              id="give-qty"
               type="number"
               min={1}
               max={maxQty}
@@ -2162,10 +2439,22 @@ function LocationWeightBar({ weight }: { weight: LocationWeight }) {
   if (maxCapacityKg === null) return null;
   const totalWeight = itemsWeightKg + (ownWeightKg || 0);
   const fillClass =
-    pct >= 100 ? 'bg-red-500' : pct >= 75 ? 'bg-orange-500' : pct >= 50 ? 'bg-yellow-500' : 'bg-green-500';
+    pct >= 100
+      ? 'bg-red-500'
+      : pct >= 75
+        ? 'bg-orange-500'
+        : pct >= 50
+          ? 'bg-yellow-500'
+          : 'bg-green-500';
 
   return (
-    <div className="mt-2 space-y-1" role="progressbar" aria-valuenow={Math.round(totalWeight * 100) / 100} aria-valuemin={0} aria-valuemax={maxCapacityKg}>
+    <div
+      className="mt-2 space-y-1"
+      role="progressbar"
+      aria-valuenow={Math.round(totalWeight * 100) / 100}
+      aria-valuemin={0}
+      aria-valuemax={maxCapacityKg}
+    >
       <div className="flex items-baseline justify-between text-xs text-ink-500">
         <span>
           {totalWeight.toFixed(1)} / {maxCapacityKg.toFixed(1)} kg
@@ -2394,7 +2683,16 @@ interface SurvivalPanelProps {
   onNotice?: (msg: string) => void;
 }
 
-function SurvivalPanel({ character, charId, entries, canEdit, markLocalMutation, onSaved, onError, onNotice }: SurvivalPanelProps) {
+function SurvivalPanel({
+  character,
+  charId,
+  entries,
+  canEdit,
+  markLocalMutation,
+  onSaved,
+  onError,
+  onNotice,
+}: SurvivalPanelProps) {
   const [exhaustion, setExhaustion] = useState(character.exhaustion);
   const [conditions, setConditions] = useState<string[]>(character.conditions);
   const [foodDays, setFoodDays] = useState(character.foodDays);
@@ -2414,12 +2712,12 @@ function SurvivalPanel({ character, charId, entries, canEdit, markLocalMutation,
   }, 0);
   const fullWaterCount = entries.reduce((sum, e) => {
     if (!e.item.survivalTags?.includes('water')) return sum;
-    if (e.notes && e.notes.includes('empty')) return sum;
+    if (e.notes?.includes('empty')) return sum;
     return sum + e.quantity;
   }, 0);
   const emptyWaterCount = entries.reduce((sum, e) => {
     if (!e.item.survivalTags?.includes('water')) return sum;
-    if (e.notes && e.notes.includes('empty')) return sum + e.quantity;
+    if (e.notes?.includes('empty')) return sum + e.quantity;
     return sum;
   }, 0);
 
@@ -2463,7 +2761,9 @@ function SurvivalPanel({ character, charId, entries, canEdit, markLocalMutation,
       const res = await api.patch(`/api/characters/${charId}`, payload);
       // Applying an incapacitating condition breaks concentration — tell the player.
       if (res?.data?.concentrationBroken) {
-        onNotice?.(`🌀 Concentration rompue : ${res.data.concentrationBroken} — le sort en cours est interrompu`);
+        onNotice?.(
+          `🌀 Concentration rompue : ${res.data.concentrationBroken} — le sort en cours est interrompu`,
+        );
       }
       await onSaved();
     } catch (err: any) {
@@ -2561,7 +2861,10 @@ function SurvivalPanel({ character, charId, entries, canEdit, markLocalMutation,
                 const itemName = e.item.nameFr || e.item.name;
                 if (!stats) {
                   return (
-                    <div key={e.id} className="flex items-center justify-between bg-parchment-50 rounded-lg px-3 py-2 border border-parchment-200">
+                    <div
+                      key={e.id}
+                      className="flex items-center justify-between bg-parchment-50 rounded-lg px-3 py-2 border border-parchment-200"
+                    >
                       <span className="text-sm font-medium text-ink-800 truncate">{itemName}</span>
                       <span className="text-xs text-ink-400">arme non résolue</span>
                     </div>
@@ -2571,16 +2874,22 @@ function SurvivalPanel({ character, charId, entries, canEdit, markLocalMutation,
                 const profBonus = proficiencyBonus(character.level ?? 1);
                 const nAttacks = extraAttacks(character.characterClass, character.level ?? 1);
                 const archery = character.fightingStyle === 'archery' && stats.ranged ? 2 : 0;
-                const breakdown = `d20 ${formatModifier(stats.attackBonus - (stats.proficient ? profBonus : 0) - stats.magicBonus - archery)} (${abilityLabel})`
-                  + (stats.proficient ? ` + ${profBonus} (maîtrise)` : '')
-                  + (archery > 0 ? ` + ${archery} (archerie)` : '')
-                  + (stats.magicBonus > 0 ? ` + ${stats.magicBonus} (magique)` : '');
+                const breakdown =
+                  `d20 ${formatModifier(stats.attackBonus - (stats.proficient ? profBonus : 0) - stats.magicBonus - archery)} (${abilityLabel})` +
+                  (stats.proficient ? ` + ${profBonus} (maîtrise)` : '') +
+                  (archery > 0 ? ` + ${archery} (archerie)` : '') +
+                  (stats.magicBonus > 0 ? ` + ${stats.magicBonus} (magique)` : '');
                 return (
-                  <div key={e.id} className="bg-parchment-50 rounded-lg px-3 py-2 border border-parchment-200 space-y-1">
+                  <div
+                    key={e.id}
+                    className="bg-parchment-50 rounded-lg px-3 py-2 border border-parchment-200 space-y-1"
+                  >
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-medium text-ink-800 truncate">{itemName}</span>
                       {!stats.proficient && (
-                        <span className="text-[10px] font-semibold text-amber-600 shrink-0">⚠ non qualifié</span>
+                        <span className="text-[10px] font-semibold text-amber-600 shrink-0">
+                          ⚠ non qualifié
+                        </span>
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -2607,7 +2916,8 @@ function SurvivalPanel({ character, charId, entries, canEdit, markLocalMutation,
                           className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50 text-orange-800 text-[11px] font-medium border border-orange-200"
                           title={`Dégâts : ${stats.damageStr} (${abilityLabel})`}
                         >
-                          ⚔ {stats.damageStr}{stats.damageTypeFr ? ` ${stats.damageTypeFr}` : ''}
+                          ⚔ {stats.damageStr}
+                          {stats.damageTypeFr ? ` ${stats.damageTypeFr}` : ''}
                         </span>
                       )}
                       {stats.versatileDamageStr && (
@@ -2639,16 +2949,25 @@ function SurvivalPanel({ character, charId, entries, canEdit, markLocalMutation,
             Aucune arme équipée — la frappe sans arme reste disponible.
           </p>
         )}
-        {findClass(character.characterClass)?.name === 'Roublard' && (
+        {findClass(character.characterClass)?.name === 'Roublard' &&
           (() => {
-            const hasFinesseWeapon = entries.some((e) => e.equipped && e.item.category === 'weapon'
-              && (e.item.properties?.includes('finesse') || e.item.properties?.includes('ammunition')));
+            const hasFinesseWeapon = entries.some(
+              (e) =>
+                e.equipped &&
+                e.item.category === 'weapon' &&
+                (e.item.properties?.includes('finesse') ||
+                  e.item.properties?.includes('ammunition')),
+            );
             return (
               <div className="bg-parchment-100 rounded-lg px-3 py-2 border border-parchment-200 space-y-1">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium text-ink-800 truncate">☠ Attaque furtive</span>
+                  <span className="text-sm font-medium text-ink-800 truncate">
+                    ☠ Attaque furtive
+                  </span>
                   {!hasFinesseWeapon && (
-                    <span className="text-[10px] text-ink-400 shrink-0">arme de finesse ou à distance requise</span>
+                    <span className="text-[10px] text-ink-400 shrink-0">
+                      arme de finesse ou à distance requise
+                    </span>
                   )}
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -2662,187 +2981,255 @@ function SurvivalPanel({ character, charId, entries, canEdit, markLocalMutation,
                 </div>
               </div>
             );
-          })()
-        )}
-        {findClass(character.characterClass)?.name === 'Druide' && (character.level ?? 1) >= 2 && (() => {
-          const shaped = !!character.wildShapeSlug;
-          return (
-            <div className="rounded-xl border border-green-300 bg-green-50 p-3 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-semibold text-green-900 flex items-center gap-1.5">
-                  🐾 Forme sauvage
-                </span>
-                <span className="flex items-center gap-0.5" role="group" aria-label="Utilisations de forme sauvage">
-                  {[1, 2].map((n) => (
-                    <button
-                      key={n}
-                      onClick={async () => {
-                        if ((character.wildShapeUses ?? 2) === n) return;
-                        markLocalMutation();
-                        try {
-                          await api.patch(`/api/characters/${charId}`, { wildShapeUses: n });
-                          await onSaved();
-                        } catch { onError('Erreur de mise à jour'); }
-                      }}
-                      className={`text-base leading-none px-0.5 transition-opacity ${(character.wildShapeUses ?? 2) >= n ? 'opacity-100' : 'opacity-25 hover:opacity-60'}`}
-                      aria-pressed={(character.wildShapeUses ?? 2) >= n}
-                      aria-label={`${n} utilisation${n > 1 ? 's' : ''} de forme sauvage`}
-                      title={`Régler à ${n} utilisation${n > 1 ? 's' : ''} (récupérées après un repos court ou long)`}
-                    >
-                      🐾
-                    </button>
-                  ))}
-                </span>
-              </div>
-              {shaped ? (
-                <>
-                  <div className="text-xs text-green-800 flex items-center gap-1.5 flex-wrap">
-                    <span>
-                      Forme actuelle : <strong>{shapeForms.find((f) => f.slug === character.wildShapeSlug)?.nameFr ?? character.wildShapeSlug}</strong>
-                      {' '}· {wildShapeDurationHours(character.level ?? 2)} h max
-                    </span>
-                    <button
-                      onClick={() => setShapeStatBlock(character.wildShapeSlug)}
-                      className="w-7 h-7 rounded-lg bg-white/70 hover:bg-white text-ink-600 border border-green-200 text-sm flex items-center justify-center transition-colors"
-                      aria-label="Voir le bloc de stats de la forme"
-                      title="Bloc de stats de la forme actuelle"
-                    >
-                      📜
-                    </button>
-                  </div>
-                  <button onClick={revertShape} className="btn-secondary text-xs w-full py-1.5">
-                    ↩ Revenir à la forme normale (action bonus)
-                  </button>
-                </>
-              ) : (
-                <>
-                  <p className="text-xs text-green-800">
-                    Bêtes jusqu'à DD {(() => { const cr = wildShapeMaxCR(character.level ?? 2, character.druidCircle); return cr === 0.25 ? '1/4' : cr === 0.5 ? '1/2' : cr; })()}
-                    {character.druidCircle !== 'lune' && (character.level ?? 2) < 4 && ' · pas de nage'}
-                    {character.druidCircle !== 'lune' && (character.level ?? 2) < 8 && ' · pas de vol'}
-                    {(character.level ?? 2) >= 4 && character.druidCircle !== 'lune' && ' · nage'}
-                    {(character.level ?? 2) >= 8 && character.druidCircle !== 'lune' && ' · vol'} — PV lancés aux dés de la forme.
-                  </p>
-                  {character.druidCircle === 'lune' && (
-                    <p className="text-[10px] text-green-700">
-                      🌙 Lune : transformation et retour en action bonus{((character.level ?? 2) >= 10) ? ' · formes élémentaires disponibles' : ''}
-                      {((character.level ?? 2) >= 6) ? ' · attaques de bête magiques' : ''}.
-                    </p>
-                  )}
-                  <button
-                    onClick={openShapePicker}
-                    disabled={(character.wildShapeUses ?? 2) <= 0}
-                    className="btn-primary text-xs w-full py-1.5 disabled:opacity-40"
+          })()}
+        {findClass(character.characterClass)?.name === 'Druide' &&
+          (character.level ?? 1) >= 2 &&
+          (() => {
+            const shaped = !!character.wildShapeSlug;
+            return (
+              <div className="rounded-xl border border-green-300 bg-green-50 p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-green-900 flex items-center gap-1.5">
+                    🐾 Forme sauvage
+                  </span>
+                  {/* biome-ignore lint/a11y/useSemanticElements: fieldset would add its own border/margin styling and break the compact pips row. */}
+                  <span
+                    className="flex items-center gap-0.5"
+                    role="group"
+                    aria-label="Utilisations de forme sauvage"
                   >
-                    🐾 Prendre une forme
-                  </button>
-                </>
-              )}
-            </div>
-          );
-        })()}
-
-        {/* Beast picker sheet (portal) */}
-        {shapePickerOpen && createPortal(
-          <div
-            className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
-            onClick={() => setShapePickerOpen(false)}
-          >
-            <div
-              className="card w-full sm:max-w-md rounded-b-none sm:rounded-2xl p-4 sheet-enter bg-white max-h-[80vh] flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-              role="dialog"
-              aria-modal="true"
-              aria-label="Choisir une forme"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-display text-lg font-semibold">🐾 Choisir une forme</h3>
-                <button onClick={() => setShapePickerOpen(false)} className="text-ink-400 hover:text-ink-700 text-lg leading-none px-1" aria-label="Fermer">✕</button>
-              </div>
-              <div className="flex gap-2 mb-2">
-                <input
-                  type="text"
-                  className="input flex-1"
-                  placeholder="Rechercher une bête…"
-                  value={shapeSearch}
-                  onChange={(e) => setShapeSearch(e.target.value)}
-                  autoFocus
-                />
-                <button
-                  onClick={() => setShapeSeenOnly((v) => !v)}
-                  className={`shrink-0 px-3 rounded-lg border text-xs font-semibold transition-colors ${
-                    shapeSeenOnly
-                      ? 'bg-green-100 text-green-800 border-green-300'
-                      : 'bg-parchment-100 text-ink-500 border-parchment-300'
-                  }`}
-                  aria-pressed={shapeSeenOnly}
-                  title="Filtrer sur les bêtes déjà vues (SRD)"
-                >
-                  👁 Vues
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto space-y-1.5 -mx-1 px-1">
-                {shapeForms
-                  .filter((f) => (!shapeSeenOnly || f.seen)
-                    && (!shapeSearch.trim()
-                      || (f.nameFr ?? f.name).toLowerCase().includes(shapeSearch.toLowerCase())))
-                  .map((f) => (
-                    <div
-                      key={f.slug}
-                      className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-parchment-200 ${f.seen ? 'bg-parchment-50' : 'bg-parchment-50/40'} transition-colors`}
-                    >
+                    {[1, 2].map((n) => (
                       <button
-                        onClick={() => f.seen && takeShape(f.slug)}
-                        disabled={!f.seen}
-                        className={`min-w-0 flex-1 text-left ${f.seen ? 'hover:opacity-80' : 'cursor-not-allowed'}`}
-                        title={f.seen ? 'Prendre cette forme' : 'Bête non vue — marquez-la 👁 pour pouvoir vous transformer'}
+                        type="button"
+                        key={n}
+                        onClick={async () => {
+                          if ((character.wildShapeUses ?? 2) === n) return;
+                          markLocalMutation();
+                          try {
+                            await api.patch(`/api/characters/${charId}`, { wildShapeUses: n });
+                            await onSaved();
+                          } catch {
+                            onError('Erreur de mise à jour');
+                          }
+                        }}
+                        className={`text-base leading-none px-0.5 transition-opacity ${(character.wildShapeUses ?? 2) >= n ? 'opacity-100' : 'opacity-25 hover:opacity-60'}`}
+                        aria-pressed={(character.wildShapeUses ?? 2) >= n}
+                        aria-label={`${n} utilisation${n > 1 ? 's' : ''} de forme sauvage`}
+                        title={`Régler à ${n} utilisation${n > 1 ? 's' : ''} (récupérées après un repos court ou long)`}
                       >
-                        <span className={`text-sm font-medium block truncate ${f.seen ? 'text-ink-800' : 'text-ink-400'}`}>{f.nameFr ?? f.name}</span>
-                        <span className="text-[10px] text-ink-400">
-                          DD {f.challengeRating === 0.125 ? '1/8' : f.challengeRating === 0.25 ? '1/4' : f.challengeRating === 0.5 ? '1/2' : f.challengeRating}
-                          {f.size ? ` · ${f.size}` : ''}{f.fly ? ' · 🦅 vol' : ''}{f.swim ? ' · 🏊 nage' : ''}
-                          {!f.seen && ' · non vue'}
-                        </span>
+                        🐾
                       </button>
-                      <span className="text-xs text-ink-500 shrink-0 text-right">
-                        ❤ {f.hitPoints ?? '—'}<br />🛡 {f.armorClass ?? '—'}
+                    ))}
+                  </span>
+                </div>
+                {shaped ? (
+                  <>
+                    <div className="text-xs text-green-800 flex items-center gap-1.5 flex-wrap">
+                      <span>
+                        Forme actuelle :{' '}
+                        <strong>
+                          {shapeForms.find((f) => f.slug === character.wildShapeSlug)?.nameFr ??
+                            character.wildShapeSlug}
+                        </strong>{' '}
+                        · {wildShapeDurationHours(character.level ?? 2)} h max
                       </span>
                       <button
-                        onClick={() => setShapeStatBlock(f.slug)}
-                        className="shrink-0 w-8 h-8 rounded-lg bg-parchment-100 hover:bg-gold-100 text-ink-500 hover:text-gold-600 border border-parchment-200 text-sm flex items-center justify-center transition-colors"
-                        aria-label={`Voir le bloc de stats de ${f.nameFr ?? f.name}`}
-                        title="Bloc de stats"
+                        type="button"
+                        onClick={() => setShapeStatBlock(character.wildShapeSlug)}
+                        className="w-7 h-7 rounded-lg bg-white/70 hover:bg-white text-ink-600 border border-green-200 text-sm flex items-center justify-center transition-colors"
+                        aria-label="Voir le bloc de stats de la forme"
+                        title="Bloc de stats de la forme actuelle"
                       >
                         📜
                       </button>
-                      <button
-                        onClick={() => toggleShapeSeen(f.slug, !!f.seen)}
-                        className={`shrink-0 w-8 h-8 rounded-lg text-base flex items-center justify-center transition-colors ${
-                          f.seen
-                            ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                            : 'bg-parchment-200 text-ink-400 hover:bg-parchment-300'
-                        }`}
-                        aria-label={f.seen ? `Marquer ${f.nameFr ?? f.name} comme non vue` : `Marquer ${f.nameFr ?? f.name} comme vue`}
-                        aria-pressed={f.seen}
-                        title={f.seen ? 'Déjà vue — cliquer pour retirer' : 'Marquer comme vue'}
-                      >
-                        {f.seen ? '👁' : '⊘'}
-                      </button>
                     </div>
-                  ))}
-                {shapeForms.length === 0 && (
-                  <p className="text-sm text-ink-400 italic text-center py-4">Aucune forme disponible à ce niveau.</p>
-                )}
-                {shapeForms.length > 0 && shapeForms.every((f) => !f.seen) && shapeSeenOnly && (
-                  <p className="text-xs text-ink-400 italic text-center py-3">
-                    Aucune bête marquée comme vue — désactivez « Vues » et marquez-en avec 👁 (formes déjà rencontrées par votre druide).
-                  </p>
+                    <button
+                      type="button"
+                      onClick={revertShape}
+                      className="btn-secondary text-xs w-full py-1.5"
+                    >
+                      ↩ Revenir à la forme normale (action bonus)
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs text-green-800">
+                      Bêtes jusqu'à DD {(() => {
+                        const cr = wildShapeMaxCR(character.level ?? 2, character.druidCircle);
+                        return cr === 0.25 ? '1/4' : cr === 0.5 ? '1/2' : cr;
+                      })()}
+                      {character.druidCircle !== 'lune' &&
+                        (character.level ?? 2) < 4 &&
+                        ' · pas de nage'}
+                      {character.druidCircle !== 'lune' &&
+                        (character.level ?? 2) < 8 &&
+                        ' · pas de vol'}
+                      {(character.level ?? 2) >= 4 && character.druidCircle !== 'lune' && ' · nage'}
+                      {(character.level ?? 2) >= 8 && character.druidCircle !== 'lune' && ' · vol'}{' '}
+                      — PV lancés aux dés de la forme.
+                    </p>
+                    {character.druidCircle === 'lune' && (
+                      <p className="text-[10px] text-green-700">
+                        🌙 Lune : transformation et retour en action bonus
+                        {(character.level ?? 2) >= 10 ? ' · formes élémentaires disponibles' : ''}
+                        {(character.level ?? 2) >= 6 ? ' · attaques de bête magiques' : ''}.
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={openShapePicker}
+                      disabled={(character.wildShapeUses ?? 2) <= 0}
+                      className="btn-primary text-xs w-full py-1.5 disabled:opacity-40"
+                    >
+                      🐾 Prendre une forme
+                    </button>
+                  </>
                 )}
               </div>
-            </div>
-          </div>,
-          document.body,
-        )}
+            );
+          })()}
+
+        {/* Beast picker sheet (portal) */}
+        {shapePickerOpen &&
+          createPortal(
+            <div
+              className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
+              onClick={() => setShapePickerOpen(false)}
+            >
+              <div
+                className="card w-full sm:max-w-md rounded-b-none sm:rounded-2xl p-4 sheet-enter bg-white max-h-[80vh] flex flex-col"
+                onClick={(e) => e.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Choisir une forme"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-display text-lg font-semibold">🐾 Choisir une forme</h3>
+                  <button
+                    type="button"
+                    onClick={() => setShapePickerOpen(false)}
+                    className="text-ink-400 hover:text-ink-700 text-lg leading-none px-1"
+                    aria-label="Fermer"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    className="input flex-1"
+                    placeholder="Rechercher une bête…"
+                    value={shapeSearch}
+                    onChange={(e) => setShapeSearch(e.target.value)}
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShapeSeenOnly((v) => !v)}
+                    className={`shrink-0 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+                      shapeSeenOnly
+                        ? 'bg-green-100 text-green-800 border-green-300'
+                        : 'bg-parchment-100 text-ink-500 border-parchment-300'
+                    }`}
+                    aria-pressed={shapeSeenOnly}
+                    title="Filtrer sur les bêtes déjà vues (SRD)"
+                  >
+                    👁 Vues
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto space-y-1.5 -mx-1 px-1">
+                  {shapeForms
+                    .filter(
+                      (f) =>
+                        (!shapeSeenOnly || f.seen) &&
+                        (!shapeSearch.trim() ||
+                          (f.nameFr ?? f.name).toLowerCase().includes(shapeSearch.toLowerCase())),
+                    )
+                    .map((f) => (
+                      <div
+                        key={f.slug}
+                        className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-parchment-200 ${f.seen ? 'bg-parchment-50' : 'bg-parchment-50/40'} transition-colors`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => f.seen && takeShape(f.slug)}
+                          disabled={!f.seen}
+                          className={`min-w-0 flex-1 text-left ${f.seen ? 'hover:opacity-80' : 'cursor-not-allowed'}`}
+                          title={
+                            f.seen
+                              ? 'Prendre cette forme'
+                              : 'Bête non vue — marquez-la 👁 pour pouvoir vous transformer'
+                          }
+                        >
+                          <span
+                            className={`text-sm font-medium block truncate ${f.seen ? 'text-ink-800' : 'text-ink-400'}`}
+                          >
+                            {f.nameFr ?? f.name}
+                          </span>
+                          <span className="text-[10px] text-ink-400">
+                            DD{' '}
+                            {f.challengeRating === 0.125
+                              ? '1/8'
+                              : f.challengeRating === 0.25
+                                ? '1/4'
+                                : f.challengeRating === 0.5
+                                  ? '1/2'
+                                  : f.challengeRating}
+                            {f.size ? ` · ${f.size}` : ''}
+                            {f.fly ? ' · 🦅 vol' : ''}
+                            {f.swim ? ' · 🏊 nage' : ''}
+                            {!f.seen && ' · non vue'}
+                          </span>
+                        </button>
+                        <span className="text-xs text-ink-500 shrink-0 text-right">
+                          ❤ {f.hitPoints ?? '—'}
+                          <br />🛡 {f.armorClass ?? '—'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setShapeStatBlock(f.slug)}
+                          className="shrink-0 w-8 h-8 rounded-lg bg-parchment-100 hover:bg-gold-100 text-ink-500 hover:text-gold-600 border border-parchment-200 text-sm flex items-center justify-center transition-colors"
+                          aria-label={`Voir le bloc de stats de ${f.nameFr ?? f.name}`}
+                          title="Bloc de stats"
+                        >
+                          📜
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleShapeSeen(f.slug, !!f.seen)}
+                          className={`shrink-0 w-8 h-8 rounded-lg text-base flex items-center justify-center transition-colors ${
+                            f.seen
+                              ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                              : 'bg-parchment-200 text-ink-400 hover:bg-parchment-300'
+                          }`}
+                          aria-label={
+                            f.seen
+                              ? `Marquer ${f.nameFr ?? f.name} comme non vue`
+                              : `Marquer ${f.nameFr ?? f.name} comme vue`
+                          }
+                          aria-pressed={f.seen}
+                          title={f.seen ? 'Déjà vue — cliquer pour retirer' : 'Marquer comme vue'}
+                        >
+                          {f.seen ? '👁' : '⊘'}
+                        </button>
+                      </div>
+                    ))}
+                  {shapeForms.length === 0 && (
+                    <p className="text-sm text-ink-400 italic text-center py-4">
+                      Aucune forme disponible à ce niveau.
+                    </p>
+                  )}
+                  {shapeForms.length > 0 && shapeForms.every((f) => !f.seen) && shapeSeenOnly && (
+                    <p className="text-xs text-ink-400 italic text-center py-3">
+                      Aucune bête marquée comme vue — désactivez « Vues » et marquez-en avec 👁
+                      (formes déjà rencontrées par votre druide).
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )}
         <MonsterStatBlock
           open={!!shapeStatBlock}
           slug={shapeStatBlock}
@@ -2851,344 +3238,401 @@ function SurvivalPanel({ character, charId, entries, canEdit, markLocalMutation,
 
         {(() => {
           const u = computeUnarmedStats(character);
-                const abilityLabel = u.ability === 'dexterity' ? 'DEX' : 'FOR';
-                return (
-                  <div className="bg-parchment-100 rounded-lg px-3 py-2 border border-parchment-200 space-y-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium text-ink-800 truncate">✊ Frappe sans arme</span>
-                      {u.monk && (
-                        <span className="text-[10px] font-semibold text-indigo-600 shrink-0">Arts martiaux</span>
-                      )}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-red-50 text-red-800 text-[11px] font-medium border border-red-200"
-                        title={`Attaque : d20 ${formatModifier(u.attackBonus - proficiencyBonus(character.level ?? 1))} (${abilityLabel}) + ${proficiencyBonus(character.level ?? 1)} (maîtrise)`}
-                      >
-                        🎯 {formatModifier(u.attackBonus)}
-                      </span>
-                      <span
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50 text-orange-800 text-[11px] font-medium border border-orange-200"
-                        title={`Dégâts : ${u.damageStr} (${abilityLabel})`}
-                      >
-                        ⚔ {u.damageStr} {u.damageTypeFr}
-                      </span>
-                      {u.bonusActionAttack && (
-                        <span
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-indigo-50 text-indigo-700 text-[11px] font-medium border border-indigo-200"
-                          title="Arts martiaux : une frappe sans arme supplémentaire en action bonus après une attaque"
-                        >
-                          ⚡ action bonus
-                        </span>
-                      )}
-                    </div>
-                  </div>
+          const abilityLabel = u.ability === 'dexterity' ? 'DEX' : 'FOR';
+          return (
+            <div className="bg-parchment-100 rounded-lg px-3 py-2 border border-parchment-200 space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium text-ink-800 truncate">
+                  ✊ Frappe sans arme
+                </span>
+                {u.monk && (
+                  <span className="text-[10px] font-semibold text-indigo-600 shrink-0">
+                    Arts martiaux
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-red-50 text-red-800 text-[11px] font-medium border border-red-200"
+                  title={`Attaque : d20 ${formatModifier(u.attackBonus - proficiencyBonus(character.level ?? 1))} (${abilityLabel}) + ${proficiencyBonus(character.level ?? 1)} (maîtrise)`}
+                >
+                  🎯 {formatModifier(u.attackBonus)}
+                </span>
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-orange-50 text-orange-800 text-[11px] font-medium border border-orange-200"
+                  title={`Dégâts : ${u.damageStr} (${abilityLabel})`}
+                >
+                  ⚔ {u.damageStr} {u.damageTypeFr}
+                </span>
+                {u.bonusActionAttack && (
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-indigo-50 text-indigo-700 text-[11px] font-medium border border-indigo-200"
+                    title="Arts martiaux : une frappe sans arme supplémentaire en action bonus après une attaque"
+                  >
+                    ⚡ action bonus
+                  </span>
+                )}
+              </div>
+            </div>
           );
         })()}
       </div>
 
       <div className="space-y-4">
-          {/* Exhaustion tracker */}
-          {/* HP tracker — while shaped it shows the beast's bar (routed server-side to wild_shape_hp) */}
-      {character.wildShapeSlug ? (() => {
-        const shapeHp = character.wildShapeHp ?? 0;
-        const shapeMax = character.wildShapeMaxHp ?? 1;
-        const commitShapeHp = async () => {
-          if (shapeHpDraft === null) return;
-          const n = Math.max(0, Math.round(Number(shapeHpDraft) || 0));
-          setShapeHpDraft(null);
-          if (n === shapeHp) return;
-          markLocalMutation();
-          try {
-            await api.patch(`/api/characters/${charId}`, { currentHp: n });
-            await onSaved();
-          } catch { onError('Erreur'); }
-        };
-        return (
-          <div className="rounded-xl border border-green-300 bg-green-50 p-3 space-y-2">
-            <div className="text-xs font-semibold text-green-900">❤ PV — forme animale</div>
-            <div className="h-4 bg-green-100 rounded-full overflow-hidden border border-green-200">
-              <div
-                className={`h-full rounded-full transition-all ${shapeHp <= 0 ? 'bg-red-600' : shapeHp <= shapeMax * 0.3 ? 'bg-orange-500' : 'bg-green-600'}`}
-                style={{ width: `${Math.max(0, Math.min(100, (shapeHp / shapeMax) * 100))}%` }}
-              />
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1">
-                <input
-                  type="number"
-                  className="w-14 text-center text-sm font-bold bg-white border border-green-200 rounded-md py-1 focus:outline-none focus:border-green-500 text-green-900"
-                  value={shapeHpDraft ?? String(shapeHp)}
-                  onChange={(e) => setShapeHpDraft(e.target.value)}
-                  onBlur={commitShapeHp}
-                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                  aria-label="Points de vie de la forme"
-                />
-                <span className="text-xs text-green-700">/ {shapeMax}</span>
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={async () => {
-                    const n = Math.max(0, shapeHp - 1);
-                    markLocalMutation();
-                    try {
-                      await api.patch(`/api/characters/${charId}`, { currentHp: n });
-                      await onSaved();
-                    } catch { onError('Erreur'); }
-                  }}
-                  className="w-7 h-7 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 text-sm font-medium flex items-center justify-center"
-                  aria-label="Blesser la forme"
-                >−</button>
-                <button
-                  onClick={async () => {
-                    const n = shapeHp + 1;
-                    markLocalMutation();
-                    try {
-                      await api.patch(`/api/characters/${charId}`, { currentHp: n });
-                      await onSaved();
-                    } catch { onError('Erreur'); }
-                  }}
-                  className="w-7 h-7 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 text-sm font-medium flex items-center justify-center"
-                  aria-label="Soigner la forme"
-                >+</button>
+        {/* Exhaustion tracker */}
+        {/* HP tracker — while shaped it shows the beast's bar (routed server-side to wild_shape_hp) */}
+        {character.wildShapeSlug ? (
+          (() => {
+            const shapeHp = character.wildShapeHp ?? 0;
+            const shapeMax = character.wildShapeMaxHp ?? 1;
+            const commitShapeHp = async () => {
+              if (shapeHpDraft === null) return;
+              const n = Math.max(0, Math.round(Number(shapeHpDraft) || 0));
+              setShapeHpDraft(null);
+              if (n === shapeHp) return;
+              markLocalMutation();
+              try {
+                await api.patch(`/api/characters/${charId}`, { currentHp: n });
+                await onSaved();
+              } catch {
+                onError('Erreur');
+              }
+            };
+            return (
+              <div className="rounded-xl border border-green-300 bg-green-50 p-3 space-y-2">
+                <div className="text-xs font-semibold text-green-900">❤ PV — forme animale</div>
+                <div className="h-4 bg-green-100 rounded-full overflow-hidden border border-green-200">
+                  <div
+                    className={`h-full rounded-full transition-all ${shapeHp <= 0 ? 'bg-red-600' : shapeHp <= shapeMax * 0.3 ? 'bg-orange-500' : 'bg-green-600'}`}
+                    style={{ width: `${Math.max(0, Math.min(100, (shapeHp / shapeMax) * 100))}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      className="w-14 text-center text-sm font-bold bg-white border border-green-200 rounded-md py-1 focus:outline-none focus:border-green-500 text-green-900"
+                      value={shapeHpDraft ?? String(shapeHp)}
+                      onChange={(e) => setShapeHpDraft(e.target.value)}
+                      onBlur={commitShapeHp}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                      }}
+                      aria-label="Points de vie de la forme"
+                    />
+                    <span className="text-xs text-green-700">/ {shapeMax}</span>
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const n = Math.max(0, shapeHp - 1);
+                        markLocalMutation();
+                        try {
+                          await api.patch(`/api/characters/${charId}`, { currentHp: n });
+                          await onSaved();
+                        } catch {
+                          onError('Erreur');
+                        }
+                      }}
+                      className="w-7 h-7 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 text-sm font-medium flex items-center justify-center"
+                      aria-label="Blesser la forme"
+                    >
+                      −
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const n = shapeHp + 1;
+                        markLocalMutation();
+                        try {
+                          await api.patch(`/api/characters/${charId}`, { currentHp: n });
+                          await onSaved();
+                        } catch {
+                          onError('Erreur');
+                        }
+                      }}
+                      className="w-7 h-7 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 text-sm font-medium flex items-center justify-center"
+                      aria-label="Soigner la forme"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[10px] text-green-700 italic">
+                  À 0 PV : retour automatique à la forme normale, les dégâts excédentaires
+                  s'appliquent.
+                </p>
               </div>
-            </div>
-            <p className="text-[10px] text-green-700 italic">À 0 PV : retour automatique à la forme normale, les dégâts excédentaires s'appliquent.</p>
-          </div>
-        );
-      })() : (
-        <HpTracker
-          character={character}
-          charId={charId}
-          markLocalMutation={markLocalMutation}
-          onSaved={onSaved}
-          onError={onError}
-          onConcentrationCheck={setConcCheck}
-        />
-      )}
-      {concCheck && (
-        <ConcentrationAlert
-          check={concCheck}
-          onDone={() => setConcCheck(null)}
-          onBreak={() => patchCharacter({ concentrating: false }, 'Erreur de mise à jour')}
-        />
-      )}
+            );
+          })()
+        ) : (
+          <HpTracker
+            character={character}
+            charId={charId}
+            markLocalMutation={markLocalMutation}
+            onSaved={onSaved}
+            onError={onError}
+            onConcentrationCheck={setConcCheck}
+          />
+        )}
+        {concCheck && (
+          <ConcentrationAlert
+            check={concCheck}
+            onDone={() => setConcCheck(null)}
+            onBreak={() => patchCharacter({ concentrating: false }, 'Erreur de mise à jour')}
+          />
+        )}
 
-      {/* Hit dice — spent on a short rest to heal */}
-      {(() => {
-        const classInfo = findClass(character.characterClass);
-        const die = classInfo?.hitDie ?? 8;
-        const total = character.level ?? 1;
-        const used = character.hitDiceUsed ?? 0;
-        const remaining = Math.max(0, total - used);
-        const step = async (delta: number) => {
-          markLocalMutation();
-          try {
-            await api.patch(`/api/characters/${charId}`, { hitDiceUsed: Math.min(total, Math.max(0, used + delta)) });
-            await onSaved();
-          } catch {
-            onError('Erreur de mise à jour');
-          }
-        };
-        return (
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <span className="text-sm font-medium text-ink-700 flex items-center gap-1.5">
-              🎲 Dés de vie
-              <span className="text-xs font-normal text-ink-400">d{die}</span>
-            </span>
-            <span className="flex items-center gap-1">
-              <button
-                onClick={() => step(-1)}
-                disabled={used <= 0}
-                className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center"
-                aria-label="Récupérer un dé de vie"
-                title="Récupérer un dé (repos long : niveau/2 dés, min 1)"
-              >+</button>
-              <span className={`text-sm font-bold tabular-nums ${remaining === 0 ? 'text-red-500' : 'text-ink-800'}`}>
-                {remaining}
-              </span>
-              <span className="text-xs text-ink-400">/ {total}</span>
-              <button
-                onClick={() => step(1)}
-                disabled={remaining <= 0}
-                className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center"
-                aria-label="Dépenser un dé de vie"
-                title="Dépenser un dé de vie (repos court)"
-              >−</button>
-            </span>
-          </div>
-        );
-      })()}
-
-      {/* Inspiration + Concentration toggles */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <button
-          onClick={async () => {
+        {/* Hit dice — spent on a short rest to heal */}
+        {(() => {
+          const classInfo = findClass(character.characterClass);
+          const die = classInfo?.hitDie ?? 8;
+          const total = character.level ?? 1;
+          const used = character.hitDiceUsed ?? 0;
+          const remaining = Math.max(0, total - used);
+          const step = async (delta: number) => {
             markLocalMutation();
             try {
-              await api.patch(`/api/characters/${charId}`, { inspiration: !character.inspiration });
+              await api.patch(`/api/characters/${charId}`, {
+                hitDiceUsed: Math.min(total, Math.max(0, used + delta)),
+              });
               await onSaved();
-            } catch { onError('Erreur'); }
-          }}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${
-            character.inspiration
-              ? 'bg-gold-400/20 text-gold-500 border-gold-400'
-              : 'bg-parchment-100 text-ink-400 border-parchment-300 hover:border-gold-400'
-          }`}
-          aria-pressed={character.inspiration}
-          title="L'inspiration permet de relancer un d20 et de garder le meilleur résultat"
-        >
-          <span className="text-base">{character.inspiration ? '✨' : '✧'}</span>
-          Inspiration
-        </button>
-        <button
-          onClick={() => patchCharacter({ concentrating: !character.concentrating }, 'Erreur de mise à jour')}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${
-            character.concentrating
-              ? 'bg-indigo-100 text-indigo-700 border-indigo-400'
-              : 'bg-parchment-100 text-ink-400 border-parchment-300 hover:border-indigo-400'
-          }`}
-          aria-pressed={character.concentrating}
-          title="Tu concentres un sort. Si tu subis des dégâts : jet de sauvegarde de Constitution DD 10 ou ½ dégâts (le plus élevé) pour le maintenir."
-        >
-          <span className="text-base">{character.concentrating ? '🌀' : '◌'}</span>
-          Concentration
-        </button>
-      </div>
+            } catch {
+              onError('Erreur de mise à jour');
+            }
+          };
+          return (
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="text-sm font-medium text-ink-700 flex items-center gap-1.5">
+                🎲 Dés de vie
+                <span className="text-xs font-normal text-ink-400">d{die}</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => step(-1)}
+                  disabled={used <= 0}
+                  className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center"
+                  aria-label="Récupérer un dé de vie"
+                  title="Récupérer un dé (repos long : niveau/2 dés, min 1)"
+                >
+                  +
+                </button>
+                <span
+                  className={`text-sm font-bold tabular-nums ${remaining === 0 ? 'text-red-500' : 'text-ink-800'}`}
+                >
+                  {remaining}
+                </span>
+                <span className="text-xs text-ink-400">/ {total}</span>
+                <button
+                  type="button"
+                  onClick={() => step(1)}
+                  disabled={remaining <= 0}
+                  className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center"
+                  aria-label="Dépenser un dé de vie"
+                  title="Dépenser un dé de vie (repos court)"
+                >
+                  −
+                </button>
+              </span>
+            </div>
+          );
+        })()}
 
-      {/* Death saves — only shown at 0 HP */}
-      {character.currentHp <= 0 && (
-        <DeathSaveTracker character={character} charId={charId} markLocalMutation={markLocalMutation} onSaved={onSaved} onError={onError} />
-      )}
+        {/* Inspiration + Concentration toggles */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={async () => {
+              markLocalMutation();
+              try {
+                await api.patch(`/api/characters/${charId}`, {
+                  inspiration: !character.inspiration,
+                });
+                await onSaved();
+              } catch {
+                onError('Erreur');
+              }
+            }}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${
+              character.inspiration
+                ? 'bg-gold-400/20 text-gold-500 border-gold-400'
+                : 'bg-parchment-100 text-ink-400 border-parchment-300 hover:border-gold-400'
+            }`}
+            aria-pressed={character.inspiration}
+            title="L'inspiration permet de relancer un d20 et de garder le meilleur résultat"
+          >
+            <span className="text-base">{character.inspiration ? '✨' : '✧'}</span>
+            Inspiration
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              patchCharacter({ concentrating: !character.concentrating }, 'Erreur de mise à jour')
+            }
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${
+              character.concentrating
+                ? 'bg-indigo-100 text-indigo-700 border-indigo-400'
+                : 'bg-parchment-100 text-ink-400 border-parchment-300 hover:border-indigo-400'
+            }`}
+            aria-pressed={character.concentrating}
+            title="Tu concentres un sort. Si tu subis des dégâts : jet de sauvegarde de Constitution DD 10 ou ½ dégâts (le plus élevé) pour le maintenir."
+          >
+            <span className="text-base">{character.concentrating ? '🌀' : '◌'}</span>
+            Concentration
+          </button>
+        </div>
 
-      {/* Exhaustion */}
-      <div>
-        <div className="flex items-baseline justify-between mb-1.5">
-          <span className="text-sm font-medium text-ink-700">Épuisement</span>
-          <span className={`text-xs font-semibold ${exhaustionColor(exhaustion)}`}>
-            Niveau {exhaustion}/6
-          </span>
-        </div>
-        <div className="flex items-center gap-1" role="group" aria-label="Niveau d'épuisement">
-          {Array.from({ length: 7 }, (_, i) => {
-            const active = i <= exhaustion && i > 0;
-            return (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setExhaustionLevel(i)}
-                className={`text-2xl leading-none transition-colors ${exhaustionColor(exhaustion)} ${
-                  active ? 'opacity-100' : 'opacity-30 hover:opacity-60'
-                }`}
-                aria-pressed={i === exhaustion}
-                aria-label={`Niveau d'épuisement ${i}`}
-                title={`Niveau ${i}${i > 0 ? ` — ${EXHAUSTION_EFFECTS_FR[i]}` : ' — Aucun effet'}`}
-              >
-                {active ? '◆' : '◇'}
-              </button>
-            );
-          })}
-        </div>
-        {exhaustion > 0 && (
-          <p className="text-xs text-ink-500 mt-1">
-            {EXHAUSTION_EFFECTS_FR[exhaustion]}
-          </p>
+        {/* Death saves — only shown at 0 HP */}
+        {character.currentHp <= 0 && (
+          <DeathSaveTracker
+            character={character}
+            charId={charId}
+            markLocalMutation={markLocalMutation}
+            onSaved={onSaved}
+            onError={onError}
+          />
         )}
-      </div>
 
-      {/* Conditions */}
-      <div>
-        <span className="text-sm font-medium text-ink-700 block mb-1.5">États</span>
-        <div className="flex flex-wrap items-center gap-2">
-          {conditions.length === 0 && (
-            <span className="text-xs text-ink-400 italic">Aucun état actif</span>
+        {/* Exhaustion */}
+        <div>
+          <div className="flex items-baseline justify-between mb-1.5">
+            <span className="text-sm font-medium text-ink-700">Épuisement</span>
+            <span className={`text-xs font-semibold ${exhaustionColor(exhaustion)}`}>
+              Niveau {exhaustion}/6
+            </span>
+          </div>
+          {/* biome-ignore lint/a11y/useSemanticElements: fieldset would add its own border/margin styling and break the compact pips row. */}
+          <div className="flex items-center gap-1" role="group" aria-label="Niveau d'épuisement">
+            {[0, 1, 2, 3, 4, 5, 6].map((level) => {
+              const active = level <= exhaustion && level > 0;
+              return (
+                <button
+                  key={level}
+                  type="button"
+                  onClick={() => setExhaustionLevel(level)}
+                  className={`text-2xl leading-none transition-colors ${exhaustionColor(exhaustion)} ${
+                    active ? 'opacity-100' : 'opacity-30 hover:opacity-60'
+                  }`}
+                  aria-pressed={level === exhaustion}
+                  aria-label={`Niveau d'épuisement ${level}`}
+                  title={`Niveau ${level}${level > 0 ? ` — ${EXHAUSTION_EFFECTS_FR[level]}` : ' — Aucun effet'}`}
+                >
+                  {active ? '◆' : '◇'}
+                </button>
+              );
+            })}
+          </div>
+          {exhaustion > 0 && (
+            <p className="text-xs text-ink-500 mt-1">{EXHAUSTION_EFFECTS_FR[exhaustion]}</p>
           )}
-          {conditions.map((cond) => (
-            <span
-              key={cond}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blood-50 text-blood-800 text-xs font-medium border border-blood-200"
-            >
-              {cond}
+        </div>
+
+        {/* Conditions */}
+        <div>
+          <span className="text-sm font-medium text-ink-700 block mb-1.5">États</span>
+          <div className="flex flex-wrap items-center gap-2">
+            {conditions.length === 0 && (
+              <span className="text-xs text-ink-400 italic">Aucun état actif</span>
+            )}
+            {conditions.map((cond) => (
+              <span
+                key={cond}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blood-50 text-blood-800 text-xs font-medium border border-blood-200"
+              >
+                {cond}
+                <button
+                  type="button"
+                  onClick={() => removeCondition(cond)}
+                  className="text-blood-500 hover:text-blood-700 font-semibold"
+                  aria-label={`Retirer l'état ${cond}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            <label className="inline-flex items-center">
+              <span className="sr-only">Ajouter un état</span>
+              <select
+                className="input py-1 text-xs w-auto"
+                value=""
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v) addCondition(v);
+                  e.target.value = '';
+                }}
+                aria-label="Ajouter un état"
+              >
+                <option value="">+ Ajouter un état…</option>
+                {DND_CONDITIONS_FR.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+
+        {/* Deprivation + consume from inventory */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1">
+            <DeprivationBox
+              label="Sans nourriture"
+              days={foodDays}
+              icon="🍖"
+              onStep={(d) => stepDays('foodDays', d)}
+            />
+            {foodCount > 0 && canEdit && (
               <button
                 type="button"
-                onClick={() => removeCondition(cond)}
-                className="text-blood-500 hover:text-blood-700 font-semibold"
-                aria-label={`Retirer l'état ${cond}`}
+                onClick={() => consume('food')}
+                className="text-xs px-2 py-1 rounded-lg bg-green-100 text-green-800 hover:bg-green-200 transition-colors"
               >
-                ×
+                🍖 Manger (×{foodCount} rations)
               </button>
-            </span>
-          ))}
-          <label className="inline-flex items-center">
-            <span className="sr-only">Ajouter un état</span>
-            <select
-              className="input py-1 text-xs w-auto"
-              value=""
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v) addCondition(v);
-                e.target.value = '';
-              }}
-              aria-label="Ajouter un état"
-            >
-              <option value="">+ Ajouter un état…</option>
-              {DND_CONDITIONS_FR.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </label>
+            )}
+          </div>
+          <div className="flex flex-col gap-1">
+            <DeprivationBox
+              label="Sans eau"
+              days={waterDays}
+              icon="💧"
+              onStep={(d) => stepDays('waterDays', d)}
+            />
+            {fullWaterCount > 0 && canEdit && (
+              <button
+                type="button"
+                onClick={() => consume('water')}
+                className="text-xs px-2 py-1 rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
+              >
+                💧 Boire (×{fullWaterCount} pleines)
+              </button>
+            )}
+            {emptyWaterCount > 0 && canEdit && (
+              <button
+                type="button"
+                onClick={refillWater}
+                className="text-xs px-2 py-1 rounded-lg bg-cyan-100 text-cyan-800 hover:bg-cyan-200 transition-colors"
+              >
+                ↻ Remplir (×{emptyWaterCount} vides)
+              </button>
+            )}
+          </div>
         </div>
-      </div>
-
-      {/* Deprivation + consume from inventory */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1">
-          <DeprivationBox
-            label="Sans nourriture"
-            days={foodDays}
-            icon="🍖"
-            onStep={(d) => stepDays('foodDays', d)}
-          />
-          {foodCount > 0 && canEdit && (
-            <button
-              onClick={() => consume('food')}
-              className="text-xs px-2 py-1 rounded-lg bg-green-100 text-green-800 hover:bg-green-200 transition-colors"
-            >
-              🍖 Manger (×{foodCount} rations)
-            </button>
-          )}
-        </div>
-        <div className="flex flex-col gap-1">
-          <DeprivationBox
-            label="Sans eau"
-            days={waterDays}
-            icon="💧"
-            onStep={(d) => stepDays('waterDays', d)}
-          />
-          {fullWaterCount > 0 && canEdit && (
-            <button
-              onClick={() => consume('water')}
-              className="text-xs px-2 py-1 rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
-            >
-              💧 Boire (×{fullWaterCount} pleines)
-            </button>
-          )}
-          {emptyWaterCount > 0 && canEdit && (
-            <button
-              onClick={refillWater}
-              className="text-xs px-2 py-1 rounded-lg bg-cyan-100 text-cyan-800 hover:bg-cyan-200 transition-colors"
-            >
-              ↻ Remplir (×{emptyWaterCount} vides)
-            </button>
-          )}
-        </div>
-      </div>
       </div>
     </section>
   );
 }
 
-function DeathSaveTracker({ character, charId, markLocalMutation, onSaved, onError }: {
+function DeathSaveTracker({
+  character,
+  charId,
+  markLocalMutation,
+  onSaved,
+  onError,
+}: {
   character: Character;
   charId: number;
   markLocalMutation: () => void;
@@ -3219,9 +3663,13 @@ function DeathSaveTracker({ character, charId, markLocalMutation, onSaved, onErr
   const isStable = successes >= 3;
 
   return (
-    <div className={`rounded-xl p-3 border ${isDead ? 'bg-red-50 border-red-300' : isStable ? 'bg-green-50 border-green-300' : 'bg-parchment-100 border-parchment-300'}`}>
+    <div
+      className={`rounded-xl p-3 border ${isDead ? 'bg-red-50 border-red-300' : isStable ? 'bg-green-50 border-green-300' : 'bg-parchment-100 border-parchment-300'}`}
+    >
       <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-medium text-ink-700">💀 Jets de sauvegarde contre la mort</span>
+        <span className="text-sm font-medium text-ink-700">
+          💀 Jets de sauvegarde contre la mort
+        </span>
         {isDead && <span className="text-xs font-bold text-red-600">MORT</span>}
         {isStable && <span className="text-xs font-bold text-green-600">STABLE</span>}
       </div>
@@ -3234,6 +3682,7 @@ function DeathSaveTracker({ character, charId, markLocalMutation, onSaved, onErr
               const filled = i < successes;
               return (
                 <button
+                  type="button"
                   key={i}
                   onClick={() => updateSaves('successes', filled ? i : i + 1)}
                   className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${
@@ -3256,6 +3705,7 @@ function DeathSaveTracker({ character, charId, markLocalMutation, onSaved, onErr
               const filled = i < failures;
               return (
                 <button
+                  type="button"
                   key={i}
                   onClick={() => updateSaves('failures', filled ? i : i + 1)}
                   className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${
@@ -3277,7 +3727,14 @@ function DeathSaveTracker({ character, charId, markLocalMutation, onSaved, onErr
   );
 }
 
-function HpTracker({ character, charId, markLocalMutation, onSaved, onError, onConcentrationCheck }: {
+function HpTracker({
+  character,
+  charId,
+  markLocalMutation,
+  onSaved,
+  onError,
+  onConcentrationCheck,
+}: {
   character: Character;
   charId: number;
   markLocalMutation: () => void;
@@ -3290,9 +3747,15 @@ function HpTracker({ character, charId, markLocalMutation, onSaved, onError, onC
   const [currentHp, setCurrentHp] = useState<number | ''>(character.currentHp);
   const [tempHp, setTempHp] = useState<number | ''>(character.tempHp);
 
-  useEffect(() => { setMaxHp(character.maxHp); }, [character.maxHp]);
-  useEffect(() => { setCurrentHp(character.currentHp); }, [character.currentHp]);
-  useEffect(() => { setTempHp(character.tempHp); }, [character.tempHp]);
+  useEffect(() => {
+    setMaxHp(character.maxHp);
+  }, [character.maxHp]);
+  useEffect(() => {
+    setCurrentHp(character.currentHp);
+  }, [character.currentHp]);
+  useEffect(() => {
+    setTempHp(character.tempHp);
+  }, [character.tempHp]);
 
   const patchFields = async (fields: Record<string, number>) => {
     markLocalMutation();
@@ -3325,7 +3788,11 @@ function HpTracker({ character, charId, markLocalMutation, onSaved, onError, onC
 
   // Commit an input on blur: empty (or invalid) → 0 (1 for max HP),
   // and supersede any pending debounced update for that field.
-  const commit = (field: 'currentHp' | 'maxHp' | 'tempHp', raw: number | '', setter: (n: number) => void) => {
+  const commit = (
+    field: 'currentHp' | 'maxHp' | 'tempHp',
+    raw: number | '',
+    setter: (n: number) => void,
+  ) => {
     const min = field === 'maxHp' ? 1 : 0;
     const n = typeof raw === 'number' && Number.isFinite(raw) ? Math.max(min, raw) : min;
     setter(n);
@@ -3334,18 +3801,28 @@ function HpTracker({ character, charId, markLocalMutation, onSaved, onError, onC
   };
 
   // Don't lose a pending debounced change if the user navigates away.
-  useEffect(() => () => {
-    if (patchTimer.current) clearTimeout(patchTimer.current);
-    const fields = pendingPatch.current;
-    if (Object.keys(fields).length > 0) {
-      api.patch(`/api/characters/${charId}`, fields).catch(() => {});
-    }
-  }, [charId]);
+  useEffect(
+    () => () => {
+      if (patchTimer.current) clearTimeout(patchTimer.current);
+      const fields = pendingPatch.current;
+      if (Object.keys(fields).length > 0) {
+        api.patch(`/api/characters/${charId}`, fields).catch(() => {});
+      }
+    },
+    [charId],
+  );
 
   const curNum = currentHp === '' ? 0 : currentHp;
   const maxNum = typeof maxHp === 'number' && maxHp > 0 ? maxHp : character.maxHp;
   const tempNum = tempHp === '' ? 0 : tempHp;
-  const hpColor = curNum <= 0 ? 'text-red-600' : curNum <= maxNum * 0.3 ? 'text-red-500' : curNum <= maxNum * 0.5 ? 'text-orange-500' : 'text-green-600';
+  const hpColor =
+    curNum <= 0
+      ? 'text-red-600'
+      : curNum <= maxNum * 0.3
+        ? 'text-red-500'
+        : curNum <= maxNum * 0.5
+          ? 'text-orange-500'
+          : 'text-green-600';
   const hpPct = maxNum > 0 ? Math.min(100, (curNum / maxNum) * 100) : 0;
 
   return (
@@ -3355,10 +3832,17 @@ function HpTracker({ character, charId, markLocalMutation, onSaved, onError, onC
       {/* Current HP */}
       <div className="flex items-center gap-1">
         <button
-          onClick={() => { const n = Math.max(0, curNum - 1); setCurrentHp(n); schedulePatch('currentHp', n); }}
+          type="button"
+          onClick={() => {
+            const n = Math.max(0, curNum - 1);
+            setCurrentHp(n);
+            schedulePatch('currentHp', n);
+          }}
           className="w-7 h-7 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 text-sm font-medium flex items-center justify-center"
           aria-label="Blesser"
-        >−</button>
+        >
+          −
+        </button>
         <input
           type="number"
           className={`w-14 text-center text-sm font-bold bg-white border border-parchment-300 rounded-md py-1 focus:outline-none focus:border-blood-500 ${hpColor}`}
@@ -3368,10 +3852,17 @@ function HpTracker({ character, charId, markLocalMutation, onSaved, onError, onC
           aria-label="Points de vie actuels"
         />
         <button
-          onClick={() => { const n = Math.min(maxNum, curNum + 1); setCurrentHp(n); schedulePatch('currentHp', n); }}
+          type="button"
+          onClick={() => {
+            const n = Math.min(maxNum, curNum + 1);
+            setCurrentHp(n);
+            schedulePatch('currentHp', n);
+          }}
           className="w-7 h-7 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 text-sm font-medium flex items-center justify-center"
           aria-label="Soigner"
-        >+</button>
+        >
+          +
+        </button>
       </div>
       <span className="text-ink-400 text-sm">/</span>
 
@@ -3392,25 +3883,41 @@ function HpTracker({ character, charId, markLocalMutation, onSaved, onError, onC
       <label className="flex items-center gap-1">
         <span className="text-xs text-ink-400">PV temp</span>
         <button
-          onClick={() => { const n = Math.max(0, tempNum - 1); setTempHp(n); schedulePatch('tempHp', n); }}
+          type="button"
+          onClick={() => {
+            const n = Math.max(0, tempNum - 1);
+            setTempHp(n);
+            schedulePatch('tempHp', n);
+          }}
           disabled={tempNum <= 0}
           className="w-6 h-6 rounded bg-blue-100 hover:bg-blue-200 disabled:opacity-30 text-blue-700 text-xs flex items-center justify-center"
           aria-label="Retirer 1 PV temp"
-        >−</button>
+        >
+          −
+        </button>
         <input
           type="number"
           className={`w-12 text-center text-sm font-medium bg-white border border-parchment-300 rounded-md py-1 focus:outline-none focus:border-blood-500 ${tempNum > 0 ? 'text-blue-700' : 'text-ink-400'}`}
           value={tempHp}
           min={0}
-          onChange={(e) => setTempHp(e.target.value === '' ? '' : Math.max(0, Number(e.target.value) || 0))}
+          onChange={(e) =>
+            setTempHp(e.target.value === '' ? '' : Math.max(0, Number(e.target.value) || 0))
+          }
           onBlur={() => commit('tempHp', tempHp, setTempHp)}
           aria-label="Points de vie temporaires"
         />
         <button
-          onClick={() => { const n = tempNum + 1; setTempHp(n); schedulePatch('tempHp', n); }}
+          type="button"
+          onClick={() => {
+            const n = tempNum + 1;
+            setTempHp(n);
+            schedulePatch('tempHp', n);
+          }}
           className="w-6 h-6 rounded bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs flex items-center justify-center"
           aria-label="Ajouter 1 PV temp"
-        >+</button>
+        >
+          +
+        </button>
       </label>
       {tempNum > 0 && (
         <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
@@ -3454,9 +3961,7 @@ function DeprivationBox({
           <span aria-hidden="true">{icon}</span>
           {label}
         </span>
-        <span className="text-sm font-semibold">
-          {days} j
-        </span>
+        <span className="text-sm font-semibold">{days} j</span>
       </div>
       <div className="flex items-center gap-1 mt-2">
         <button
@@ -3478,12 +3983,9 @@ function DeprivationBox({
       </div>
       {days >= 3 && (
         <p className="text-xs mt-1.5 italic">
-          {days >= 5
-            ? '⚠ Risque grave d\u2019épuisement'
-            : '⚠ Privation prolongée'}
+          {days >= 5 ? '⚠ Risque grave d\u2019épuisement' : '⚠ Privation prolongée'}
         </p>
       )}
     </div>
   );
 }
-

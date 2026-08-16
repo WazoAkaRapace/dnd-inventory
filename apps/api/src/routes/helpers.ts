@@ -1,23 +1,24 @@
 /**
  * Helpers shared across route modules: membership checks, item/character shaping.
  */
-import type { FastifyReply, FastifyRequest } from 'fastify';
+
 import { randomInt } from 'node:crypto';
-import { getDb } from '../db/index.ts';
-import { bus } from '../sync/bus.ts';
 import type {
-  Item,
-  CharacterSummary,
   Character,
+  CharacterFeature,
+  CharacterSpell,
+  CharacterSummary,
+  CostUnit,
   InventoryEntry,
+  Item,
   ItemCategory,
   Rarity,
-  CostUnit,
   Spell,
-  CharacterSpell,
   SpellSchool,
-  CharacterFeature,
 } from '@dnd-inventory/shared';
+import type { FastifyReply, FastifyRequest } from 'fastify';
+import { getDb } from '../db/index.ts';
+import { bus } from '../sync/bus.ts';
 
 /** Parse a JSON column that's guaranteed to be an array; never throws. */
 function parseJsonArray(raw: any, fallback: any[] = []): any[] {
@@ -51,18 +52,18 @@ export function requireUser(req: FastifyRequest, reply: FastifyReply): number | 
 /** Is this user a member (gm or player) of this party? */
 export function isPartyMember(partyId: number, userId: number): boolean {
   const db = getDb();
-  const row = db.prepare(
-    'SELECT 1 FROM party_members WHERE party_id = ? AND user_id = ?',
-  ).get(partyId, userId);
+  const row = db
+    .prepare('SELECT 1 FROM party_members WHERE party_id = ? AND user_id = ?')
+    .get(partyId, userId);
   return !!row;
 }
 
 /** Is this user the GM of this party? */
 export function isPartyGM(partyId: number, userId: number): boolean {
   const db = getDb();
-  const row = db.prepare(
-    "SELECT 1 FROM party_members WHERE party_id = ? AND user_id = ? AND role = 'gm'",
-  ).get(partyId, userId);
+  const row = db
+    .prepare("SELECT 1 FROM party_members WHERE party_id = ? AND user_id = ? AND role = 'gm'")
+    .get(partyId, userId);
   return !!row;
 }
 
@@ -99,8 +100,16 @@ export function mapItem(row: any): Item {
     strMin: row.str_min,
     stealthDisadvantage: !!row.stealth_disadvantage,
     properties: row.properties_json ? JSON.parse(row.properties_json) : [],
-    survivalTags: row.survival_tags ? (typeof row.survival_tags === 'string' ? JSON.parse(row.survival_tags) : row.survival_tags) : [],
-    aliases: row.aliases ? (typeof row.aliases === 'string' ? JSON.parse(row.aliases) : row.aliases) : [],
+    survivalTags: row.survival_tags
+      ? typeof row.survival_tags === 'string'
+        ? JSON.parse(row.survival_tags)
+        : row.survival_tags
+      : [],
+    aliases: row.aliases
+      ? typeof row.aliases === 'string'
+        ? JSON.parse(row.aliases)
+        : row.aliases
+      : [],
     imagePath: row.image_path,
   };
 }
@@ -116,7 +125,11 @@ export function mapCharacterSummary(row: any): CharacterSummary {
     strength: row.strength,
     capacityMultiplier: row.capacity_multiplier ?? 1,
     exhaustion: row.exhaustion ?? 0,
-    conditions: row.conditions ? (typeof row.conditions === 'string' ? JSON.parse(row.conditions) : row.conditions) : [],
+    conditions: row.conditions
+      ? typeof row.conditions === 'string'
+        ? JSON.parse(row.conditions)
+        : row.conditions
+      : [],
     foodDays: row.food_days ?? 0,
     waterDays: row.water_days ?? 0,
     maxHp: row.max_hp ?? 1,
@@ -139,7 +152,7 @@ export function mapCharacterSummary(row: any): CharacterSummary {
       ? parseJsonArray(row.weapon_proficiencies, [])
       : null,
     fightingStyle: row.fighting_style ?? null,
-    spellSlotsUsed: parseJsonArray(row.spell_slots_used, [0,0,0,0,0,0,0,0,0]),
+    spellSlotsUsed: parseJsonArray(row.spell_slots_used, [0, 0, 0, 0, 0, 0, 0, 0, 0]),
     // Description / personality
     alignment: row.alignment ?? null,
     sex: row.sex ?? null,
@@ -191,28 +204,30 @@ export function mapCharacter(row: any): Character {
 export function mapInventoryEntry(row: any): InventoryEntry {
   // Detect whether row uses aliased columns (i_id) or raw (id)
   const usesAliases = row.i_id !== undefined;
-  const itemRow = usesAliases ? {
-    id: row.i_id,
-    source: row.i_source,
-    party_id: row.i_party_id,
-    category: row.i_category,
-    srd_index: row.i_srd_index,
-    name: row.i_name,
-    name_fr: row.i_name_fr,
-    rarity: row.i_rarity,
-    weight_kg: row.i_weight_kg,
-    cost_qty: row.i_cost_qty,
-    cost_unit: row.i_cost_unit,
-    description: row.i_description,
-    damage_dice: row.i_damage_dice,
-    damage_type: row.i_damage_type,
-    ac_base: row.i_ac_base,
-    str_min: row.i_str_min,
-    stealth_disadvantage: row.i_stealth_disadvantage,
-    properties_json: row.i_properties_json,
-    survival_tags: row.i_survival_tags,
-    image_path: row.i_image_path,
-  } : row;
+  const itemRow = usesAliases
+    ? {
+        id: row.i_id,
+        source: row.i_source,
+        party_id: row.i_party_id,
+        category: row.i_category,
+        srd_index: row.i_srd_index,
+        name: row.i_name,
+        name_fr: row.i_name_fr,
+        rarity: row.i_rarity,
+        weight_kg: row.i_weight_kg,
+        cost_qty: row.i_cost_qty,
+        cost_unit: row.i_cost_unit,
+        description: row.i_description,
+        damage_dice: row.i_damage_dice,
+        damage_type: row.i_damage_type,
+        ac_base: row.i_ac_base,
+        str_min: row.i_str_min,
+        stealth_disadvantage: row.i_stealth_disadvantage,
+        properties_json: row.i_properties_json,
+        survival_tags: row.i_survival_tags,
+        image_path: row.i_image_path,
+      }
+    : row;
 
   return {
     id: row.id,
@@ -357,11 +372,13 @@ export function mirrorConditionsToCombatants(
 ): void {
   if (added.length === 0 && removed.length === 0) return;
   const db = getDb();
-  const rows = db.prepare(`
+  const rows = db
+    .prepare(`
     SELECT c.id, c.conditions FROM combatants c
     JOIN encounters e ON e.id = c.encounter_id
     WHERE c.character_id = ? AND c.type = 'player' AND e.status != 'ended'
-  `).all(charId) as any[];
+  `)
+    .all(charId) as any[];
   let changed = false;
   for (const row of rows) {
     let conds = parseCombatantConditions(row.conditions);
@@ -403,6 +420,12 @@ export function mirrorConditionsToCharacter(
   const next = JSON.stringify(list);
   if (next !== ch.conditions) {
     db.prepare('UPDATE characters SET conditions = ? WHERE id = ?').run(next, characterId);
-    bus.emitChange({ type: 'character:change', partyId, characterId, action: 'condition', actorUserId });
+    bus.emitChange({
+      type: 'character:change',
+      partyId,
+      characterId,
+      action: 'condition',
+      actorUserId,
+    });
   }
 }

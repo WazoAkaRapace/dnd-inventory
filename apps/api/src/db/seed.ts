@@ -6,7 +6,7 @@
  * Run: npm run seed
  */
 import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getDb } from './index.ts';
 
@@ -79,7 +79,7 @@ const INSERT = `
 // SRD items that count as food or water for survival tracking
 const SURVIVAL_TAGS: Record<string, string[]> = {
   'rations-1-day': ['food'],
-  'waterskin': ['water'],
+  waterskin: ['water'],
 };
 
 // Alternative search names for items where the official French translation
@@ -90,7 +90,7 @@ const ITEM_ALIASES: Record<string, string[]> = {
   'disguise-kit': ['kit de déguisement'],
   'forgery-kit': ['kit de contrefaçon', 'falsification'],
   'herbalism-kit': ["kit d'herboriste", 'herboristerie'],
-  'poisoners-kit': ["kit d'empoisonneur", "empoisonnement"],
+  'poisoners-kit': ["kit d'empoisonneur", 'empoisonnement'],
   'navigators-tools': ['outils de navigation'],
   'alchemists-supplies': ["fournitures d'alchimiste", 'alchimie'],
   'brewers-supplies': ['fournitures de brasseur', 'brasserie'],
@@ -108,7 +108,7 @@ const ITEM_ALIASES: Record<string, string[]> = {
   'smiths-tools': ['outils de forgeron', 'forge'],
   'weavers-tools': ['outils de tisserand', 'tissage'],
   'woodcarvers-tools': ['outils de sculpteur sur bois', 'sculpture'],
-  'scale-mail': ['armure d\'écailles', 'écailles'],
+  'scale-mail': ["armure d'écailles", 'écailles'],
   'mage-armor': ['armure du mage'],
   'crossbow-light': ['arbalète légère'],
   'crossbow-heavy': ['arbalète lourde'],

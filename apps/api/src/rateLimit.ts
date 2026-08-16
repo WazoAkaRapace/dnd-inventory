@@ -22,11 +22,7 @@ const ERROR_MAX = parseInt(process.env.RATE_LIMIT_ERROR_MAX || '40', 10);
 const AUTH_FAIL_MAX = parseInt(process.env.RATE_LIMIT_AUTH_FAIL_MAX || '5', 10);
 
 // Routes whose FAILURES point at credential/invite guessing
-const TIGHT_ROUTES = new Set([
-  '/api/auth/login',
-  '/api/auth/register',
-  '/api/parties/join',
-]);
+const TIGHT_ROUTES = new Set(['/api/auth/login', '/api/auth/register', '/api/parties/join']);
 
 interface Bucket {
   count: number;

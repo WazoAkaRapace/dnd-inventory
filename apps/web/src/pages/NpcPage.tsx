@@ -1,21 +1,18 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import api from '../api';
-import { useSyncEvent } from '../sync';
-import { useAuth } from '../auth';
 import type {
+  CreateNpcPayload,
   Npc,
   NpcDisposition,
   NpcStatus,
-  CreateNpcPayload,
-  PatchNpcPayload,
   PartyDetail,
+  PatchNpcPayload,
 } from '@dnd-inventory/shared';
-import {
-  NPC_DISPOSITION_LABELS_FR,
-  NPC_STATUS_LABELS_FR,
-} from '@dnd-inventory/shared';
-import { LoadingSpinner, EmptyState, Modal, ErrorMsg } from '../components/ui';
+import { NPC_DISPOSITION_LABELS_FR, NPC_STATUS_LABELS_FR } from '@dnd-inventory/shared';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import api from '../api';
+import { useAuth } from '../auth';
+import { EmptyState, ErrorMsg, LoadingSpinner, Modal } from '../components/ui';
+import { useSyncEvent } from '../sync';
 
 // ---------- Status / disposition styling ----------
 
@@ -72,23 +69,26 @@ export default function NpcPage({ embedded = false }: { embedded?: boolean }) {
     setTimeout(() => setFeedback(null), 2500);
   }, []);
 
-  const load = useCallback(async (silent = false) => {
-    if (!partyId) return;
-    if (!silent) setLoading(true);
-    setError('');
-    try {
-      const [npcRes, partyRes] = await Promise.all([
-        api.get<{ npcs: Npc[] }>(`/api/parties/${partyId}/npcs`),
-        api.get<PartyDetail>(`/api/parties/${partyId}`),
-      ]);
-      setNpcs(npcRes.data.npcs);
-      setParty(partyRes.data);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Impossible de charger les PNJ');
-    } finally {
-      setLoading(false);
-    }
-  }, [partyId]);
+  const load = useCallback(
+    async (silent = false) => {
+      if (!partyId) return;
+      if (!silent) setLoading(true);
+      setError('');
+      try {
+        const [npcRes, partyRes] = await Promise.all([
+          api.get<{ npcs: Npc[] }>(`/api/parties/${partyId}/npcs`),
+          api.get<PartyDetail>(`/api/parties/${partyId}`),
+        ]);
+        setNpcs(npcRes.data.npcs);
+        setParty(partyRes.data);
+      } catch (err: any) {
+        setError(err.response?.data?.error || 'Impossible de charger les PNJ');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [partyId],
+  );
 
   useEffect(() => {
     load();
@@ -96,11 +96,14 @@ export default function NpcPage({ embedded = false }: { embedded?: boolean }) {
 
   // Real-time sync
   const currentPartyId = Number(partyId);
-  useSyncEvent((event) => {
-    if (event.partyId === currentPartyId) {
-      load(true); // silent — no spinner flash on sync updates
-    }
-  }, [currentPartyId]);
+  useSyncEvent(
+    (event) => {
+      if (event.partyId === currentPartyId) {
+        load(true); // silent — no spinner flash on sync updates
+      }
+    },
+    [currentPartyId],
+  );
 
   const isGM = useMemo(
     () => !!party && party.members.some((m) => m.userId === user?.id && m.role === 'gm'),
@@ -118,7 +121,8 @@ export default function NpcPage({ embedded = false }: { embedded?: boolean }) {
         if (dispositionFilter && n.disposition !== dispositionFilter) return false;
         if (statusFilter && n.status !== statusFilter) return false;
         if (q) {
-          const hay = `${n.name} ${n.role ?? ''} ${n.location ?? ''} ${n.faction ?? ''} ${n.description ?? ''}`.toLowerCase();
+          const hay =
+            `${n.name} ${n.role ?? ''} ${n.location ?? ''} ${n.faction ?? ''} ${n.description ?? ''}`.toLowerCase();
           if (!hay.includes(q)) return false;
         }
         return true;
@@ -186,11 +190,9 @@ export default function NpcPage({ embedded = false }: { embedded?: boolean }) {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-3">
-          {!embedded && (
-            <span className="text-sm text-ink-400">PNJ</span>
-          )}
+          {!embedded && <span className="text-sm text-ink-400">PNJ</span>}
         </div>
-        <button onClick={openCreate} className="btn-primary text-sm">
+        <button type="button" onClick={openCreate} className="btn-primary text-sm">
           + Ajouter un PNJ
         </button>
       </div>
@@ -214,7 +216,9 @@ export default function NpcPage({ embedded = false }: { embedded?: boolean }) {
           >
             <option value="">Toutes dispositions</option>
             {DISPOSITION_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
             ))}
           </select>
           <select
@@ -225,7 +229,9 @@ export default function NpcPage({ embedded = false }: { embedded?: boolean }) {
           >
             <option value="">Tous statuts</option>
             {STATUS_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
             ))}
           </select>
           <select
@@ -318,6 +324,7 @@ export default function NpcPage({ embedded = false }: { embedded?: boolean }) {
           </p>
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={() => setDeleting(null)}
               disabled={deleteBusy}
               className="btn-secondary flex-1"
@@ -325,6 +332,7 @@ export default function NpcPage({ embedded = false }: { embedded?: boolean }) {
               Annuler
             </button>
             <button
+              type="button"
               onClick={confirmDelete}
               disabled={deleteBusy}
               className="btn-primary flex-1 bg-red-600 hover:bg-red-700"
@@ -363,13 +371,14 @@ function NpcCard({
           className="min-w-0 flex-1 text-left"
           aria-label={canEdit ? `Modifier ${npc.name}` : npc.name}
         >
-          <h3 className="font-display text-lg font-semibold leading-tight truncate">
-            {npc.name}
-          </h3>
+          <h3 className="font-display text-lg font-semibold leading-tight truncate">{npc.name}</h3>
         </button>
         <span
           className="shrink-0 text-base"
-          title={npc.isShared ? 'Partagé avec le groupe' : 'Privé (visible par le créateur et le MD)'}
+          title={
+            npc.isShared ? 'Partagé avec le groupe' : 'Privé (visible par le créateur et le MD)'
+          }
+          role="img"
           aria-label={npc.isShared ? 'Partagé' : 'Privé'}
         >
           {npc.isShared ? '🔗' : '🔒'}
@@ -393,9 +402,7 @@ function NpcCard({
             {NPC_STATUS_LABELS_FR[npc.status]}
           </span>
         </span>
-        <span className="text-ink-500">
-          · {NPC_DISPOSITION_LABELS_FR[npc.disposition]}
-        </span>
+        <span className="text-ink-500">· {NPC_DISPOSITION_LABELS_FR[npc.disposition]}</span>
       </div>
 
       {/* Location */}
@@ -422,7 +429,9 @@ function NpcCard({
           >
             <span aria-hidden="true">🤫</span>
             Secret
-            <span className={`text-ink-400 chevron ${showSecret ? 'is-open' : 'is-closed'}`}>▼</span>
+            <span className={`text-ink-400 chevron ${showSecret ? 'is-open' : 'is-closed'}`}>
+              ▼
+            </span>
           </button>
           <div className={`expand-grid ${showSecret ? '' : 'is-collapsed'}`}>
             <div className="expand-inner">
@@ -436,12 +445,11 @@ function NpcCard({
 
       {/* Footer: creator + actions */}
       <div className="mt-auto pt-2 flex items-center justify-between gap-2 border-t border-parchment-100">
-        <span className="text-xs text-ink-400 truncate">
-          par {npc.createdByName}
-        </span>
+        <span className="text-xs text-ink-400 truncate">par {npc.createdByName}</span>
         {canEdit && (
           <div className="flex items-center gap-1 shrink-0">
             <button
+              type="button"
               onClick={onEdit}
               className="text-xs px-2 py-1 rounded-lg text-ink-600 hover:bg-parchment-100"
               aria-label={`Modifier ${npc.name}`}
@@ -449,6 +457,7 @@ function NpcCard({
               ✎ Modifier
             </button>
             <button
+              type="button"
               onClick={onDelete}
               className="text-xs px-2 py-1 rounded-lg text-red-600 hover:bg-red-50"
               aria-label={`Supprimer ${npc.name}`}
@@ -559,8 +568,11 @@ function NpcFormModal({ open, onClose, partyId, npc, onSaved, onError }: NpcForm
     <Modal open={open} onClose={onClose} title={isEdit ? 'Modifier le PNJ' : 'Nouveau PNJ'}>
       <form onSubmit={submit} className="space-y-3">
         <div>
-          <label className="label">Nom *</label>
+          <label className="label" htmlFor="npc-name">
+            Nom *
+          </label>
           <input
+            id="npc-name"
             className="input"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -571,8 +583,11 @@ function NpcFormModal({ open, onClose, partyId, npc, onSaved, onError }: NpcForm
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">Rôle</label>
+            <label className="label" htmlFor="npc-role">
+              Rôle
+            </label>
             <input
+              id="npc-role"
               className="input"
               value={role}
               onChange={(e) => setRole(e.target.value)}
@@ -580,8 +595,11 @@ function NpcFormModal({ open, onClose, partyId, npc, onSaved, onError }: NpcForm
             />
           </div>
           <div>
-            <label className="label">Faction</label>
+            <label className="label" htmlFor="npc-faction">
+              Faction
+            </label>
             <input
+              id="npc-faction"
               className="input"
               value={faction}
               onChange={(e) => setFaction(e.target.value)}
@@ -591,8 +609,11 @@ function NpcFormModal({ open, onClose, partyId, npc, onSaved, onError }: NpcForm
         </div>
 
         <div>
-          <label className="label">Lieu</label>
+          <label className="label" htmlFor="npc-location">
+            Lieu
+          </label>
           <input
+            id="npc-location"
             className="input"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
@@ -602,34 +623,47 @@ function NpcFormModal({ open, onClose, partyId, npc, onSaved, onError }: NpcForm
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">Disposition</label>
+            <label className="label" htmlFor="npc-disposition">
+              Disposition
+            </label>
             <select
+              id="npc-disposition"
               className="input"
               value={disposition}
               onChange={(e) => setDisposition(e.target.value as NpcDisposition)}
             >
               {DISPOSITION_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
               ))}
             </select>
           </div>
           <div>
-            <label className="label">Statut</label>
+            <label className="label" htmlFor="npc-status">
+              Statut
+            </label>
             <select
+              id="npc-status"
               className="input"
               value={status}
               onChange={(e) => setStatus(e.target.value as NpcStatus)}
             >
               {STATUS_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
               ))}
             </select>
           </div>
         </div>
 
         <div>
-          <label className="label">Description</label>
+          <label className="label" htmlFor="npc-description">
+            Description
+          </label>
           <textarea
+            id="npc-description"
             className="input"
             rows={3}
             value={description}
@@ -639,8 +673,11 @@ function NpcFormModal({ open, onClose, partyId, npc, onSaved, onError }: NpcForm
         </div>
 
         <div>
-          <label className="label">Secret</label>
+          <label className="label" htmlFor="npc-secret">
+            Secret
+          </label>
           <textarea
+            id="npc-secret"
             className="input"
             rows={2}
             value={secret}
@@ -659,12 +696,8 @@ function NpcFormModal({ open, onClose, partyId, npc, onSaved, onError }: NpcForm
             onChange={(e) => setIsShared(e.target.checked)}
             className="w-4 h-4 accent-blood-600"
           />
-          <span className="text-sm font-medium text-ink-700">
-            Partagé avec le groupe
-          </span>
-          <span className="text-xs text-ink-400">
-            (sinon, visible par le créateur et le MD)
-          </span>
+          <span className="text-sm font-medium text-ink-700">Partagé avec le groupe</span>
+          <span className="text-xs text-ink-400">(sinon, visible par le créateur et le MD)</span>
         </label>
 
         <button type="submit" disabled={submitting} className="btn-primary w-full">

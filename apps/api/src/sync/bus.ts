@@ -16,7 +16,19 @@ export interface SyncEvent {
   partyId: number;
   characterId?: number;
   toCharacterId?: number; // for transfers
-  action?: 'add' | 'remove' | 'transfer' | 'adjust' | 'coins' | 'stats' | 'custom-item' | 'join' | 'initiative' | 'turn' | 'hp' | 'condition';
+  action?:
+    | 'add'
+    | 'remove'
+    | 'transfer'
+    | 'adjust'
+    | 'coins'
+    | 'stats'
+    | 'custom-item'
+    | 'join'
+    | 'initiative'
+    | 'turn'
+    | 'hp'
+    | 'condition';
   itemName?: string;
   actorUserId?: number;
   /** Concentration save required — pushed to the character's owner (damage taken while concentrating). */

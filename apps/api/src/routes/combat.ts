@@ -8,26 +8,38 @@
  * Every mutation emits a 'combat:change' sync event so all connected clients
  * (GM grid + player widgets) refresh in real time.
  */
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { getDb } from '../db/index.ts';
-import { bus } from '../sync/bus.ts';
-import { requireUser, isPartyMember, isPartyGM, getUserId, mirrorConditionsToCharacter } from './helpers.ts';
-import { abilityModifier, computeAC, CONCENTRATION_BREAKING_CONDITIONS_FR, rollHitPoints } from '@dnd-inventory/shared';
+
 import type {
+  AddMonsterPayload,
+  AddPlayerPayload,
   Combatant,
   CombatantCondition,
+  CombatantType,
   ConcentrationCheck,
+  CreateEncounterPayload,
   Encounter,
   EncounterDetail,
   EncounterSummary,
-  CombatantType,
-  AddMonsterPayload,
-  AddPlayerPayload,
   PatchCombatantPayload,
   PatchEncounterPayload,
-  CreateEncounterPayload,
   SetInitiativePayload,
 } from '@dnd-inventory/shared';
+import {
+  abilityModifier,
+  CONCENTRATION_BREAKING_CONDITIONS_FR,
+  computeAC,
+  rollHitPoints,
+} from '@dnd-inventory/shared';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { getDb } from '../db/index.ts';
+import { bus } from '../sync/bus.ts';
+import {
+  getUserId,
+  isPartyGM,
+  isPartyMember,
+  mirrorConditionsToCharacter,
+  requireUser,
+} from './helpers.ts';
 
 // ---------- Row mappers ----------
 
@@ -138,7 +150,8 @@ export async function combatRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const partyId = Number(req.params.partyId);
-      if (!isPartyMember(partyId, userId)) return reply.code(403).send({ error: 'Pas membre du groupe' });
+      if (!isPartyMember(partyId, userId))
+        return reply.code(403).send({ error: 'Pas membre du groupe' });
 
       const gm = isPartyGM(partyId, userId);
       const db = getDb();
@@ -146,15 +159,18 @@ export async function combatRoutes(app: FastifyInstance) {
       let rows: any[];
       if (gm) {
         // GM sees all encounters
-        rows = db.prepare(`
+        rows = db
+          .prepare(`
           SELECT e.*, (SELECT COUNT(*) FROM combatants c WHERE c.encounter_id = e.id) AS combatant_count
           FROM encounters e
           WHERE e.party_id = ?
           ORDER BY e.created_at DESC
-        `).all(partyId);
+        `)
+          .all(partyId);
       } else {
         // Players only see encounters where they have a combatant (their character is in the fight)
-        rows = db.prepare(`
+        rows = db
+          .prepare(`
           SELECT e.*, (SELECT COUNT(*) FROM combatants c WHERE c.encounter_id = e.id) AS combatant_count
           FROM encounters e
           WHERE e.party_id = ?
@@ -164,7 +180,8 @@ export async function combatRoutes(app: FastifyInstance) {
               WHERE c.encounter_id = e.id AND ch.owner_id = ?
             )
           ORDER BY e.created_at DESC
-        `).all(partyId, userId);
+        `)
+          .all(partyId, userId);
       }
 
       return reply.send({ encounters: rows.map(mapEncounterSummary) });
@@ -188,9 +205,11 @@ export async function combatRoutes(app: FastifyInstance) {
       if (!name) return reply.code(400).send({ error: 'Le nom est requis' });
 
       const db = getDb();
-      const info = db.prepare(`
+      const info = db
+        .prepare(`
         INSERT INTO encounters (party_id, name) VALUES (?, ?)
-      `).run(partyId, name);
+      `)
+        .run(partyId, name);
       const row = db.prepare('SELECT * FROM encounters WHERE id = ?').get(info.lastInsertRowid);
 
       bus.emitChange({ type: 'combat:change', partyId, action: 'turn', actorUserId: userId });
@@ -212,14 +231,16 @@ export async function combatRoutes(app: FastifyInstance) {
 
       // Players can only view encounters they're part of (have a combatant in)
       if (!gm) {
-        const isInEncounter = db.prepare(`
+        const isInEncounter = db
+          .prepare(`
           SELECT 1 FROM combatants c
           JOIN characters ch ON ch.id = c.character_id
           WHERE c.encounter_id = ? AND ch.owner_id = ?
           LIMIT 1
-        `).get(enc.id, userId);
+        `)
+          .get(enc.id, userId);
         if (!isInEncounter) {
-          return reply.code(403).send({ error: 'Vous n\'êtes pas dans cette rencontre' });
+          return reply.code(403).send({ error: "Vous n'êtes pas dans cette rencontre" });
         }
       }
 
@@ -231,8 +252,11 @@ export async function combatRoutes(app: FastifyInstance) {
       if (!gm) {
         // Find this user's character IDs in the party
         const myCharIds = new Set(
-          (db.prepare('SELECT id FROM characters WHERE party_id = ? AND owner_id = ?')
-            .all(enc.party_id, userId!) as any[]).map((r) => r.id),
+          (
+            db
+              .prepare('SELECT id FROM characters WHERE party_id = ? AND owner_id = ?')
+              .all(enc.party_id, userId!) as any[]
+          ).map((r) => r.id),
         );
         combatants = combatants.map((c) => {
           if (c.characterId !== null && myCharIds.has(c.characterId)) return c; // own combatant
@@ -255,7 +279,9 @@ export async function combatRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const enc = db.prepare('SELECT * FROM encounters WHERE id = ?').get(Number(req.params.id)) as any;
+      const enc = db
+        .prepare('SELECT * FROM encounters WHERE id = ?')
+        .get(Number(req.params.id)) as any;
       if (!enc) return reply.code(404).send({ error: 'Rencontre introuvable' });
       if (!isPartyGM(enc.party_id, userId)) return reply.code(403).send({ error: 'Réservé au MD' });
 
@@ -263,17 +289,34 @@ export async function combatRoutes(app: FastifyInstance) {
       const sets: string[] = [];
       const vals: any[] = [];
 
-      if (body.name !== undefined) { sets.push('name = ?'); vals.push(body.name.trim()); }
-      if (body.status !== undefined) { sets.push('status = ?'); vals.push(body.status); }
-      if (body.round !== undefined) { sets.push('round = ?'); vals.push(body.round); }
-      if (body.turnIndex !== undefined) { sets.push('turn_index = ?'); vals.push(body.turnIndex); }
+      if (body.name !== undefined) {
+        sets.push('name = ?');
+        vals.push(body.name.trim());
+      }
+      if (body.status !== undefined) {
+        sets.push('status = ?');
+        vals.push(body.status);
+      }
+      if (body.round !== undefined) {
+        sets.push('round = ?');
+        vals.push(body.round);
+      }
+      if (body.turnIndex !== undefined) {
+        sets.push('turn_index = ?');
+        vals.push(body.turnIndex);
+      }
 
       if (sets.length === 0) return reply.code(400).send({ error: 'no fields to update' });
       vals.push(enc.id);
       db.prepare(`UPDATE encounters SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
 
       const row = db.prepare('SELECT * FROM encounters WHERE id = ?').get(enc.id);
-      bus.emitChange({ type: 'combat:change', partyId: enc.party_id, action: 'turn', actorUserId: userId });
+      bus.emitChange({
+        type: 'combat:change',
+        partyId: enc.party_id,
+        action: 'turn',
+        actorUserId: userId,
+      });
       return reply.send({ encounter: mapEncounter(row) });
     },
   );
@@ -285,12 +328,19 @@ export async function combatRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const enc = db.prepare('SELECT * FROM encounters WHERE id = ?').get(Number(req.params.id)) as any;
+      const enc = db
+        .prepare('SELECT * FROM encounters WHERE id = ?')
+        .get(Number(req.params.id)) as any;
       if (!enc) return reply.code(404).send({ error: 'Rencontre introuvable' });
       if (!isPartyGM(enc.party_id, userId)) return reply.code(403).send({ error: 'Réservé au MD' });
 
       db.prepare('DELETE FROM encounters WHERE id = ?').run(enc.id);
-      bus.emitChange({ type: 'combat:change', partyId: enc.party_id, action: 'turn', actorUserId: userId });
+      bus.emitChange({
+        type: 'combat:change',
+        partyId: enc.party_id,
+        action: 'turn',
+        actorUserId: userId,
+      });
       return reply.code(204).send();
     },
   );
@@ -305,14 +355,18 @@ export async function combatRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const enc = db.prepare('SELECT * FROM encounters WHERE id = ?').get(Number(req.params.id)) as any;
+      const enc = db
+        .prepare('SELECT * FROM encounters WHERE id = ?')
+        .get(Number(req.params.id)) as any;
       if (!enc) return reply.code(404).send({ error: 'Rencontre introuvable' });
       if (!isPartyGM(enc.party_id, userId)) return reply.code(403).send({ error: 'Réservé au MD' });
 
       const body = req.body || ({} as AddMonsterPayload);
       if (!body.monsterSlug) return reply.code(400).send({ error: 'monsterSlug requis' });
 
-      const monster = db.prepare('SELECT * FROM monsters WHERE slug = ?').get(body.monsterSlug) as any;
+      const monster = db
+        .prepare('SELECT * FROM monsters WHERE slug = ?')
+        .get(body.monsterSlug) as any;
       if (!monster) return reply.code(404).send({ error: 'Monstre introuvable dans le catalogue' });
 
       const abilities = monster.abilities_json ? JSON.parse(monster.abilities_json) : { dex: 10 };
@@ -325,16 +379,19 @@ export async function combatRoutes(app: FastifyInstance) {
 
       // Check if there's already a group of this monster type in this encounter.
       // If so, new combatants join the existing group (same initiative).
-      const existingGroup = db.prepare(`
+      const existingGroup = db
+        .prepare(`
         SELECT group_id, initiative, sort_order FROM combatants
         WHERE encounter_id = ? AND monster_slug = ? AND group_id IS NOT NULL
         LIMIT 1
-      `).get(enc.id, monster.slug) as any;
+      `)
+        .get(enc.id, monster.slug) as any;
 
       // Unique group id — Date.now() alone can collide when two different
       // monster types are added within the same millisecond, which would
       // wrongly merge them into one group.
-      const groupId = existingGroup?.group_id ?? Date.now() * 1000 + Math.floor(Math.random() * 1000);
+      const groupId =
+        existingGroup?.group_id ?? Date.now() * 1000 + Math.floor(Math.random() * 1000);
       const sortOrder = existingGroup?.sort_order ?? groupId;
       const sharedInitiative = existingGroup?.initiative ?? null;
 
@@ -367,8 +424,17 @@ export async function combatRoutes(app: FastifyInstance) {
       });
       tx();
 
-      const rows = db.prepare(`SELECT * FROM combatants WHERE id IN (${createdIds.map(() => '?').join(',')}) ORDER BY id`).all(...createdIds);
-      bus.emitChange({ type: 'combat:change', partyId: enc.party_id, action: 'add', actorUserId: userId });
+      const rows = db
+        .prepare(
+          `SELECT * FROM combatants WHERE id IN (${createdIds.map(() => '?').join(',')}) ORDER BY id`,
+        )
+        .all(...createdIds);
+      bus.emitChange({
+        type: 'combat:change',
+        partyId: enc.party_id,
+        action: 'add',
+        actorUserId: userId,
+      });
       return reply.code(201).send({ combatants: rows.map(mapCombatant) });
     },
   );
@@ -383,7 +449,9 @@ export async function combatRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const enc = db.prepare('SELECT * FROM encounters WHERE id = ?').get(Number(req.params.id)) as any;
+      const enc = db
+        .prepare('SELECT * FROM encounters WHERE id = ?')
+        .get(Number(req.params.id)) as any;
       if (!enc) return reply.code(404).send({ error: 'Rencontre introuvable' });
       if (!isPartyGM(enc.party_id, userId)) return reply.code(403).send({ error: 'Réservé au MD' });
 
@@ -396,9 +464,9 @@ export async function combatRoutes(app: FastifyInstance) {
           : [];
       if (characterIds.length === 0) return reply.code(400).send({ error: 'characterId requis' });
 
-      const chars = db.prepare(
-        `SELECT * FROM characters WHERE id IN (${characterIds.map(() => '?').join(',')})`,
-      ).all(...characterIds) as any[];
+      const chars = db
+        .prepare(`SELECT * FROM characters WHERE id IN (${characterIds.map(() => '?').join(',')})`)
+        .all(...characterIds) as any[];
       if (chars.length !== characterIds.length) {
         return reply.code(404).send({ error: 'Personnage introuvable' });
       }
@@ -436,7 +504,11 @@ export async function combatRoutes(app: FastifyInstance) {
             })),
             dexMod,
             char.fighting_style === 'defense',
-            { constitution: char.constitution, wisdom: char.wisdom, characterClass: char.character_class },
+            {
+              constitution: char.constitution,
+              wisdom: char.wisdom,
+              characterClass: char.character_class,
+            },
           );
           const ac = char.armor_class_override ?? acResult.ac;
 
@@ -455,10 +527,17 @@ export async function combatRoutes(app: FastifyInstance) {
       });
       tx();
 
-      const rows = db.prepare(
-        `SELECT * FROM combatants WHERE id IN (${createdIds.map(() => '?').join(',')}) ORDER BY id`,
-      ).all(...createdIds);
-      bus.emitChange({ type: 'combat:change', partyId: enc.party_id, action: 'add', actorUserId: userId });
+      const rows = db
+        .prepare(
+          `SELECT * FROM combatants WHERE id IN (${createdIds.map(() => '?').join(',')}) ORDER BY id`,
+        )
+        .all(...createdIds);
+      bus.emitChange({
+        type: 'combat:change',
+        partyId: enc.party_id,
+        action: 'add',
+        actorUserId: userId,
+      });
       return reply.code(201).send({ combatants: rows.map(mapCombatant) });
     },
   );
@@ -473,11 +552,16 @@ export async function combatRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const enc = db.prepare('SELECT * FROM encounters WHERE id = ?').get(Number(req.params.id)) as any;
+      const enc = db
+        .prepare('SELECT * FROM encounters WHERE id = ?')
+        .get(Number(req.params.id)) as any;
       if (!enc) return reply.code(404).send({ error: 'Rencontre introuvable' });
-      if (!isPartyMember(enc.party_id, userId)) return reply.code(403).send({ error: 'Pas membre du groupe' });
+      if (!isPartyMember(enc.party_id, userId))
+        return reply.code(403).send({ error: 'Pas membre du groupe' });
 
-      const combatant = db.prepare('SELECT * FROM combatants WHERE id = ?').get(Number(req.params.cid)) as any;
+      const combatant = db
+        .prepare('SELECT * FROM combatants WHERE id = ?')
+        .get(Number(req.params.cid)) as any;
       if (!combatant || combatant.encounter_id !== enc.id) {
         return reply.code(404).send({ error: 'Combattant introuvable' });
       }
@@ -486,10 +570,14 @@ export async function combatRoutes(app: FastifyInstance) {
       const gm = isPartyGM(enc.party_id, userId);
       if (!gm) {
         const char = combatant.character_id
-          ? db.prepare('SELECT owner_id FROM characters WHERE id = ?').get(combatant.character_id) as any
+          ? (db
+              .prepare('SELECT owner_id FROM characters WHERE id = ?')
+              .get(combatant.character_id) as any)
           : null;
         if (!char || char.owner_id !== userId) {
-          return reply.code(403).send({ error: 'Vous ne pouvez modifier que votre propre initiative' });
+          return reply
+            .code(403)
+            .send({ error: 'Vous ne pouvez modifier que votre propre initiative' });
         }
       }
 
@@ -499,13 +587,22 @@ export async function combatRoutes(app: FastifyInstance) {
       // If this combatant is part of a group, set initiative for ALL members
       // (grouped monsters share initiative).
       if (combatant.group_id) {
-        db.prepare('UPDATE combatants SET initiative = ? WHERE encounter_id = ? AND group_id = ?')
-          .run(initiative, enc.id, combatant.group_id);
+        db.prepare(
+          'UPDATE combatants SET initiative = ? WHERE encounter_id = ? AND group_id = ?',
+        ).run(initiative, enc.id, combatant.group_id);
       } else {
-        db.prepare('UPDATE combatants SET initiative = ? WHERE id = ?').run(initiative, combatant.id);
+        db.prepare('UPDATE combatants SET initiative = ? WHERE id = ?').run(
+          initiative,
+          combatant.id,
+        );
       }
 
-      bus.emitChange({ type: 'combat:change', partyId: enc.party_id, action: 'initiative', actorUserId: userId });
+      bus.emitChange({
+        type: 'combat:change',
+        partyId: enc.party_id,
+        action: 'initiative',
+        actorUserId: userId,
+      });
       return reply.send({ ok: true });
     },
   );
@@ -520,25 +617,56 @@ export async function combatRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const combatant = db.prepare('SELECT * FROM combatants WHERE id = ?').get(Number(req.params.cid)) as any;
+      const combatant = db
+        .prepare('SELECT * FROM combatants WHERE id = ?')
+        .get(Number(req.params.cid)) as any;
       if (!combatant) return reply.code(404).send({ error: 'Combattant introuvable' });
 
-      const enc = db.prepare('SELECT party_id FROM encounters WHERE id = ?').get(combatant.encounter_id) as any;
+      const enc = db
+        .prepare('SELECT party_id FROM encounters WHERE id = ?')
+        .get(combatant.encounter_id) as any;
       if (!isPartyGM(enc.party_id, userId)) return reply.code(403).send({ error: 'Réservé au MD' });
 
       const body = req.body || {};
       const sets: string[] = [];
       const vals: any[] = [];
 
-      if (body.name !== undefined) { sets.push('name = ?'); vals.push(body.name); }
-      if (body.count !== undefined) { sets.push('count = ?'); vals.push(Math.max(1, body.count)); }
-      if (body.initiative !== undefined) { sets.push('initiative = ?'); vals.push(body.initiative); }
-      if (body.armorClass !== undefined) { sets.push('armor_class = ?'); vals.push(body.armorClass); }
-      if (body.hitPoints !== undefined) { sets.push('hit_points = ?'); vals.push(Math.max(0, body.hitPoints)); }
-      if (body.maxHitPoints !== undefined) { sets.push('max_hit_points = ?'); vals.push(Math.max(1, body.maxHitPoints)); }
-      if (body.conditions !== undefined) { sets.push('conditions = ?'); vals.push(JSON.stringify(body.conditions)); }
-      if (body.defeated !== undefined) { sets.push('defeated = ?'); vals.push(body.defeated ? 1 : 0); }
-      if (body.cardColor !== undefined) { sets.push('card_color = ?'); vals.push(body.cardColor); }
+      if (body.name !== undefined) {
+        sets.push('name = ?');
+        vals.push(body.name);
+      }
+      if (body.count !== undefined) {
+        sets.push('count = ?');
+        vals.push(Math.max(1, body.count));
+      }
+      if (body.initiative !== undefined) {
+        sets.push('initiative = ?');
+        vals.push(body.initiative);
+      }
+      if (body.armorClass !== undefined) {
+        sets.push('armor_class = ?');
+        vals.push(body.armorClass);
+      }
+      if (body.hitPoints !== undefined) {
+        sets.push('hit_points = ?');
+        vals.push(Math.max(0, body.hitPoints));
+      }
+      if (body.maxHitPoints !== undefined) {
+        sets.push('max_hit_points = ?');
+        vals.push(Math.max(1, body.maxHitPoints));
+      }
+      if (body.conditions !== undefined) {
+        sets.push('conditions = ?');
+        vals.push(JSON.stringify(body.conditions));
+      }
+      if (body.defeated !== undefined) {
+        sets.push('defeated = ?');
+        vals.push(body.defeated ? 1 : 0);
+      }
+      if (body.cardColor !== undefined) {
+        sets.push('card_color = ?');
+        vals.push(body.cardColor);
+      }
 
       if (sets.length === 0) return reply.code(400).send({ error: 'no fields to update' });
 
@@ -557,12 +685,9 @@ export async function combatRoutes(app: FastifyInstance) {
       // --- Concentration: if the GM damaged a player who is concentrating on
       // a spell, that player must roll a CON save (DC 10 or half damage).
       let concentration: ConcentrationCheck | undefined;
-      if (
-        body.hitPoints !== undefined &&
-        combatant.type === 'player' &&
-        combatant.character_id
-      ) {
-        const ch = db.prepare('SELECT id, name, owner_id, concentrating FROM characters WHERE id = ?')
+      if (body.hitPoints !== undefined && combatant.type === 'player' && combatant.character_id) {
+        const ch = db
+          .prepare('SELECT id, name, owner_id, concentrating FROM characters WHERE id = ?')
           .get(combatant.character_id) as any;
         if (ch?.concentrating) {
           const damage = (combatant.hit_points ?? 0) - Math.max(0, body.hitPoints);
@@ -577,7 +702,13 @@ export async function combatRoutes(app: FastifyInstance) {
           } else if (body.hitPoints <= 0) {
             // Unconscious → concentration ends automatically on the sheet too.
             db.prepare('UPDATE characters SET concentrating = 0 WHERE id = ?').run(ch.id);
-            bus.emitChange({ type: 'character:change', partyId: enc.party_id, characterId: ch.id, action: 'stats', actorUserId: userId });
+            bus.emitChange({
+              type: 'character:change',
+              partyId: enc.party_id,
+              characterId: ch.id,
+              action: 'stats',
+              actorUserId: userId,
+            });
           }
         }
       }
@@ -593,13 +724,18 @@ export async function combatRoutes(app: FastifyInstance) {
         combatant.character_id &&
         (body.hitPoints !== undefined || body.maxHitPoints !== undefined)
       ) {
-        const ch = db.prepare('SELECT id, name, current_hp, max_hp, wild_shape_slug, wild_shape_max_hp FROM characters WHERE id = ?')
+        const ch = db
+          .prepare(
+            'SELECT id, name, current_hp, max_hp, wild_shape_slug, wild_shape_max_hp FROM characters WHERE id = ?',
+          )
           .get(combatant.character_id) as any;
 
         if (ch?.wild_shape_slug && body.hitPoints !== undefined) {
           if (body.hitPoints > 0) {
-            db.prepare('UPDATE characters SET wild_shape_hp = ? WHERE id = ?')
-              .run(Math.max(0, body.hitPoints), ch.id);
+            db.prepare('UPDATE characters SET wild_shape_hp = ? WHERE id = ?').run(
+              Math.max(0, body.hitPoints),
+              ch.id,
+            );
           } else {
             // Shape dropped to 0 → auto-revert with carry-over
             const excess = Math.max(0, -(body.hitPoints ?? 0));
@@ -610,19 +746,38 @@ export async function combatRoutes(app: FastifyInstance) {
               SET wild_shape_slug = NULL, wild_shape_hp = NULL, wild_shape_max_hp = NULL, current_hp = ?
               WHERE id = ?
             `).run(newHp, ch.id);
-            db.prepare('UPDATE combatants SET name = ?, hit_points = ?, max_hit_points = ?, defeated = ? WHERE id = ?')
-              .run(revertName, newHp, ch.max_hp ?? 1, newHp <= 0 ? 1 : 0, combatant.id);
+            db.prepare(
+              'UPDATE combatants SET name = ?, hit_points = ?, max_hit_points = ?, defeated = ? WHERE id = ?',
+            ).run(revertName, newHp, ch.max_hp ?? 1, newHp <= 0 ? 1 : 0, combatant.id);
           }
-          bus.emitChange({ type: 'character:change', partyId: enc.party_id, characterId: ch.id, action: 'stats', actorUserId: userId });
+          bus.emitChange({
+            type: 'character:change',
+            partyId: enc.party_id,
+            characterId: ch.id,
+            action: 'stats',
+            actorUserId: userId,
+          });
         } else {
           const setsC: string[] = [];
           const valsC: any[] = [];
-          if (body.hitPoints !== undefined) { setsC.push('current_hp = ?'); valsC.push(Math.max(0, body.hitPoints)); }
-          if (body.maxHitPoints !== undefined) { setsC.push('max_hp = ?'); valsC.push(Math.max(1, body.maxHitPoints)); }
+          if (body.hitPoints !== undefined) {
+            setsC.push('current_hp = ?');
+            valsC.push(Math.max(0, body.hitPoints));
+          }
+          if (body.maxHitPoints !== undefined) {
+            setsC.push('max_hp = ?');
+            valsC.push(Math.max(1, body.maxHitPoints));
+          }
           if (setsC.length > 0) {
             valsC.push(combatant.character_id);
             db.prepare(`UPDATE characters SET ${setsC.join(', ')} WHERE id = ?`).run(...valsC);
-            bus.emitChange({ type: 'character:change', partyId: enc.party_id, characterId: combatant.character_id, action: 'hp', actorUserId: userId });
+            bus.emitChange({
+              type: 'character:change',
+              partyId: enc.party_id,
+              characterId: combatant.character_id,
+              action: 'hp',
+              actorUserId: userId,
+            });
           }
         }
       }
@@ -645,13 +800,22 @@ export async function combatRoutes(app: FastifyInstance) {
       // (Inconscient, Paralysé, …) breaks the player's concentration.
       let concentrationBroken: string | undefined;
       if (body.conditions && combatant.type === 'player' && combatant.character_id) {
-        const breaking = body.conditions.find((c) => CONCENTRATION_BREAKING_CONDITIONS_FR.includes(c.name));
+        const breaking = body.conditions.find((c) =>
+          CONCENTRATION_BREAKING_CONDITIONS_FR.includes(c.name),
+        );
         if (breaking) {
-          const ch = db.prepare('SELECT id, concentrating FROM characters WHERE id = ?')
+          const ch = db
+            .prepare('SELECT id, concentrating FROM characters WHERE id = ?')
             .get(combatant.character_id) as any;
           if (ch?.concentrating) {
             db.prepare('UPDATE characters SET concentrating = 0 WHERE id = ?').run(ch.id);
-            bus.emitChange({ type: 'character:change', partyId: enc.party_id, characterId: ch.id, action: 'stats', actorUserId: userId });
+            bus.emitChange({
+              type: 'character:change',
+              partyId: enc.party_id,
+              characterId: ch.id,
+              action: 'stats',
+              actorUserId: userId,
+            });
             concentrationBroken = breaking.name;
           }
         }
@@ -678,20 +842,31 @@ export async function combatRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const combatant = db.prepare('SELECT * FROM combatants WHERE id = ?').get(Number(req.params.cid)) as any;
+      const combatant = db
+        .prepare('SELECT * FROM combatants WHERE id = ?')
+        .get(Number(req.params.cid)) as any;
       if (!combatant) return reply.code(404).send({ error: 'Combattant introuvable' });
 
-      const enc = db.prepare('SELECT party_id FROM encounters WHERE id = ?').get(combatant.encounter_id) as any;
+      const enc = db
+        .prepare('SELECT party_id FROM encounters WHERE id = ?')
+        .get(combatant.encounter_id) as any;
       if (!isPartyGM(enc.party_id, userId)) return reply.code(403).send({ error: 'Réservé au MD' });
 
       // If grouped, delete ALL members of the group (they were added together)
       if (combatant.group_id) {
-        db.prepare('DELETE FROM combatants WHERE encounter_id = ? AND group_id = ?')
-          .run(combatant.encounter_id, combatant.group_id);
+        db.prepare('DELETE FROM combatants WHERE encounter_id = ? AND group_id = ?').run(
+          combatant.encounter_id,
+          combatant.group_id,
+        );
       } else {
         db.prepare('DELETE FROM combatants WHERE id = ?').run(combatant.id);
       }
-      bus.emitChange({ type: 'combat:change', partyId: enc.party_id, action: 'remove', actorUserId: userId });
+      bus.emitChange({
+        type: 'combat:change',
+        partyId: enc.party_id,
+        action: 'remove',
+        actorUserId: userId,
+      });
       return reply.code(204).send();
     },
   );
@@ -703,7 +878,9 @@ export async function combatRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const enc = db.prepare('SELECT * FROM encounters WHERE id = ?').get(Number(req.params.id)) as any;
+      const enc = db
+        .prepare('SELECT * FROM encounters WHERE id = ?')
+        .get(Number(req.params.id)) as any;
       if (!enc) return reply.code(404).send({ error: 'Rencontre introuvable' });
       if (!isPartyGM(enc.party_id, userId)) return reply.code(403).send({ error: 'Réservé au MD' });
 
@@ -718,11 +895,22 @@ export async function combatRoutes(app: FastifyInstance) {
       // --- Starting the combat: setup → active, round 1, first combatant acts.
       // No turn is ending yet, so no condition expiry and no advancing.
       if (enc.status === 'setup') {
-        const firstIdx = Math.max(0, sorted.findIndex((c) => !c.defeated));
-        db.prepare('UPDATE encounters SET status = ?, round = 1, turn_index = ? WHERE id = ?')
-          .run('active', firstIdx, enc.id);
+        const firstIdx = Math.max(
+          0,
+          sorted.findIndex((c) => !c.defeated),
+        );
+        db.prepare('UPDATE encounters SET status = ?, round = 1, turn_index = ? WHERE id = ?').run(
+          'active',
+          firstIdx,
+          enc.id,
+        );
         const started = db.prepare('SELECT * FROM encounters WHERE id = ?').get(enc.id);
-        bus.emitChange({ type: 'combat:change', partyId: enc.party_id, action: 'turn', actorUserId: userId });
+        bus.emitChange({
+          type: 'combat:change',
+          partyId: enc.party_id,
+          action: 'turn',
+          actorUserId: userId,
+        });
         return reply.send({ encounter: mapEncounter(started) });
       }
 
@@ -731,7 +919,6 @@ export async function combatRoutes(app: FastifyInstance) {
       const currentIdx = Math.min(enc.turn_index, sorted.length - 1);
       const currentCombatant = sorted[currentIdx];
       if (currentCombatant) {
-        const currentInit = currentCombatant.initiative;
         const currentGroup = currentCombatant.groupId;
         // Find all combatants sharing this turn (same group, or same initiative
         // for non-grouped combatants at the same position)
@@ -745,14 +932,20 @@ export async function combatRoutes(app: FastifyInstance) {
           const updated = c.conditions
             .map((cond) => {
               if (cond.duration === null) return cond; // until dispelled
-              if (cond.duration <= 1) { changed = true; expired.push(cond.name); return null; } // expired
+              if (cond.duration <= 1) {
+                changed = true;
+                expired.push(cond.name);
+                return null;
+              } // expired
               changed = true;
               return { ...cond, duration: cond.duration - 1 };
             })
             .filter((cond): cond is CombatantCondition => cond !== null);
           if (changed) {
-            db.prepare('UPDATE combatants SET conditions = ? WHERE id = ?')
-              .run(JSON.stringify(updated), c.id);
+            db.prepare('UPDATE combatants SET conditions = ? WHERE id = ?').run(
+              JSON.stringify(updated),
+              c.id,
+            );
             // Expired conditions leave the character sheet too
             if (expired.length > 0 && c.type === 'player' && c.characterId) {
               mirrorConditionsToCharacter(enc.party_id, c.characterId, [], expired, userId);
@@ -785,7 +978,9 @@ export async function combatRoutes(app: FastifyInstance) {
       }
 
       // Skip defeated combatants (and their group members)
-      const refetchedRows = db.prepare('SELECT * FROM combatants WHERE encounter_id = ?').all(enc.id);
+      const refetchedRows = db
+        .prepare('SELECT * FROM combatants WHERE encounter_id = ?')
+        .all(enc.id);
       const refetchedSorted = sortCombatants(refetchedRows.map(mapCombatant));
       let guard = 0;
       while (refetchedSorted[nextIndex]?.defeated && guard < refetchedSorted.length * 2) {
@@ -793,7 +988,10 @@ export async function combatRoutes(app: FastifyInstance) {
         nextIndex++;
         // Skip remaining group members too
         if (skipGroup) {
-          while (nextIndex < refetchedSorted.length && refetchedSorted[nextIndex]?.groupId === skipGroup) {
+          while (
+            nextIndex < refetchedSorted.length &&
+            refetchedSorted[nextIndex]?.groupId === skipGroup
+          ) {
             nextIndex++;
           }
         }
@@ -804,11 +1002,19 @@ export async function combatRoutes(app: FastifyInstance) {
         guard++;
       }
 
-      db.prepare('UPDATE encounters SET turn_index = ?, round = ? WHERE id = ?')
-        .run(nextIndex, round, enc.id);
+      db.prepare('UPDATE encounters SET turn_index = ?, round = ? WHERE id = ?').run(
+        nextIndex,
+        round,
+        enc.id,
+      );
 
       const row = db.prepare('SELECT * FROM encounters WHERE id = ?').get(enc.id);
-      bus.emitChange({ type: 'combat:change', partyId: enc.party_id, action: 'turn', actorUserId: userId });
+      bus.emitChange({
+        type: 'combat:change',
+        partyId: enc.party_id,
+        action: 'turn',
+        actorUserId: userId,
+      });
       return reply.send({ encounter: mapEncounter(row) });
     },
   );

@@ -1,23 +1,28 @@
 /**
  * Character routes: create, list, get, update, delete.
  */
+
+import type {
+  ConcentrationCheck,
+  CreateCharacterPayload,
+  PatchCharacterPayload,
+} from '@dnd-inventory/shared';
+import {
+  abilityModifier,
+  CONCENTRATION_BREAKING_CONDITIONS_FR,
+  computeAC,
+} from '@dnd-inventory/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
 import {
-  requireUser,
-  isPartyMember,
   isPartyGM,
+  isPartyMember,
   mapCharacter,
   mapCharacterSummary,
   mirrorConditionsToCombatants,
+  requireUser,
 } from './helpers.ts';
-import { CONCENTRATION_BREAKING_CONDITIONS_FR, computeAC, abilityModifier } from '@dnd-inventory/shared';
-import type {
-  CreateCharacterPayload,
-  PatchCharacterPayload,
-  ConcentrationCheck,
-} from '@dnd-inventory/shared';
 
 export async function characterRoutes(app: FastifyInstance) {
   // ---------- Create character in a party ----------
@@ -33,34 +38,44 @@ export async function characterRoutes(app: FastifyInstance) {
       if (!isPartyMember(partyId, userId)) return reply.code(403).send({ error: 'not a member' });
 
       const body = req.body || ({} as CreateCharacterPayload);
-      if (!body.name || !body.name.trim()) return reply.code(400).send({ error: 'name is required' });
+      if (!body.name?.trim()) return reply.code(400).send({ error: 'name is required' });
       const strength = body.strength ?? 10;
       if (strength < 1) return reply.code(400).send({ error: 'strength must be ≥ 1' });
       const capMult = body.capacityMultiplier ?? 1;
 
       const db = getDb();
-      const info = db.prepare(`
+      const info = db
+        .prepare(`
         INSERT INTO characters
           (party_id, owner_id, name, strength, capacity_multiplier,
            character_class, level, race, background)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        partyId,
-        userId,
-        body.name.trim(),
-        strength,
-        capMult,
-        body.characterClass ?? null,
-        body.level ?? 1,
-        body.race ?? null,
-        body.background ?? null,
-      );
-      const row = db.prepare(`
+      `)
+        .run(
+          partyId,
+          userId,
+          body.name.trim(),
+          strength,
+          capMult,
+          body.characterClass ?? null,
+          body.level ?? 1,
+          body.race ?? null,
+          body.background ?? null,
+        );
+      const row = db
+        .prepare(`
         SELECT c.*, u.display_name AS owner_name
         FROM characters c JOIN users u ON u.id = c.owner_id
         WHERE c.id = ?
-      `).get(info.lastInsertRowid);
-      bus.emitChange({ type: 'party:change', partyId, characterId: info.lastInsertRowid as number, action: 'stats', actorUserId: userId });
+      `)
+        .get(info.lastInsertRowid);
+      bus.emitChange({
+        type: 'party:change',
+        partyId,
+        characterId: info.lastInsertRowid as number,
+        action: 'stats',
+        actorUserId: userId,
+      });
       return reply.code(201).send({ character: mapCharacterSummary(row) });
     },
   );
@@ -75,39 +90,52 @@ export async function characterRoutes(app: FastifyInstance) {
       if (!isPartyMember(partyId, userId)) return reply.code(403).send({ error: 'not a member' });
 
       const db = getDb();
-      const rows = db.prepare(`
+      const rows = db
+        .prepare(`
         SELECT c.*, u.display_name AS owner_name
         FROM characters c JOIN users u ON u.id = c.owner_id
         WHERE c.party_id = ?
         ORDER BY c.name COLLATE NOCASE ASC
-      `).all(partyId);
+      `)
+        .all(partyId);
       return reply.send({ characters: rows.map(mapCharacterSummary) });
     },
   );
 
   // ---------- Get single character ----------
-  app.get('/characters/:id', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-    const userId = requireUser(req, reply);
-    if (userId === null) return;
-    const db = getDb();
-    const row = db.prepare(`
+  app.get(
+    '/characters/:id',
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const userId = requireUser(req, reply);
+      if (userId === null) return;
+      const db = getDb();
+      const row = db
+        .prepare(`
       SELECT c.*, u.display_name AS owner_name
       FROM characters c JOIN users u ON u.id = c.owner_id
       WHERE c.id = ?
-    `).get(Number(req.params.id)) as any;
-    if (!row) return reply.code(404).send({ error: 'character not found' });
-    if (!isPartyMember(row.party_id, userId)) return reply.code(403).send({ error: 'not a member' });
-    return reply.send({ character: mapCharacter(row) });
-  });
+    `)
+        .get(Number(req.params.id)) as any;
+      if (!row) return reply.code(404).send({ error: 'character not found' });
+      if (!isPartyMember(row.party_id, userId))
+        return reply.code(403).send({ error: 'not a member' });
+      return reply.send({ character: mapCharacter(row) });
+    },
+  );
 
   // ---------- Update character ----------
   app.patch(
     '/characters/:id',
-    async (req: FastifyRequest<{ Params: { id: string }; Body: PatchCharacterPayload }>, reply: FastifyReply) => {
+    async (
+      req: FastifyRequest<{ Params: { id: string }; Body: PatchCharacterPayload }>,
+      reply: FastifyReply,
+    ) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(Number(req.params.id)) as any;
+      const char = db
+        .prepare('SELECT * FROM characters WHERE id = ?')
+        .get(Number(req.params.id)) as any;
       if (!char) return reply.code(404).send({ error: 'character not found' });
       // Owner or GM can edit
       const isGM = isPartyGM(char.party_id, userId);
@@ -117,20 +145,66 @@ export async function characterRoutes(app: FastifyInstance) {
 
       const body = req.body || {};
       const allowed: (keyof PatchCharacterPayload)[] = [
-        'name', 'strength', 'capacityMultiplier',
-        'exhaustion', 'conditions', 'foodDays', 'waterDays',
-        'maxHp', 'currentHp', 'tempHp',
-        'notes', 'copper', 'silver', 'electrum', 'gold', 'platinum',
+        'name',
+        'strength',
+        'capacityMultiplier',
+        'exhaustion',
+        'conditions',
+        'foodDays',
+        'waterDays',
+        'maxHp',
+        'currentHp',
+        'tempHp',
+        'notes',
+        'copper',
+        'silver',
+        'electrum',
+        'gold',
+        'platinum',
         // Character sheet
-        'level', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma',
-        'characterClass', 'race', 'background', 'speed',
-        'skillProficiencies', 'savingThrowProficiencies', 'weaponProficiencies', 'fightingStyle', 'spellSlotsUsed',
+        'level',
+        'dexterity',
+        'constitution',
+        'intelligence',
+        'wisdom',
+        'charisma',
+        'characterClass',
+        'race',
+        'background',
+        'speed',
+        'skillProficiencies',
+        'savingThrowProficiencies',
+        'weaponProficiencies',
+        'fightingStyle',
+        'spellSlotsUsed',
         // Description / personality
-        'alignment', 'sex', 'height', 'weight', 'age', 'skin', 'eyes', 'hair',
-        'portraitUrl', 'personalityTraits', 'ideals', 'bonds', 'flaws', 'appearance',
+        'alignment',
+        'sex',
+        'height',
+        'weight',
+        'age',
+        'skin',
+        'eyes',
+        'hair',
+        'portraitUrl',
+        'personalityTraits',
+        'ideals',
+        'bonds',
+        'flaws',
+        'appearance',
         'armorClassOverride',
-        'deathSaveSuccesses', 'deathSaveFailures', 'inspiration', 'concentrating',
-        'wildShapeHp', 'wildShapeUses', 'hitDiceUsed', 'wildShapeSeen', 'druidCircle', 'divineDomain', 'landCircle', 'sacredOath',
+        'deathSaveSuccesses',
+        'deathSaveFailures',
+        'inspiration',
+        'concentrating',
+        'wildShapeHp',
+        'wildShapeUses',
+        'hitDiceUsed',
+        'wildShapeSeen',
+        'druidCircle',
+        'divineDomain',
+        'landCircle',
+        'sacredOath',
       ];
       const sets: string[] = [];
       const vals: any[] = [];
@@ -195,16 +269,18 @@ export async function characterRoutes(app: FastifyInstance) {
       // tracker combatant follows the shape's bar (or the normal form back).
       if (body.currentHp !== undefined && char.wild_shape_slug) {
         const shapeHp = Math.max(0, body.currentHp);
-        const combatants = db.prepare(`
+        const combatants = db
+          .prepare(`
           SELECT c.* FROM combatants c
           JOIN encounters e ON e.id = c.encounter_id
           WHERE c.character_id = ? AND c.type = 'player' AND e.status != 'ended'
           ORDER BY e.created_at DESC, c.id DESC
-        `).all(char.id) as any[];
+        `)
+          .all(char.id) as any[];
 
         if (shapeHp <= 0) {
           // Auto-revert with carry-over
-          const excess = -(body.currentHp);
+          const excess = -body.currentHp;
           const newHp = Math.max(0, (char.current_hp ?? 1) - excess);
           db.prepare(`
             UPDATE characters
@@ -212,43 +288,67 @@ export async function characterRoutes(app: FastifyInstance) {
             WHERE id = ?
           `).run(newHp, char.id);
           for (const combatant of combatants) {
-            const acRows = db.prepare(`
+            const acRows = db
+              .prepare(`
               SELECT i.category AS category, i.ac_base AS ac_base, i.str_min AS str_min,
                      i.name_fr AS name_fr, i.name AS name
               FROM inventory inv JOIN items i ON i.id = inv.item_id
               WHERE inv.character_id = ? AND inv.equipped = 1
-            `).all(char.id) as any[];
+            `)
+              .all(char.id) as any[];
             const acResult = computeAC(
               acRows.map((r) => ({
-                item: { category: r.category, acBase: r.ac_base, strMin: r.str_min, nameFr: r.name_fr, name: r.name },
+                item: {
+                  category: r.category,
+                  acBase: r.ac_base,
+                  strMin: r.str_min,
+                  nameFr: r.name_fr,
+                  name: r.name,
+                },
                 equipped: true,
               })),
               abilityModifier(char.dexterity ?? 10),
               char.fighting_style === 'defense',
               char,
             );
-            db.prepare('UPDATE combatants SET name = ?, hit_points = ?, max_hit_points = ?, armor_class = ?, defeated = ? WHERE id = ?')
-              .run(char.name, newHp, char.max_hp ?? 1, char.armor_class_override ?? acResult.ac, newHp <= 0 ? 1 : 0, combatant.id);
+            db.prepare(
+              'UPDATE combatants SET name = ?, hit_points = ?, max_hit_points = ?, armor_class = ?, defeated = ? WHERE id = ?',
+            ).run(
+              char.name,
+              newHp,
+              char.max_hp ?? 1,
+              char.armor_class_override ?? acResult.ac,
+              newHp <= 0 ? 1 : 0,
+              combatant.id,
+            );
           }
         } else {
           db.prepare('UPDATE characters SET wild_shape_hp = ? WHERE id = ?').run(shapeHp, char.id);
           for (const combatant of combatants) {
-            db.prepare('UPDATE combatants SET hit_points = ?, max_hit_points = ?, defeated = 0 WHERE id = ?')
-              .run(shapeHp, char.wild_shape_max_hp ?? shapeHp, combatant.id);
+            db.prepare(
+              'UPDATE combatants SET hit_points = ?, max_hit_points = ?, defeated = 0 WHERE id = ?',
+            ).run(shapeHp, char.wild_shape_max_hp ?? shapeHp, combatant.id);
           }
         }
         if (combatants.length > 0) {
-          bus.emitChange({ type: 'combat:change', partyId: char.party_id, action: 'hp', actorUserId: userId });
+          bus.emitChange({
+            type: 'combat:change',
+            partyId: char.party_id,
+            action: 'hp',
+            actorUserId: userId,
+          });
         }
         // The shape bar was written — currentHp must not be applied again below
         (body as any).currentHp = undefined;
         const remaining = Object.entries(body).filter(([, v]) => v !== undefined);
         if (remaining.length === 0) {
-          const rowAfter = db.prepare(`
+          const rowAfter = db
+            .prepare(`
             SELECT c.*, u.display_name AS owner_name
             FROM characters c JOIN users u ON u.id = c.owner_id
             WHERE c.id = ?
-          `).get(char.id);
+          `)
+            .get(char.id);
           return reply.send({ character: mapCharacter(rowAfter) });
         }
       }
@@ -257,7 +357,8 @@ export async function characterRoutes(app: FastifyInstance) {
       // required when HP drops while concentrating on a spell.
       let concentrationCheck: ConcentrationCheck | null = null;
       if (body.currentHp !== undefined) {
-        const concentratingAfter = body.concentrating !== undefined ? !!body.concentrating : !!char.concentrating;
+        const concentratingAfter =
+          body.concentrating !== undefined ? !!body.concentrating : !!char.concentrating;
         const damage = (char.current_hp ?? 0) - body.currentHp;
         if (concentratingAfter && damage > 0 && body.currentHp > 0) {
           concentrationCheck = {
@@ -269,7 +370,11 @@ export async function characterRoutes(app: FastifyInstance) {
           };
         }
         // At 0 HP the character is unconscious → concentration ends automatically.
-        if (concentratingAfter && body.currentHp <= 0 && !sets.some((s) => s.startsWith('concentrating'))) {
+        if (
+          concentratingAfter &&
+          body.currentHp <= 0 &&
+          !sets.some((s) => s.startsWith('concentrating'))
+        ) {
           sets.push('concentrating = 0'); // literal — no ? placeholder, no val needed
         }
       }
@@ -278,10 +383,15 @@ export async function characterRoutes(app: FastifyInstance) {
       // (Inconscient, Paralysé, Pétrifié, Étourdi, Neutralisé) breaks it.
       let concentrationBroken: string | null = null;
       if (body.conditions && char.concentrating && body.concentrating !== false) {
-        const breaking = body.conditions.find((c) => CONCENTRATION_BREAKING_CONDITIONS_FR.includes(c));
+        const breaking = body.conditions.find((c) =>
+          CONCENTRATION_BREAKING_CONDITIONS_FR.includes(c),
+        );
         if (breaking) {
           concentrationBroken = breaking;
-          if (body.concentrating === undefined && !sets.some((s) => s.startsWith('concentrating'))) {
+          if (
+            body.concentrating === undefined &&
+            !sets.some((s) => s.startsWith('concentrating'))
+          ) {
             sets.push('concentrating = 0'); // literal — no ? placeholder
           }
         }
@@ -294,11 +404,13 @@ export async function characterRoutes(app: FastifyInstance) {
       // in non-ended encounters, so the combat tracker shows the same HP
       // (and defeated state) as the sheet.
       if (body.currentHp !== undefined || body.maxHp !== undefined) {
-        const combatantRows = db.prepare(`
+        const combatantRows = db
+          .prepare(`
           SELECT c.id FROM combatants c
           JOIN encounters e ON e.id = c.encounter_id
           WHERE c.character_id = ? AND c.type = 'player' AND e.status != 'ended'
-        `).all(char.id) as any[];
+        `)
+          .all(char.id) as any[];
         for (const cr of combatantRows) {
           const setsC: string[] = [];
           const valsC: any[] = [];
@@ -309,12 +421,20 @@ export async function characterRoutes(app: FastifyInstance) {
             setsC.push('defeated = ?');
             valsC.push(body.currentHp <= 0 ? 1 : 0);
           }
-          if (body.maxHp !== undefined) { setsC.push('max_hit_points = ?'); valsC.push(Math.max(1, body.maxHp)); }
+          if (body.maxHp !== undefined) {
+            setsC.push('max_hit_points = ?');
+            valsC.push(Math.max(1, body.maxHp));
+          }
           valsC.push(cr.id);
           db.prepare(`UPDATE combatants SET ${setsC.join(', ')} WHERE id = ?`).run(...valsC);
         }
         if (combatantRows.length > 0) {
-          bus.emitChange({ type: 'combat:change', partyId: char.party_id, action: 'hp', actorUserId: userId });
+          bus.emitChange({
+            type: 'combat:change',
+            partyId: char.party_id,
+            action: 'hp',
+            actorUserId: userId,
+          });
         }
       }
 
@@ -323,7 +443,9 @@ export async function characterRoutes(app: FastifyInstance) {
       if (body.conditions !== undefined) {
         try {
           const prev: string[] = char.conditions
-            ? (typeof char.conditions === 'string' ? JSON.parse(char.conditions) : char.conditions)
+            ? typeof char.conditions === 'string'
+              ? JSON.parse(char.conditions)
+              : char.conditions
             : [];
           const nextList: string[] = body.conditions;
           mirrorConditionsToCombatants(
@@ -333,14 +455,18 @@ export async function characterRoutes(app: FastifyInstance) {
             prev.filter((c) => !nextList.includes(c)),
             userId,
           );
-        } catch { /* mirror is best-effort */ }
+        } catch {
+          /* mirror is best-effort */
+        }
       }
 
-      const row = db.prepare(`
+      const row = db
+        .prepare(`
         SELECT c.*, u.display_name AS owner_name
         FROM characters c JOIN users u ON u.id = c.owner_id
         WHERE c.id = ?
-      `).get(char.id);
+      `)
+        .get(char.id);
       // Detect if this was a coin change vs stat change for the event action
       const coinKeys = ['copper', 'silver', 'electrum', 'gold', 'platinum'];
       const isCoinChange = Object.keys(body).some((k) => coinKeys.includes(k));
@@ -361,18 +487,29 @@ export async function characterRoutes(app: FastifyInstance) {
   );
 
   // ---------- Delete character ----------
-  app.delete('/characters/:id', async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
-    const userId = requireUser(req, reply);
-    if (userId === null) return;
-    const db = getDb();
-    const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(Number(req.params.id)) as any;
-    if (!char) return reply.code(404).send({ error: 'character not found' });
-    const isGM = isPartyGM(char.party_id, userId);
-    if (char.owner_id !== userId && !isGM) {
-      return reply.code(403).send({ error: 'only the owner or GM can delete' });
-    }
-    db.prepare('DELETE FROM characters WHERE id = ?').run(char.id);
-    bus.emitChange({ type: 'party:change', partyId: char.party_id, characterId: char.id, action: 'stats', actorUserId: userId });
-    return reply.code(204).send();
-  });
+  app.delete(
+    '/characters/:id',
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const userId = requireUser(req, reply);
+      if (userId === null) return;
+      const db = getDb();
+      const char = db
+        .prepare('SELECT * FROM characters WHERE id = ?')
+        .get(Number(req.params.id)) as any;
+      if (!char) return reply.code(404).send({ error: 'character not found' });
+      const isGM = isPartyGM(char.party_id, userId);
+      if (char.owner_id !== userId && !isGM) {
+        return reply.code(403).send({ error: 'only the owner or GM can delete' });
+      }
+      db.prepare('DELETE FROM characters WHERE id = ?').run(char.id);
+      bus.emitChange({
+        type: 'party:change',
+        partyId: char.party_id,
+        characterId: char.id,
+        action: 'stats',
+        actorUserId: userId,
+      });
+      return reply.code(204).send();
+    },
+  );
 }

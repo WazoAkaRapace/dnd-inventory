@@ -4,16 +4,17 @@
  * abilities, saves, skills, senses, traits, actions (with attack/damage badges),
  * and legendary actions.
  */
-import { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
-import api from '../api';
+
+import type { Monster, MonsterAction } from '@dnd-inventory/shared';
 import {
   abilityModifier,
-  formatModifier,
   formatCR,
+  formatModifier,
   MONSTER_SIZE_LABELS_FR,
 } from '@dnd-inventory/shared';
-import type { Monster, MonsterAction } from '@dnd-inventory/shared';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import api from '../api';
 import SpellDetailSheet from './SpellDetailSheet';
 
 interface Props {
@@ -105,11 +106,11 @@ export default function MonsterStatBlock({ open, slug, onClose }: Props) {
   }, [open, slug]);
 
   // Detect spellcasting entries (Incantation / Incantation innée)
-  const hasSpellcasting = !!monster && [
-    ...monster.traits,
-    ...monster.actions,
-    ...monster.legendaryActions,
-  ].some((a) => /incantation/i.test(a.name));
+  const hasSpellcasting =
+    !!monster &&
+    [...monster.traits, ...monster.actions, ...monster.legendaryActions].some((a) =>
+      /incantation/i.test(a.name),
+    );
 
   // Fetch the light spell catalog once when the monster has spellcasting
   const [spellCatalog, setSpellCatalog] = useState<SpellLight[]>([]);
@@ -125,10 +126,7 @@ export default function MonsterStatBlock({ open, slug, onClose }: Props) {
   if (!open) return null;
 
   return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={onClose}>
       <div
         className="card w-full max-w-md rounded-b-none flex flex-col sheet-enter"
         style={{ maxHeight: '88vh' }}
@@ -139,13 +137,24 @@ export default function MonsterStatBlock({ open, slug, onClose }: Props) {
           <h2 className="font-display text-lg font-semibold">
             {monster?.nameFr ?? (loading ? 'Chargement…' : 'Monstre')}
           </h2>
-          <button onClick={onClose} className="btn-ghost text-ink-500 p-1" aria-label="Fermer">✕</button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn-ghost text-ink-500 p-1"
+            aria-label="Fermer"
+          >
+            ✕
+          </button>
         </div>
 
         {/* Body */}
         <div className="overflow-y-auto p-4 flex-1">
-          {loading && <p className="text-sm text-ink-400 text-center py-8">Chargement du stat block…</p>}
-          {!loading && !monster && <p className="text-sm text-ink-400 text-center py-8">Monstre introuvable.</p>}
+          {loading && (
+            <p className="text-sm text-ink-400 text-center py-8">Chargement du stat block…</p>
+          )}
+          {!loading && !monster && (
+            <p className="text-sm text-ink-400 text-center py-8">Monstre introuvable.</p>
+          )}
           {monster && (
             <StatBlockBody
               monster={monster}
@@ -177,7 +186,11 @@ function StatBlockBody({
   onOpenSpell: (id: number) => void;
 }) {
   const sizeLabel = MONSTER_SIZE_LABELS_FR[monster.size] ?? monster.size;
-  const typeLine = [monster.type, monster.subtype && `(${monster.subtype})`, sizeLabel && `de taille ${sizeLabel}`]
+  const typeLine = [
+    monster.type,
+    monster.subtype && `(${monster.subtype})`,
+    sizeLabel && `de taille ${sizeLabel}`,
+  ]
     .filter(Boolean)
     .join(' ');
 
@@ -246,7 +259,9 @@ function StatBlockBody({
           <div>
             <span className="font-semibold">Sens</span>
             <span className="text-ink-600 ml-2">{monster.senses}</span>
-            {monster.telepathy && <span className="text-ink-600">, télépathie {monster.telepathy} m</span>}
+            {monster.telepathy && (
+              <span className="text-ink-600">, télépathie {monster.telepathy} m</span>
+            )}
           </div>
         )}
         <div>
@@ -264,7 +279,9 @@ function StatBlockBody({
       </div>
 
       {/* Damage modifiers */}
-      {(monster.damageResistances?.length || monster.damageImmunities?.length || monster.conditionImmunities?.length) && (
+      {(monster.damageResistances?.length ||
+        monster.damageImmunities?.length ||
+        monster.conditionImmunities?.length) && (
         <div className="space-y-1.5 text-sm">
           {monster.damageResistances && monster.damageResistances.length > 0 && (
             <div>
@@ -289,17 +306,32 @@ function StatBlockBody({
 
       {/* Traits */}
       {monster.traits.length > 0 && (
-        <ActionSection title="Capacités" actions={monster.traits} spellCatalog={spellCatalog} onOpenSpell={onOpenSpell} />
+        <ActionSection
+          title="Capacités"
+          actions={monster.traits}
+          spellCatalog={spellCatalog}
+          onOpenSpell={onOpenSpell}
+        />
       )}
 
       {/* Actions */}
       {monster.actions.length > 0 && (
-        <ActionSection title="Actions" actions={monster.actions} spellCatalog={spellCatalog} onOpenSpell={onOpenSpell} />
+        <ActionSection
+          title="Actions"
+          actions={monster.actions}
+          spellCatalog={spellCatalog}
+          onOpenSpell={onOpenSpell}
+        />
       )}
 
       {/* Legendary actions */}
       {monster.legendaryActions.length > 0 && (
-        <ActionSection title="Actions légendaires" actions={monster.legendaryActions} spellCatalog={spellCatalog} onOpenSpell={onOpenSpell} />
+        <ActionSection
+          title="Actions légendaires"
+          actions={monster.legendaryActions}
+          spellCatalog={spellCatalog}
+          onOpenSpell={onOpenSpell}
+        />
       )}
     </div>
   );
@@ -322,8 +354,13 @@ function ActionSection({
         {title}
       </h3>
       <div className="space-y-2">
-        {actions.map((action, idx) => (
-          <ActionEntry key={idx} action={action} spellCatalog={spellCatalog} onOpenSpell={onOpenSpell} />
+        {actions.map((action) => (
+          <ActionEntry
+            key={action.name}
+            action={action}
+            spellCatalog={spellCatalog}
+            onOpenSpell={onOpenSpell}
+          />
         ))}
       </div>
     </div>
@@ -334,7 +371,7 @@ function formatSpeed(monster: Monster): string {
   const parts: string[] = [];
   for (const [mode, value] of Object.entries(monster.speed)) {
     const num = Number(value);
-    if (isNaN(num) || num === 0) continue;
+    if (Number.isNaN(num) || num === 0) continue;
     const label = SPEED_LABELS[mode];
     parts.push(label ? `${label} ${num} m` : `${num} m`);
   }
@@ -379,14 +416,19 @@ function ActionEntry({
   spellCatalog: SpellLight[];
   onOpenSpell: (id: number) => void;
 }) {
-  const [attackResult, setAttackResult] = useState<{ roll: number; natural: number; total: number } | null>(null);
+  const [attackResult, setAttackResult] = useState<{
+    roll: number;
+    natural: number;
+    total: number;
+  } | null>(null);
   const [damageResult, setDamageResult] = useState<{ total: number; rolls: number[] } | null>(null);
 
   // Spellcasting entry: match the spell names mentioned in the description
   const isSpellcasting = /incantation/i.test(action.name);
-  const knownSpells = isSpellcasting && spellCatalog.length > 0 && action.desc
-    ? matchSpellsInText(action.desc, spellCatalog)
-    : [];
+  const knownSpells =
+    isSpellcasting && spellCatalog.length > 0 && action.desc
+      ? matchSpellsInText(action.desc, spellCatalog)
+      : [];
 
   const handleAttack = () => {
     if (action.attackBonus == null) return;
@@ -414,6 +456,7 @@ function ActionEntry({
         {/* Attack bonus — clickable to roll */}
         {action.attackBonus != null && (
           <button
+            type="button"
             onClick={handleAttack}
             className="px-1.5 py-0.5 rounded text-xs font-mono bg-red-100 text-red-700 shrink-0 hover:bg-red-200 active:scale-95 transition-all cursor-pointer"
             title="Cliquer pour lancer le jet d'attaque (d20)"
@@ -424,11 +467,13 @@ function ActionEntry({
         {/* Damage dice — clickable to roll */}
         {action.damageDice && (
           <button
+            type="button"
             onClick={handleDamage}
             className="px-1.5 py-0.5 rounded text-xs font-mono bg-orange-100 text-orange-700 shrink-0 hover:bg-orange-200 active:scale-95 transition-all cursor-pointer"
             title="Cliquer pour lancer les dégâts"
           >
-            🎲 {action.damageDice}{action.damageType ? ` ${action.damageType}` : ''}
+            🎲 {action.damageDice}
+            {action.damageType ? ` ${action.damageType}` : ''}
           </button>
         )}
       </div>
@@ -438,31 +483,45 @@ function ActionEntry({
         <div className="mt-1 flex flex-wrap gap-2 items-center">
           {/* Attack result */}
           {attackResult && (
-            <span className={`px-2 py-1 rounded-lg text-sm font-bold font-mono ${
-              isCrit ? 'bg-green-200 text-green-800'
-              : isFumble ? 'bg-red-200 text-red-800'
-              : 'bg-red-50 text-red-700'
-            }`}>
+            <span
+              className={`px-2 py-1 rounded-lg text-sm font-bold font-mono ${
+                isCrit
+                  ? 'bg-green-200 text-green-800'
+                  : isFumble
+                    ? 'bg-red-200 text-red-800'
+                    : 'bg-red-50 text-red-700'
+              }`}
+            >
               {isCrit && '🎯 Critique ! '}
               {isFumble && '💥 Échec ! '}
               {attackResult.total} à l'attaque
-              <span className="text-xs font-normal ml-1 opacity-70">(d20: {attackResult.natural})</span>
+              <span className="text-xs font-normal ml-1 opacity-70">
+                (d20: {attackResult.natural})
+              </span>
             </span>
           )}
           {/* Damage result */}
           {damageResult && (
-            <span className={`px-2 py-1 rounded-lg text-sm font-bold font-mono ${
-              isCrit ? 'bg-green-200 text-green-800' : 'bg-orange-200 text-orange-800'
-            }`}>
+            <span
+              className={`px-2 py-1 rounded-lg text-sm font-bold font-mono ${
+                isCrit ? 'bg-green-200 text-green-800' : 'bg-orange-200 text-orange-800'
+              }`}
+            >
               {isCrit && '🎯 '}
               {damageResult.total} dégâts{action.damageType ? ` ${action.damageType}` : ''}
               {isCrit && <span className="text-xs font-normal ml-1">×2!</span>}
-              <span className="text-xs font-normal ml-1 opacity-70">({damageResult.rolls.join('+')})</span>
+              <span className="text-xs font-normal ml-1 opacity-70">
+                ({damageResult.rolls.join('+')})
+              </span>
             </span>
           )}
           {/* Clear button */}
           <button
-            onClick={() => { setAttackResult(null); setDamageResult(null); }}
+            type="button"
+            onClick={() => {
+              setAttackResult(null);
+              setDamageResult(null);
+            }}
             className="text-xs text-ink-400 hover:text-ink-700"
           >
             ✕
@@ -470,15 +529,14 @@ function ActionEntry({
         </div>
       )}
 
-      {action.desc && (
-        <p className="text-ink-600 mt-0.5">{action.desc}</p>
-      )}
+      {action.desc && <p className="text-ink-600 mt-0.5">{action.desc}</p>}
 
       {/* Clickable spell chips for spellcasting entries */}
       {knownSpells.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-1.5">
           {knownSpells.map((s) => (
             <button
+              type="button"
               key={s.id}
               onClick={() => onOpenSpell(s.id)}
               className="px-2 py-0.5 rounded-full text-xs bg-indigo-100 text-indigo-700 hover:bg-indigo-200 active:scale-95 transition-all"

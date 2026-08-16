@@ -5,19 +5,20 @@
  * damage from the sheet or the combat tracker routes there, and hitting 0
  * reverts with excess damage carried over to the normal form (SRD).
  */
+
+import {
+  abilityModifier,
+  computeAC,
+  MOON_ELEMENTAL_SLUGS,
+  rollHitPoints,
+  wildShapeCanFly,
+  wildShapeCanSwim,
+  wildShapeMaxCR,
+} from '@dnd-inventory/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
-import { requireUser, isPartyGM } from './helpers.ts';
-import {
-  wildShapeMaxCR,
-  wildShapeCanSwim,
-  wildShapeCanFly,
-  MOON_ELEMENTAL_SLUGS,
-  abilityModifier,
-  computeAC,
-  rollHitPoints,
-} from '@dnd-inventory/shared';
+import { isPartyGM, requireUser } from './helpers.ts';
 
 interface BeastRow {
   slug: string;
@@ -42,26 +43,36 @@ function parseSpeed(raw: string | null): { fly: boolean; swim: boolean } {
 
 /** All of the character's combatants in non-ended encounters (newest first). */
 function findActiveCombatants(db: any, characterId: number): any[] {
-  return db.prepare(`
+  return db
+    .prepare(`
     SELECT c.* FROM combatants c
     JOIN encounters e ON e.id = c.encounter_id
     WHERE c.character_id = ? AND c.type = 'player' AND e.status != 'ended'
     ORDER BY e.created_at DESC, c.id DESC
-  `).all(characterId);
+  `)
+    .all(characterId);
 }
 
 /** Recompute the character's normal AC from equipped armor. */
 function normalAC(db: any, char: any): number | null {
-  const rows = db.prepare(`
+  const rows = db
+    .prepare(`
     SELECT i.category AS category, i.ac_base AS ac_base, i.str_min AS str_min,
            i.name_fr AS name_fr, i.name AS name, inv.equipped AS equipped
     FROM inventory inv JOIN items i ON i.id = inv.item_id
     WHERE inv.character_id = ? AND inv.equipped = 1
-  `).all(char.id) as any[];
+  `)
+    .all(char.id) as any[];
   const dexMod = abilityModifier(char.dexterity ?? 10);
   const acResult = computeAC(
     rows.map((r) => ({
-      item: { category: r.category, acBase: r.ac_base, strMin: r.str_min, nameFr: r.name_fr, name: r.name },
+      item: {
+        category: r.category,
+        acBase: r.ac_base,
+        strMin: r.str_min,
+        nameFr: r.name_fr,
+        name: r.name,
+      },
       equipped: !!r.equipped,
     })),
     dexMod,
@@ -79,7 +90,9 @@ export async function wildShapeRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(Number(req.params.id)) as any;
+      const char = db
+        .prepare('SELECT * FROM characters WHERE id = ?')
+        .get(Number(req.params.id)) as any;
       if (!char) return reply.code(404).send({ error: 'Personnage introuvable' });
       const gm = isPartyGM(char.party_id, userId);
       if (char.owner_id !== userId && !gm) {
@@ -95,28 +108,31 @@ export async function wildShapeRoutes(app: FastifyInstance) {
       // Circle of the Moon, level 10: Elemental Wild Shape
       const includeElementals = isMoon && level >= 10;
 
-      const rows = db.prepare(`
+      const rows = db
+        .prepare(`
         SELECT slug, name_fr, challenge_rating, size, armor_class, hit_points, hit_dice, speed_json
         FROM monsters WHERE type = 'Bête'
           ${includeElementals ? "OR slug IN ('elementaire-de-l-air','elementaire-de-l-eau','elementaire-de-la-terre','elementaire-du-feu')" : ''}
         ORDER BY challenge_rating, name_fr COLLATE NOCASE
-      `).all() as BeastRow[];
+      `)
+        .all() as BeastRow[];
 
       // SRD: only beasts the druid has seen before
       let seen: string[] = [];
       try {
         const parsed = JSON.parse(char.wild_shape_seen_json ?? '[]');
         if (Array.isArray(parsed)) seen = parsed;
-      } catch { /* default empty */ }
+      } catch {
+        /* default empty */
+      }
 
       const forms = rows
         .map((r) => ({ row: r, speed: parseSpeed(r.speed_json) }))
         // Moon elementals are their own rule (CR 5), not gated by maxCR
-        .filter(({ row, speed }) =>
-          (includeElementals && (MOON_ELEMENTAL_SLUGS as readonly string[]).includes(row.slug))
-          || (row.challenge_rating <= maxCR
-            && (!speed.fly || canFly)
-            && (!speed.swim || canSwim)),
+        .filter(
+          ({ row, speed }) =>
+            (includeElementals && (MOON_ELEMENTAL_SLUGS as readonly string[]).includes(row.slug)) ||
+            (row.challenge_rating <= maxCR && (!speed.fly || canFly) && (!speed.swim || canSwim)),
         )
         .map(({ row, speed }) => ({
           slug: row.slug,
@@ -136,7 +152,9 @@ export async function wildShapeRoutes(app: FastifyInstance) {
         forms,
         uses: char.wild_shape_uses ?? 2,
         shaped: char.wild_shape_slug ?? null,
-        maxCR, canSwim, canFly,
+        maxCR,
+        canSwim,
+        canFly,
         circle: isMoon ? 'lune' : null,
         bonusActionShape: isMoon,
         elementals: includeElementals,
@@ -147,11 +165,16 @@ export async function wildShapeRoutes(app: FastifyInstance) {
   // ===== Enter Wild Shape =====
   app.post(
     '/characters/:id/wild-shape',
-    async (req: FastifyRequest<{ Params: { id: string }; Body: { slug?: string } }>, reply: FastifyReply) => {
+    async (
+      req: FastifyRequest<{ Params: { id: string }; Body: { slug?: string } }>,
+      reply: FastifyReply,
+    ) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(Number(req.params.id)) as any;
+      const char = db
+        .prepare('SELECT * FROM characters WHERE id = ?')
+        .get(Number(req.params.id)) as any;
       if (!char) return reply.code(404).send({ error: 'Personnage introuvable' });
       const gm = isPartyGM(char.party_id, userId);
       if (char.owner_id !== userId && !gm) {
@@ -161,10 +184,12 @@ export async function wildShapeRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'Déjà sous forme animale' });
       }
       if ((char.wild_shape_uses ?? 2) <= 0) {
-        return reply.code(400).send({ error: 'Plus d\'utilisations — repos court requis' });
+        return reply.code(400).send({ error: "Plus d'utilisations — repos court requis" });
       }
 
-      const beast = db.prepare('SELECT * FROM monsters WHERE slug = ?').get(req.body?.slug ?? '') as any;
+      const beast = db
+        .prepare('SELECT * FROM monsters WHERE slug = ?')
+        .get(req.body?.slug ?? '') as any;
       // monsters are French-only in the catalog
       if (!beast) return reply.code(404).send({ error: 'Forme introuvable dans le bestiaire' });
 
@@ -173,21 +198,27 @@ export async function wildShapeRoutes(app: FastifyInstance) {
       try {
         const parsed = JSON.parse(char.wild_shape_seen_json ?? '[]');
         if (Array.isArray(parsed)) seenList = parsed;
-      } catch { /* default empty */ }
+      } catch {
+        /* default empty */
+      }
       if (!seenList.includes(beast.slug)) {
-        return reply.code(400).send({ error: 'Vous n\'avez jamais vu cette bête' });
+        return reply.code(400).send({ error: "Vous n'avez jamais vu cette bête" });
       }
 
       const level = char.level ?? 1;
       const circle = char.druid_circle ?? null;
       const maxCR = wildShapeMaxCR(level, circle);
       const speed = parseSpeed(beast.speed_json);
-      const isMoonElemental = (MOON_ELEMENTAL_SLUGS as readonly string[]).includes(beast.slug)
-        && circle === 'lune' && level >= 10;
-      const eligible = isMoonElemental
-        || (beast.type === 'Bête' && beast.challenge_rating <= maxCR
-          && (!speed.fly || wildShapeCanFly(level))
-          && (!speed.swim || wildShapeCanSwim(level)));
+      const isMoonElemental =
+        (MOON_ELEMENTAL_SLUGS as readonly string[]).includes(beast.slug) &&
+        circle === 'lune' &&
+        level >= 10;
+      const eligible =
+        isMoonElemental ||
+        (beast.type === 'Bête' &&
+          beast.challenge_rating <= maxCR &&
+          (!speed.fly || wildShapeCanFly(level)) &&
+          (!speed.swim || wildShapeCanSwim(level)));
       if (!eligible) {
         return reply.code(400).send({ error: 'Forme non autorisée à ce niveau' });
       }
@@ -219,10 +250,27 @@ export async function wildShapeRoutes(app: FastifyInstance) {
       });
       tx();
 
-      bus.emitChange({ type: 'character:change', partyId: char.party_id, characterId: char.id, action: 'stats', actorUserId: userId });
-      bus.emitChange({ type: 'combat:change', partyId: char.party_id, action: 'hp', actorUserId: userId });
+      bus.emitChange({
+        type: 'character:change',
+        partyId: char.party_id,
+        characterId: char.id,
+        action: 'stats',
+        actorUserId: userId,
+      });
+      bus.emitChange({
+        type: 'combat:change',
+        partyId: char.party_id,
+        action: 'hp',
+        actorUserId: userId,
+      });
       return reply.code(201).send({
-        shape: { slug: beast.slug, nameFr: beast.name_fr ?? beast.slug, hp, maxHp: hp, armorClass: beast.armor_class ?? 10 },
+        shape: {
+          slug: beast.slug,
+          nameFr: beast.name_fr ?? beast.slug,
+          hp,
+          maxHp: hp,
+          armorClass: beast.armor_class ?? 10,
+        },
       });
     },
   );
@@ -234,7 +282,9 @@ export async function wildShapeRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const db = getDb();
-      const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(Number(req.params.id)) as any;
+      const char = db
+        .prepare('SELECT * FROM characters WHERE id = ?')
+        .get(Number(req.params.id)) as any;
       if (!char) return reply.code(404).send({ error: 'Personnage introuvable' });
       const gm = isPartyGM(char.party_id, userId);
       if (char.owner_id !== userId && !gm) {
@@ -271,8 +321,19 @@ export async function wildShapeRoutes(app: FastifyInstance) {
       });
       tx();
 
-      bus.emitChange({ type: 'character:change', partyId: char.party_id, characterId: char.id, action: 'stats', actorUserId: userId });
-      bus.emitChange({ type: 'combat:change', partyId: char.party_id, action: 'hp', actorUserId: userId });
+      bus.emitChange({
+        type: 'character:change',
+        partyId: char.party_id,
+        characterId: char.id,
+        action: 'stats',
+        actorUserId: userId,
+      });
+      bus.emitChange({
+        type: 'combat:change',
+        partyId: char.party_id,
+        action: 'hp',
+        actorUserId: userId,
+      });
       return reply.send({ hp: newHp, excessDamage: carried });
     },
   );

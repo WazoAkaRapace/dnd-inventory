@@ -8,7 +8,7 @@
  * Usage: npx tsx scripts/import-extra-spells.ts
  */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -55,10 +55,16 @@ function cleanHtml(html: string): string {
 }
 
 // Map English class names to French (same as import-spells.ts)
-const CLASS_FR: Record<string, string> = {
-  Wizard: 'Magicien', Sorcerer: 'Ensorceleur', Warlock: 'Occultiste',
-  Cleric: 'Clerc', Bard: 'Barde', Druid: 'Druide',
-  Paladin: 'Paladin', Ranger: 'Rôdeur', Artificer: 'Artificier',
+const _CLASS_FR: Record<string, string> = {
+  Wizard: 'Magicien',
+  Sorcerer: 'Ensorceleur',
+  Warlock: 'Occultiste',
+  Cleric: 'Clerc',
+  Bard: 'Barde',
+  Druid: 'Druide',
+  Paladin: 'Paladin',
+  Ranger: 'Rôdeur',
+  Artificer: 'Artificier',
 };
 
 interface ScrapedSpell {
@@ -112,10 +118,18 @@ async function scrapeSpell(vfSlug: string): Promise<ScrapedSpell | null> {
     }
 
     // Properties
-    const timeMatch = html.match(/<div\s+class=['"]t['"]><strong>Temps[^<]*<\/strong>\s*:\s*([^<]*)<\/div>/i);
-    const rangeMatch = html.match(/<div\s+class=['"]r['"]><strong>Port[ée]e<\/strong>\s*:\s*([^<]*)<\/div>/i);
-    const compMatch = html.match(/<div\s+class=['"]c['"]><strong>Composantes<\/strong>\s*:\s*([^<]*)<\/div>/i);
-    const durMatch = html.match(/<div\s+class=['"]d['"]><strong>Dur[ée]e<\/strong>\s*:\s*([^<]*)<\/div>/i);
+    const timeMatch = html.match(
+      /<div\s+class=['"]t['"]><strong>Temps[^<]*<\/strong>\s*:\s*([^<]*)<\/div>/i,
+    );
+    const rangeMatch = html.match(
+      /<div\s+class=['"]r['"]><strong>Port[ée]e<\/strong>\s*:\s*([^<]*)<\/div>/i,
+    );
+    const compMatch = html.match(
+      /<div\s+class=['"]c['"]><strong>Composantes<\/strong>\s*:\s*([^<]*)<\/div>/i,
+    );
+    const durMatch = html.match(
+      /<div\s+class=['"]d['"]><strong>Dur[ée]e<\/strong>\s*:\s*([^<]*)<\/div>/i,
+    );
 
     const castingTime = timeMatch?.[1]?.trim() || null;
     const rangeText = rangeMatch?.[1]?.trim() || null;
@@ -129,7 +143,10 @@ async function scrapeSpell(vfSlug: string): Promise<ScrapedSpell | null> {
       // Extract V, S, M letters before any parenthesis
       const lettersMatch = compText.match(/^([VSM,\s]+)/);
       if (lettersMatch) {
-        components = lettersMatch[1].split(',').map(s => s.trim()).filter(s => /^[VSM]$/.test(s));
+        components = lettersMatch[1]
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => /^[VSM]$/.test(s));
       }
       const matMatch = compText.match(/M\s*\(([^)]+)\)/);
       if (matMatch) material = matMatch[1].trim();
@@ -145,28 +162,43 @@ async function scrapeSpell(vfSlug: string): Promise<ScrapedSpell | null> {
     let higherLevelFr: string | null = null;
     if (descMatch) {
       let descHtml = descMatch[1];
-      const higherMatch = descHtml.match(/<strong><em>Aux niveaux sup[ée]rieurs<\/em><\/strong>\.?\s*(.*?)(?:<br>|$)/i);
+      const higherMatch = descHtml.match(
+        /<strong><em>Aux niveaux sup[ée]rieurs<\/em><\/strong>\.?\s*(.*?)(?:<br>|$)/i,
+      );
       if (higherMatch) {
         higherLevelFr = cleanHtml(higherMatch[1]);
-        descHtml = descHtml.replace(/<strong><em>Aux niveaux sup[ée]rieurs<\/em><\/strong>[\s\S]*$/i, '');
+        descHtml = descHtml.replace(
+          /<strong><em>Aux niveaux sup[ée]rieurs<\/em><\/strong>[\s\S]*$/i,
+          '',
+        );
       }
       descriptionFr = cleanHtml(descHtml);
     }
 
     // Classes from div.classe elements
     const classMatches = [...html.matchAll(/<div\s+class=['"]classe['"]>(.*?)<\/div>/gi)];
-    const classes = classMatches
-      .map(m => cleanHtml(m[1]).trim())
-      .filter(c => c.length > 0);
+    const classes = classMatches.map((m) => cleanHtml(m[1]).trim()).filter((c) => c.length > 0);
 
     // Source book
     const sourceMatch = html.match(/<div\s+class=['"]source['"]>(.*?)<\/div>/i);
     const source = sourceMatch ? cleanHtml(sourceMatch[1]) : null;
 
     return {
-      nameFr, nameEn, level, school, castingTime, rangeText,
-      components, material, duration: durationText, concentration, ritual,
-      descriptionFr, higherLevelFr, classes, source,
+      nameFr,
+      nameEn,
+      level,
+      school,
+      castingTime,
+      rangeText,
+      components,
+      material,
+      duration: durationText,
+      concentration,
+      ritual,
+      descriptionFr,
+      higherLevelFr,
+      classes,
+      source,
     };
   } catch {
     return null;
@@ -218,7 +250,9 @@ async function main() {
     }
 
     if ((i + 1) % 20 === 0) {
-      console.log(`[import-extra] progress: ${i + 1}/${missingSlugs.length} (${added} ok, ${failed} failed)`);
+      console.log(
+        `[import-extra] progress: ${i + 1}/${missingSlugs.length} (${added} ok, ${failed} failed)`,
+      );
     }
 
     // Throttle
@@ -230,7 +264,9 @@ async function main() {
   // Merge and save
   const allSpells = [...spells, ...newSpells];
   // Sort by level then name
-  allSpells.sort((a, b) => a.level - b.level || (a.nameFr ?? a.name).localeCompare(b.nameFr ?? b.name));
+  allSpells.sort(
+    (a, b) => a.level - b.level || (a.nameFr ?? a.name).localeCompare(b.nameFr ?? b.name),
+  );
 
   writeFileSync(SEED_PATH, JSON.stringify(allSpells, null, 2), 'utf8');
   console.log(`[import-extra] saved ${allSpells.length} spells to ${SEED_PATH}`);
