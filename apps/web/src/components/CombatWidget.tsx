@@ -13,6 +13,7 @@ import { useLocation, Link } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../auth';
 import { useSyncEvent } from '../sync';
+import TurnSlash, { useTurnSlash } from './TurnSlash';
 import type { EncounterDetail, Combatant } from '@dnd-inventory/shared';
 
 interface ActiveCombat {
@@ -134,24 +135,29 @@ export default function CombatWidget() {
       .catch(() => setIsMyCharacter(false));
   }, [user, charId]);
 
-  if (!user || !isCharacterSheet || !isMyCharacter || combats.length === 0) return null;
-
   // Priority: my turn > needs initiative > active combat
   // Nobody's turn is active while the encounter is still in setup.
   const myTurn = combats.find(
     (c) => c.encounter.status === 'active' &&
       c.myCombatant && c.currentCombatant?.id === c.myCombatant.id,
   );
+  const isMyTurn = !!myTurn;
+
+  // Sword-cut on the any-state → "your turn" transition (shared hook)
+  const slashActive = useTurnSlash(isMyTurn);
+
+  if (!user || !isCharacterSheet || !isMyCharacter || combats.length === 0) return null;
+
   const needsInit = combats.find((c) => c.myCombatant?.initiative === null);
   const combat = myTurn ?? needsInit ?? combats[0];
-  const isMyTurn = !!myTurn;
   const needsInitiative = combat.myCombatant?.initiative === null;
   const isSetup = combat.encounter.status === 'setup';
 
   if (collapsed) {
-    // Raised circular button popping out of the bottom edge, like the dock hub
+    // Raised circular button popping out of the bottom edge, like the dock hub.
+    // On your turn the static glow gives way to the pulsing combat-turn-glow.
     const glowColor = isMyTurn
-      ? 'shadow-[0_0_0_3px_rgba(185,28,28,0.4),0_0_20px_rgba(185,28,28,0.6)]'
+      ? 'combat-turn-glow'
       : needsInitiative
         ? 'shadow-[0_0_0_3px_rgba(202,138,4,0.4),0_0_20px_rgba(202,138,4,0.6)]'
         : 'shadow-lg';
@@ -174,6 +180,7 @@ export default function CombatWidget() {
         }
       >
         ⚔
+        <TurnSlash active={slashActive} />
       </button>
     );
   }
@@ -182,12 +189,13 @@ export default function CombatWidget() {
     <div
       className={`hidden lg:block fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[min(92vw,20rem)] rounded-xl shadow-xl border-2 bg-white ${
         isMyTurn
-          ? 'border-blood-500'
+          ? 'border-blood-500 combat-turn-glow'
           : needsInitiative
             ? 'border-yellow-500'
             : 'border-ink-300'
       }`}
     >
+      <TurnSlash active={slashActive} />
       <div className="flex items-center justify-between p-3 border-b border-parchment-200">
         <div className="flex items-center gap-2">
           <span className="text-lg">⚔</span>

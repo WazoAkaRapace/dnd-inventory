@@ -263,3 +263,74 @@ input[type='number'] {
     transition: none;
   }
 }
+
+/* ---------- Combat widget: "your turn" sword-cut ---------- */
+
+/* Persistent full-perimeter glow while it's your turn: state feedback,
+   calm heartbeat (not decoration) — reuses the hub-button glow hue. */
+@keyframes combat-turn-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 2px rgba(185, 28, 28, 0.30),
+      0 3px 10px 1px rgba(185, 28, 28, 0.30);
+  }
+  50% {
+    box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.55),
+      0 4px 18px 4px rgba(185, 28, 28, 0.45);
+  }
+}
+.combat-turn-glow {
+  animation: combat-turn-glow 1.8s ease-in-out infinite;
+}
+
+/* The cut: a blade with a white-hot parchment core and blood edges sweeps
+   diagonally across the whole bar, clipped to its rounded shape. One play
+   is a double cut — forehand out (left→right), then backhand back
+   (right→left) — crossing like parried sword cuts. */
+.combat-slash-overlay {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.combat-slash-blade {
+  position: absolute;
+  top: -30%;
+  left: 0;
+  width: 42%;
+  height: 160%;
+  transform: rotate(16deg) translateX(-160%);
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(139, 26, 26, 0.35) 30%,
+    rgba(255, 243, 224, 0.95) 50%,
+    rgba(139, 26, 26, 0.35) 70%,
+    transparent 100%);
+  animation: combat-slash-double 1.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+/* Trailing echo of the same double cut, fainter and late */
+.combat-slash-blade::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: inherit;
+  opacity: 0.35;
+  animation: combat-slash-double 1.15s cubic-bezier(0.16, 1, 0.3, 1) 110ms forwards;
+}
+@keyframes combat-slash-double {
+  0%   { transform: rotate(16deg) translateX(-160%); }
+  38%  { transform: rotate(16deg) translateX(360%); }
+  /* mirror while fully outside the bar, then cut back */
+  62%  { transform: rotate(-16deg) translateX(360%); }
+  100% { transform: rotate(-16deg) translateX(-160%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .combat-turn-glow {
+    animation: none;
+    /* Keep a static state ring so "your turn" stays legible without motion */
+    box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.55),
+      0 4px 18px 4px rgba(185, 28, 28, 0.45);
+  }
+  .combat-slash-overlay { display: none; }
+}

@@ -45,6 +45,7 @@ import NpcPage from './NpcPage';
 import CharacterNotesTab from './CharacterNotesTab';
 import ConcentrationAlert from '../components/ConcentrationAlert';
 import MonsterStatBlock from '../components/MonsterStatBlock';
+import TurnSlash, { useTurnSlash } from '../components/TurnSlash';
 
 type CharacterTab = 'inventory' | 'survival' | 'stats' | 'spells' | 'skills' | 'features' | 'description' | 'npcs' | 'notes';
 
@@ -658,6 +659,9 @@ export default function CharacterInventoryPage() {
     return () => { alive = false; };
   }, [user, partyId, charId, data?.character?.ownerId, combatRefresh]);
 
+  // "Your turn" sword-cut on the mobile combat indicator (dock card + hub)
+  const turnSlash = useTurnSlash(!!hubCombat?.isMyTurn);
+
   // ---------- Render guards ----------
   if (loading) return <LoadingSpinner label="Chargement du sac à dos…" />;
   if (error && !data) return <ErrorMsg message={error} />;
@@ -908,9 +912,9 @@ export default function CharacterInventoryPage() {
         ) : hubCombat && (
           <Link
             to={`/party/${hubCombat.partyId}/combat?enc=${hubCombat.encounterId}`}
-            className={`block mb-[-6px] mx-auto w-fit max-w-full px-3 py-1.5 rounded-t-xl rounded-b-md text-xs font-semibold shadow-md border border-b-0 transition-colors ${
+            className={`relative block mb-[-6px] mx-auto w-fit max-w-full px-3 py-1.5 rounded-t-xl rounded-b-md text-xs font-semibold shadow-md border border-b-0 transition-colors ${
               hubCombat.isMyTurn
-                ? 'bg-blood-600 text-parchment-50 border-blood-700'
+                ? 'bg-blood-600 text-parchment-50 border-blood-700 combat-turn-glow'
                 : 'bg-ink-900 text-parchment-200 border-ink-700'
             }`}
             aria-label="Combat en cours — ouvrir le traqueur"
@@ -920,6 +924,7 @@ export default function CharacterInventoryPage() {
               : hubCombat.currentCombatantName
                 ? `⚔ ${hubCombat.currentCombatantName}`
                 : '⚔ Combat en préparation'}
+            <TurnSlash active={turnSlash} />
           </Link>
         )}
         {(() => {
@@ -952,7 +957,9 @@ export default function CharacterInventoryPage() {
               );
             };
             return (
-              <div className="dock-rise relative flex items-center gap-1 bg-white/95 backdrop-blur rounded-full shadow-xl border border-parchment-200 px-2 py-1.5">
+              <div className={`dock-rise relative flex items-center gap-1 bg-white/95 backdrop-blur rounded-full shadow-xl border border-parchment-200 px-2 py-1.5 ${
+                hubCombat?.isMyTurn ? 'combat-turn-glow' : ''
+              }`}>
                 {/* Sliding active indicator — 8px padding + 60px per block */}
                 <span
                   className="dock-indicator absolute top-1 bottom-1 left-2 w-14 rounded-full bg-blood-600 shadow-sm"
@@ -965,7 +972,7 @@ export default function CharacterInventoryPage() {
                   onClick={() => setMoreOpen((o) => !o)}
                   className={`hub-button relative z-10 mx-1 -my-3 w-12 h-12 shrink-0 rounded-full shadow-lg flex items-center justify-center text-xl leading-none active:scale-90 border-4 border-parchment-50 ${
                     moreOpen ? 'bg-ink-900 rotate-90 text-white'
-                    : hubCombat?.isMyTurn ? 'bg-blood-700 text-white shadow-[0_0_0_3px_rgba(185,28,28,0.5),0_0_18px_rgba(185,28,28,0.5)]'
+                    : hubCombat?.isMyTurn ? 'bg-blood-700 text-white'
                     : hubCombat?.needsInitiative ? 'bg-yellow-500 text-ink-900 shadow-[0_0_0_3px_rgba(202,138,4,0.5),0_0_18px_rgba(202,138,4,0.5)]'
                     : hubCombat ? 'bg-blood-600 text-white shadow-[0_0_0_2px_rgba(185,28,28,0.3),0_0_12px_rgba(185,28,28,0.25)]'
                     : 'bg-blood-600 hover:bg-blood-700 text-white'
@@ -978,6 +985,8 @@ export default function CharacterInventoryPage() {
                   </span>
                 </button>
                 {right.map(slot)}
+                {/* Sword-cut sweeps the full dock bar on the your-turn edge */}
+                <TurnSlash active={turnSlash && !moreOpen} />
               </div>
             );
         })()}
