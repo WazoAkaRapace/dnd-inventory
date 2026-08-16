@@ -121,6 +121,16 @@ export interface PartyMember {
   joinedAt: string;
 }
 
+/** API response row for GET /api/parties — party plus the caller's membership context. */
+export interface PartyListRow extends Party {
+  gmName?: string;
+  role: PartyRole;
+  memberCount: number;
+  characterCount: number;
+  /** Roster character names (alphabetical, same order as the party detail). */
+  characterNames: string[];
+}
+
 /** API response shape for GET /api/parties/:id — wraps the party with related data. */
 export interface PartyDetail {
   party: Party;

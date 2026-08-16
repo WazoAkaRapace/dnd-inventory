@@ -27,13 +27,32 @@ export async function partyRoutes(app: FastifyInstance) {
     const db = getDb();
     const rows = db
       .prepare(`
-      SELECT p.*, pm.role, u.display_name AS gm_name
+      SELECT p.*, pm.role, u.display_name AS gm_name,
+        (SELECT COUNT(*) FROM party_members x WHERE x.party_id = p.id) AS member_count,
+        (SELECT COUNT(*) FROM characters c WHERE c.party_id = p.id) AS character_count
       FROM parties p
       JOIN party_members pm ON pm.party_id = p.id AND pm.user_id = ?
       LEFT JOIN users u ON u.id = p.gm_user_id
       ORDER BY p.created_at DESC
     `)
       .all(userId);
+    // Roster names for the register's current entry — parties are few, one batched query
+    const partyIds: number[] = rows.map((r: any) => r.id);
+    const rosterByParty = new Map<number, string[]>();
+    if (partyIds.length > 0) {
+      const placeholders = partyIds.map(() => '?').join(',');
+      const nameRows = db
+        .prepare(
+          `SELECT party_id, name FROM characters WHERE party_id IN (${placeholders})
+           ORDER BY name COLLATE NOCASE ASC`,
+        )
+        .all(...partyIds) as any[];
+      for (const nr of nameRows) {
+        const list = rosterByParty.get(nr.party_id) ?? [];
+        list.push(nr.name);
+        rosterByParty.set(nr.party_id, list);
+      }
+    }
     return reply.send({
       parties: rows.map((r: any) => ({
         id: r.id,
@@ -44,6 +63,9 @@ export async function partyRoutes(app: FastifyInstance) {
         encumbranceMode: r.encumbrance_mode,
         role: r.role,
         createdAt: r.created_at,
+        memberCount: r.member_count,
+        characterCount: r.character_count,
+        characterNames: rosterByParty.get(r.id) ?? [],
       })),
     });
   });
