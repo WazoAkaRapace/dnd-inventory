@@ -264,6 +264,14 @@ input[type='number'] {
   }
 }
 
+/* Combat mini-drawer (desktop): slides out from the left edge */
+@keyframes drawer-in {
+  from { transform: translateX(-100%); }
+}
+.drawer-enter {
+  animation: drawer-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 /* ---------- Combat widget: "your turn" sword-cut ---------- */
 
 /* Persistent full-perimeter glow while it's your turn: state feedback,

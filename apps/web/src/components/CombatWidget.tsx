@@ -154,19 +154,17 @@ export default function CombatWidget() {
   const isSetup = combat.encounter.status === 'setup';
 
   if (collapsed) {
-    // Raised circular button popping out of the bottom edge, like the dock hub.
+    // Vertical tab attached to the left edge of the screen, mid-height.
     // On your turn the static glow gives way to the pulsing combat-turn-glow.
     const glowColor = isMyTurn
       ? 'combat-turn-glow'
       : needsInitiative
         ? 'shadow-[0_0_0_3px_rgba(202,138,4,0.4),0_0_20px_rgba(202,138,4,0.6)]'
         : 'shadow-lg';
-    // On mobile the dock hub is the combat indicator — this floating button
-    // only appears on desktop (lg+) where there's no dock.
     return (
       <button
         onClick={() => setCollapsed(false)}
-        className={`hidden lg:flex fixed bottom-4 left-1/2 -translate-x-1/2 z-40 -my-3 w-12 h-12 rounded-full shadow-lg items-center justify-center text-xl leading-none transition-all active:scale-95 border-4 border-parchment-50 ${
+        className={`hidden lg:flex fixed left-0 top-1/2 -translate-y-1/2 z-40 w-10 h-16 rounded-r-xl rounded-l-none shadow-lg items-center justify-center text-xl leading-none transition-all active:scale-95 border-2 border-l-0 border-parchment-50 ${
           isMyTurn
             ? 'bg-blood-600 hover:bg-blood-700 text-parchment-50'
             : needsInitiative
@@ -186,16 +184,20 @@ export default function CombatWidget() {
   }
 
   return (
-    <div
-      className={`hidden lg:block fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[min(92vw,20rem)] rounded-xl shadow-xl border-2 bg-white ${
-        isMyTurn
-          ? 'border-blood-500 combat-turn-glow'
-          : needsInitiative
-            ? 'border-yellow-500'
-            : 'border-ink-300'
-      }`}
-    >
-      <TurnSlash active={slashActive} />
+    // Outer wrapper centers the drawer vertically; the inner card slides
+    // out from the left edge on mount (drawer-enter animates the inner
+    // element only, so the centering translate is never fought over).
+    <div className="hidden lg:block fixed left-0 top-1/2 -translate-y-1/2 z-40">
+      <div
+        className={`relative w-72 max-h-[80vh] overflow-y-auto rounded-r-2xl rounded-l-none shadow-xl border-2 border-l-0 bg-white drawer-enter ${
+          isMyTurn
+            ? 'border-blood-500 combat-turn-glow'
+            : needsInitiative
+              ? 'border-yellow-500'
+              : 'border-ink-300'
+        }`}
+      >
+        <TurnSlash active={slashActive} />
       <div className="flex items-center justify-between p-3 border-b border-parchment-200">
         <div className="flex items-center gap-2">
           <span className="text-lg">⚔</span>
@@ -211,7 +213,7 @@ export default function CombatWidget() {
           className="text-ink-400 hover:text-ink-700 text-sm"
           title="Réduire"
         >
-          ▾
+          ◀
         </button>
       </div>
 
