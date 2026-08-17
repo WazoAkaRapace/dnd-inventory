@@ -1,4 +1,10 @@
-# ⚔️ Inventaire D&D
+<div align="center">
+
+<img src="docs/logo.png" width="180" alt="Inventaire D&D" />
+
+# Inventaire D&D
+
+</div>
 
 Application web **mobile-first** de gestion de fiche de personnage, d'inventaire et de **combat** pour D&D 5e — entièrement en **français**, poids en **kilogrammes**, avec un moteur de règles SRD complet et de la **synchronisation en temps réel** entre le MD et les joueurs.
 
