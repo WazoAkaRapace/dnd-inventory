@@ -164,7 +164,13 @@ export function Fab({
       type="button"
       onClick={onClick}
       aria-label={label}
-      className={`fab-enter fixed ${raised ? 'bottom-24' : 'bottom-5'} right-5 z-30 w-14 h-14 rounded-full bg-blood-600 text-white shadow-lg flex items-center justify-center text-2xl font-light hover:bg-blood-700 active:scale-95 transition-all ${mobileOnly ? 'lg:hidden' : ''}`}
+      className={`fab-enter fixed ${
+        raised
+          ? 'bottom-[calc(6rem+env(safe-area-inset-bottom))]'
+          : 'bottom-[calc(1.25rem+env(safe-area-inset-bottom))]'
+      } right-5 z-30 w-14 h-14 rounded-full bg-blood-600 text-white shadow-lg flex items-center justify-center text-2xl font-light hover:bg-blood-700 active:scale-95 transition-all ${
+        mobileOnly ? 'lg:hidden' : ''
+      }`}
     >
       {children}
     </button>
@@ -449,7 +455,7 @@ export function ToastStack({
 }) {
   return (
     <div
-      className="fixed bottom-32 lg:bottom-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 items-center pointer-events-none"
+      className="fixed bottom-[calc(8rem+env(safe-area-inset-bottom))] lg:bottom-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 items-center pointer-events-none"
       aria-live="polite"
       aria-atomic="true"
     >
@@ -544,7 +550,7 @@ export function Modal({
     >
       <div
         ref={modalRef}
-        className="card w-full sm:max-w-md max-h-[85vh] overflow-y-auto rounded-b-none sm:rounded-b-2xl p-5"
+        className="card w-full sm:max-w-md max-h-[85vh] overflow-y-auto rounded-b-none sm:rounded-b-2xl p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -614,7 +620,7 @@ export function BottomSheet({
     >
       <div
         ref={sheetRef}
-        className={`sheet-enter card w-full ${size === 'md' ? 'max-w-md' : 'max-w-6xl'} max-h-[88vh] rounded-b-none flex flex-col`}
+        className={`sheet-enter card w-full ${size === 'md' ? 'max-w-md' : 'max-w-6xl'} max-h-[88vh] rounded-b-none flex flex-col pb-[env(safe-area-inset-bottom)]`}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

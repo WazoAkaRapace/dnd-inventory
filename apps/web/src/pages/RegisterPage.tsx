@@ -40,10 +40,12 @@ export default function RegisterPage() {
             </label>
             <input
               id="register-display-name"
+              name="displayName"
               className="input"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               placeholder="Le MD"
+              autoComplete="nickname"
               required
             />
           </div>
@@ -53,9 +55,13 @@ export default function RegisterPage() {
             </label>
             <input
               id="register-username"
+              name="username"
               className="input"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
               minLength={3}
               required
             />
@@ -66,10 +72,12 @@ export default function RegisterPage() {
             </label>
             <input
               id="register-password"
+              name="password"
               type="password"
               className="input"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
               minLength={6}
               required
             />

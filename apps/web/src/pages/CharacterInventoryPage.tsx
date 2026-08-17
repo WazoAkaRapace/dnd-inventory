@@ -779,7 +779,7 @@ export default function CharacterInventoryPage() {
       </div>
 
       {/* ---------- Tab navigation — floating mobile dock with sliding indicator ---------- */}
-      <div className="lg:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-30 max-w-[calc(100vw-2rem)]">
+      <div className="lg:hidden fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-30 max-w-[calc(100vw-2rem)]">
         {/* Combat status card — always visible, attached to the top of the dock.
             Initiative pending: expands inline with input + dice. */}
         {hubCombat?.needsInitiative && hubCombat.myCombatantId ? (
@@ -994,7 +994,7 @@ export default function CharacterInventoryPage() {
             };
             const p = activeIdx >= 0 ? indPos(activeIdx) : null;
             return (
-              <div className="lg:hidden fixed z-50 bottom-24 left-1/2 -translate-x-1/2">
+              <div className="lg:hidden fixed z-50 bottom-[calc(6rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2">
                 <div className="w-[296px] grid grid-cols-2 gap-2">
                   {p && (
                     <span

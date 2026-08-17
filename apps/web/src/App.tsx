@@ -80,7 +80,7 @@ function Nav() {
       : null;
 
   return (
-    <header className="sticky top-0 z-30 bg-ink-900 text-parchment-50 shadow-md">
+    <header className="sticky top-0 z-30 bg-ink-900 text-parchment-50 shadow-md pt-[env(safe-area-inset-top)]">
       <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
           {headerBack ? (
@@ -140,7 +140,20 @@ function Nav() {
               title="Déconnexion"
               aria-label="Déconnexion"
             >
-              ⏻
+              {/* Not the ⏻ character (U+23FB): Android font bundles lack the
+                  glyph and render tofu — draw it instead */}
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                aria-hidden="true"
+                className="block w-5 h-5"
+              >
+                <path d="M12 2v10" />
+                <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
+              </svg>
             </button>
           )}
         </div>
@@ -185,7 +198,7 @@ export default function App() {
   return (
     <HeaderProvider>
       <Nav />
-      <main className="max-w-6xl mx-auto px-4 py-6 pb-24">
+      <main className="max-w-6xl mx-auto px-4 py-6 pb-[calc(6rem+env(safe-area-inset-bottom))]">
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />

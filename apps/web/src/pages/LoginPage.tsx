@@ -40,10 +40,13 @@ export default function LoginPage() {
             </label>
             <input
               id="login-username"
+              name="username"
               className="input"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
               required
             />
           </div>
@@ -53,6 +56,7 @@ export default function LoginPage() {
             </label>
             <input
               id="login-password"
+              name="password"
               type="password"
               className="input"
               value={password}
