@@ -29,7 +29,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="card w-full max-w-sm p-6 sm:p-8">
         <div className="text-center mb-6">
-          <div className="text-4xl mb-2">⚔️</div>
+          <img src="/icon-seal.svg" alt="" aria-hidden="true" className="w-20 h-20 mx-auto mb-3" />
           <h1 className="font-display text-2xl font-bold text-blood-700">Inventaire D&D</h1>
           <p className="text-ink-400 text-sm mt-1">Gérez l'équipement de votre groupe</p>
         </div>
