@@ -27,6 +27,15 @@ CREATE TABLE IF NOT EXISTS party_members (
   PRIMARY KEY (party_id, user_id)
 );
 
+-- GM bans: the door is locked against the invite code for these users.
+CREATE TABLE IF NOT EXISTS party_bans (
+  party_id  INTEGER NOT NULL REFERENCES parties(id) ON DELETE CASCADE,
+  user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  banned_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (party_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_party_bans_user ON party_bans(user_id);
+
 CREATE TABLE IF NOT EXISTS characters (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   party_id    INTEGER NOT NULL REFERENCES parties(id) ON DELETE CASCADE,

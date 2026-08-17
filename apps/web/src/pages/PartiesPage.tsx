@@ -41,6 +41,7 @@ function RoleBadge({ role, large = false }: { role: PartyRole; large?: boolean }
 function joinError(err: any): string {
   const status = err.response?.status;
   if (status === 404) return 'Code invalide — redemande les six lettres à ton MD.';
+  if (status === 403) return 'Tu as été banni de ce groupe — demande au MD de te débannir.';
   if (status === 409) return 'Tu fais déjà partie de ce groupe.';
   if (status === 400) return 'Entre les six lettres du code.';
   if (status === 429)

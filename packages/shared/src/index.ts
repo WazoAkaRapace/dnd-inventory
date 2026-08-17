@@ -121,6 +121,14 @@ export interface PartyMember {
   joinedAt: string;
 }
 
+/** A user the GM banned — the invite code is locked for them until unbanned. */
+export interface BannedPartyUser {
+  userId: number;
+  username: string;
+  displayName: string;
+  bannedAt: string;
+}
+
 /** API response row for GET /api/parties — party plus the caller's membership context. */
 export interface PartyListRow extends Party {
   gmName?: string;
@@ -136,6 +144,8 @@ export interface PartyDetail {
   party: Party;
   members: PartyMember[];
   characters: CharacterSummary[];
+  /** Surfaced in the GM's Joueurs tab only. */
+  banned: BannedPartyUser[];
 }
 
 export interface CreatePartyPayload {

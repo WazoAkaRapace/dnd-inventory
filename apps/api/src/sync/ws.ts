@@ -74,6 +74,20 @@ export async function registerWsRoutes(app: FastifyInstance) {
 
   // Listen to the event bus and fan out to relevant clients
   bus.on('change', (event: SyncEvent) => {
+    const message = JSON.stringify(event);
+    // Targeted delivery: a removed/banned user is no longer a member at fan-out
+    // time, so the membership gate below would skip their open tabs. They must
+    // still hear the event — their PartyPage flips to "no longer at the table".
+    if (event.targetUserId !== undefined) {
+      for (const client of clients) {
+        if (client.userId !== event.targetUserId || client.ws.readyState !== 1) continue;
+        try {
+          client.ws.send(message);
+        } catch {
+          clients.delete(client);
+        }
+      }
+    }
     // Membership may have changed (join/leave) — refresh the cached party sets
     if (event.type === 'party:change') {
       const refreshed = new Set<number>();
@@ -84,7 +98,6 @@ export async function registerWsRoutes(app: FastifyInstance) {
         }
       }
     }
-    const message = JSON.stringify(event);
     for (const client of clients) {
       if (client.ws.readyState !== 1) {
         // OPEN

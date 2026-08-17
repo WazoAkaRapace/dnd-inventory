@@ -1,4 +1,10 @@
-import type { CharacterInventory, CharacterSummary, PartyDetail } from '@dnd-inventory/shared';
+import type {
+  BannedPartyUser,
+  CharacterInventory,
+  CharacterSummary,
+  PartyDetail,
+  PartyMember,
+} from '@dnd-inventory/shared';
 import {
   abilityModifier,
   computeAC,
@@ -10,6 +16,7 @@ import { Link, useParams } from 'react-router-dom';
 import api from '../api';
 import { CategoryBadge, EmptyState, ErrorMsg, Fab, LoadingSpinner, Modal } from '../components/ui';
 import { useSyncEvent } from '../sync';
+import { plural } from '../utils';
 
 interface Transaction {
   id: number;
@@ -29,7 +36,9 @@ export default function GmDashboardPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<'characters' | 'transactions' | 'custom'>('characters');
+  const [tab, setTab] = useState<'characters' | 'transactions' | 'custom' | 'members'>(
+    'characters',
+  );
 
   const load = useCallback(
     async (silent = false) => {
@@ -87,6 +96,9 @@ export default function GmDashboardPage() {
         <TabButton active={tab === 'custom'} onClick={() => setTab('custom')}>
           Objets custom
         </TabButton>
+        <TabButton active={tab === 'members'} onClick={() => setTab('members')}>
+          Joueurs ({party.members.length})
+        </TabButton>
       </div>
 
       {tab === 'characters' && (
@@ -96,6 +108,16 @@ export default function GmDashboardPage() {
       {tab === 'transactions' && <TransactionsTab transactions={transactions} />}
 
       {tab === 'custom' && <CustomItemsTab partyId={partyId!} />}
+
+      {tab === 'members' && (
+        <MembersTab
+          members={party.members}
+          banned={party.banned}
+          characters={party.characters}
+          partyId={partyId!}
+          onReload={load}
+        />
+      )}
     </div>
   );
 }
@@ -366,6 +388,221 @@ function CharactersTab({
               className="btn-primary flex-1 bg-red-600 hover:bg-red-700"
             >
               {deleting ? 'Suppression…' : 'Supprimer'}
+            </button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+/** SQLite datetime ("2026-05-21 15:30:00") → « mai 2026 » (register's since-format). */
+function sinceLabel(sqliteDate: string): string {
+  const d = new Date(sqliteDate.replace(' ', 'T'));
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' });
+}
+
+type PendingAction =
+  | { kind: 'remove'; member: PartyMember }
+  | { kind: 'ban'; member: PartyMember }
+  | { kind: 'unban'; user: BannedPartyUser };
+
+function actionCopy(p: PendingAction): {
+  title: string;
+  body: string;
+  cta: string;
+  danger: boolean;
+} {
+  if (p.kind === 'remove') {
+    const name = p.member.displayName;
+    return {
+      title: `Retirer ${name} de la table ?`,
+      body: `${name} perd l'accès au groupe et à ses fiches. Ses personnages restent au groupe — visibles depuis la Table du MD et en combat. Il pourra revenir avec le code d'invitation.`,
+      cta: 'Retirer',
+      danger: false,
+    };
+  }
+  if (p.kind === 'ban') {
+    const name = p.member.displayName;
+    return {
+      title: `Bannir ${name} ?`,
+      body: `${name} quitte la table et le code d'invitation ne fonctionnera plus pour lui. Ses personnages restent au groupe. Tu pourras le débannir plus tard.`,
+      cta: 'Bannir',
+      danger: true,
+    };
+  }
+  const name = p.user.displayName;
+  return {
+    title: `Débannir ${name} ?`,
+    body: `Le code d'invitation fonctionnera à nouveau pour lui. Il ne revient pas à la table pour autant — il devra rejoindre avec le code.`,
+    cta: 'Débannir',
+    danger: false,
+  };
+}
+
+function MembersTab({
+  members,
+  banned,
+  characters,
+  partyId,
+  onReload,
+}: {
+  members: PartyMember[];
+  banned: BannedPartyUser[];
+  characters: CharacterSummary[];
+  partyId: string;
+  onReload: (silent?: boolean) => Promise<void>;
+}) {
+  const [pending, setPending] = useState<PendingAction | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState('');
+
+  const charCountByOwner = new Map<number, number>();
+  for (const c of characters) {
+    charCountByOwner.set(c.ownerId, (charCountByOwner.get(c.ownerId) ?? 0) + 1);
+  }
+
+  async function confirmAction() {
+    if (!pending) return;
+    setBusy(true);
+    setActionError('');
+    try {
+      if (pending.kind === 'remove') {
+        await api.delete(`/api/parties/${partyId}/members/${pending.member.userId}`);
+      } else if (pending.kind === 'ban') {
+        await api.post(`/api/parties/${partyId}/bans`, { userId: pending.member.userId });
+      } else {
+        await api.delete(`/api/parties/${partyId}/bans/${pending.user.userId}`);
+      }
+      setPending(null);
+      await onReload(true);
+    } catch (err: any) {
+      if (err.response?.status === 404) {
+        // Race: someone left (or was banned) between load and confirm.
+        setPending(null);
+        await onReload(true);
+      } else {
+        setActionError('Action impossible — vérifie la connexion.');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-ink-400">
+        Retirer libère le siège — le code d'invitation reste valable. Bannir verrouille le code.
+      </p>
+      <div className="card divide-y divide-parchment-100">
+        {members.map((m) => (
+          <div key={m.userId} className="flex items-center gap-3 p-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="font-medium text-ink-800">{m.displayName}</span>
+                <span className="text-xs text-ink-400">@{m.username}</span>
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    m.role === 'gm' ? 'bg-blood-600 text-white' : 'bg-parchment-200 text-ink-700'
+                  }`}
+                >
+                  {m.role === 'gm' ? 'MD' : 'Joueur'}
+                </span>
+              </div>
+              <p className="mt-0.5 text-xs text-ink-400">
+                {plural(charCountByOwner.get(m.userId) ?? 0, 'personnage')} · à la table depuis{' '}
+                {sinceLabel(m.joinedAt)}
+              </p>
+            </div>
+            {m.role === 'player' && (
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  className="rounded px-3 py-2.5 text-xs font-medium text-ink-400 transition-colors hover:bg-parchment-100 hover:text-blood-600"
+                  onClick={() => {
+                    setActionError('');
+                    setPending({ kind: 'remove', member: m });
+                  }}
+                  aria-label={`Retirer ${m.displayName} de la table`}
+                >
+                  Retirer
+                </button>
+                <button
+                  type="button"
+                  className="rounded px-3 py-2.5 text-xs font-medium text-ink-400 transition-colors hover:bg-parchment-100 hover:text-red-600"
+                  onClick={() => {
+                    setActionError('');
+                    setPending({ kind: 'ban', member: m });
+                  }}
+                  aria-label={`Bannir ${m.displayName} de ce groupe`}
+                >
+                  Bannir
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {banned.length > 0 && (
+        <div>
+          <h3 className="section-title">
+            Bannis <span className="text-sm font-normal text-ink-400">({banned.length})</span>
+          </h3>
+          <div className="card divide-y divide-parchment-100">
+            {banned.map((u) => (
+              <div key={u.userId} className="flex items-center gap-3 p-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="font-medium text-ink-600">{u.displayName}</span>
+                    <span className="text-xs text-ink-400">@{u.username}</span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-ink-400">
+                    banni depuis {sinceLabel(u.bannedAt)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="shrink-0 rounded px-3 py-2.5 text-xs font-medium text-ink-700 transition-colors hover:bg-parchment-100 hover:text-blood-600"
+                  onClick={() => {
+                    setActionError('');
+                    setPending({ kind: 'unban', user: u });
+                  }}
+                  aria-label={`Débannir ${u.displayName}`}
+                >
+                  Débannir
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {pending && (
+        <Modal
+          open={!!pending}
+          onClose={() => !busy && setPending(null)}
+          title={actionCopy(pending).title}
+        >
+          <p className="mb-4 text-sm text-ink-500">{actionCopy(pending).body}</p>
+          {actionError && <div className="mb-3 text-sm text-red-600">{actionError}</div>}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setPending(null)}
+              disabled={busy}
+              className="btn-secondary flex-1"
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              onClick={confirmAction}
+              disabled={busy}
+              className={`btn-primary flex-1 ${actionCopy(pending).danger ? 'bg-red-600 hover:bg-red-700' : ''}`}
+            >
+              {busy ? '…' : actionCopy(pending).cta}
             </button>
           </div>
         </Modal>

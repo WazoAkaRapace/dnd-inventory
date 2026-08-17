@@ -133,6 +133,14 @@ export async function partyRoutes(app: FastifyInstance) {
       ORDER BY pm.role DESC, pm.joined_at ASC
     `)
         .all(partyId);
+      const banned = db
+        .prepare(`
+      SELECT b.*, u.username, u.display_name
+      FROM party_bans b JOIN users u ON u.id = b.user_id
+      WHERE b.party_id = ?
+      ORDER BY b.banned_at ASC
+    `)
+        .all(partyId);
       const characters = db
         .prepare(`
       SELECT c.*, u.display_name AS owner_name
@@ -158,6 +166,12 @@ export async function partyRoutes(app: FastifyInstance) {
           role: m.role as PartyRole,
           joinedAt: m.joined_at,
         })),
+        banned: banned.map((b: any) => ({
+          userId: b.user_id,
+          username: b.username,
+          displayName: b.display_name,
+          bannedAt: b.banned_at,
+        })),
         characters: characters.map(mapCharacterSummary),
       });
     },
@@ -179,6 +193,11 @@ export async function partyRoutes(app: FastifyInstance) {
         .get(inviteCode.toUpperCase()) as any;
       if (!party) return reply.code(404).send({ error: 'invalid invite code' });
 
+      const banned = db
+        .prepare('SELECT 1 FROM party_bans WHERE party_id = ? AND user_id = ?')
+        .get(party.id, userId);
+      if (banned) return reply.code(403).send({ error: 'banned from this party' });
+
       const already = db
         .prepare('SELECT 1 FROM party_members WHERE party_id = ? AND user_id = ?')
         .get(party.id, userId);
@@ -195,6 +214,106 @@ export async function partyRoutes(app: FastifyInstance) {
         actorUserId: userId,
       });
       return reply.code(201).send({ partyId: party.id });
+    },
+  );
+
+  // ---------- Remove a member (GM only) — door stays open, invite code works ----------
+  app.delete(
+    '/parties/:id/members/:userId',
+    async (req: FastifyRequest<{ Params: { id: string; userId: string } }>, reply) => {
+      const userId = requireUser(req, reply);
+      if (userId === null) return;
+      const partyId = Number(req.params.id);
+      const targetId = Number(req.params.userId);
+      if (!isPartyGM(partyId, userId)) return reply.code(403).send({ error: 'GM only' });
+
+      const db = getDb();
+      const target = db
+        .prepare('SELECT * FROM party_members WHERE party_id = ? AND user_id = ?')
+        .get(partyId, targetId) as any;
+      if (!target) return reply.code(404).send({ error: 'member not found' });
+      if (target.role === 'gm') return reply.code(403).send({ error: 'cannot remove the GM' });
+
+      db.prepare('DELETE FROM party_members WHERE party_id = ? AND user_id = ?').run(
+        partyId,
+        targetId,
+      );
+      // Characters stay in the party — the sheet survives, only the seat is freed.
+      bus.emitChange({
+        type: 'party:change',
+        partyId,
+        action: 'remove',
+        actorUserId: userId,
+        targetUserId: targetId,
+      });
+      return reply.send({ ok: true });
+    },
+  );
+
+  // ---------- Ban a member (GM only) — seat freed AND the invite code is locked for them ----------
+  app.post(
+    '/parties/:id/bans',
+    async (req: FastifyRequest<{ Params: { id: string }; Body: { userId?: number } }>, reply) => {
+      const userId = requireUser(req, reply);
+      if (userId === null) return;
+      const partyId = Number(req.params.id);
+      const targetId = Number(req.body?.userId);
+      if (!targetId) return reply.code(400).send({ error: 'userId is required' });
+      if (!isPartyGM(partyId, userId)) return reply.code(403).send({ error: 'GM only' });
+
+      const db = getDb();
+      const target = db
+        .prepare('SELECT * FROM party_members WHERE party_id = ? AND user_id = ?')
+        .get(partyId, targetId) as any;
+      if (!target) return reply.code(404).send({ error: 'member not found' });
+      if (target.role === 'gm') return reply.code(403).send({ error: 'cannot ban the GM' });
+
+      const tx = db.transaction(() => {
+        db.prepare('DELETE FROM party_members WHERE party_id = ? AND user_id = ?').run(
+          partyId,
+          targetId,
+        );
+        db.prepare(`
+          INSERT OR REPLACE INTO party_bans (party_id, user_id, banned_at)
+          VALUES (?, ?, datetime('now'))
+        `).run(partyId, targetId);
+      });
+      tx();
+      bus.emitChange({
+        type: 'party:change',
+        partyId,
+        action: 'ban',
+        actorUserId: userId,
+        targetUserId: targetId,
+      });
+      return reply.code(201).send({ ok: true });
+    },
+  );
+
+  // ---------- Unban (GM only) — the invite code works again, no auto re-seat ----------
+  app.delete(
+    '/parties/:id/bans/:userId',
+    async (req: FastifyRequest<{ Params: { id: string; userId: string } }>, reply) => {
+      const userId = requireUser(req, reply);
+      if (userId === null) return;
+      const partyId = Number(req.params.id);
+      const targetId = Number(req.params.userId);
+      if (!isPartyGM(partyId, userId)) return reply.code(403).send({ error: 'GM only' });
+
+      const db = getDb();
+      const info = db
+        .prepare('DELETE FROM party_bans WHERE party_id = ? AND user_id = ?')
+        .run(partyId, targetId);
+      if (info.changes === 0) return reply.code(404).send({ error: 'not banned' });
+
+      bus.emitChange({
+        type: 'party:change',
+        partyId,
+        action: 'unban',
+        actorUserId: userId,
+        targetUserId: targetId,
+      });
+      return reply.send({ ok: true });
     },
   );
 

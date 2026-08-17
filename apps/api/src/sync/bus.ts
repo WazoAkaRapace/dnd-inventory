@@ -25,12 +25,17 @@ export interface SyncEvent {
     | 'stats'
     | 'custom-item'
     | 'join'
+    | 'remove'
+    | 'ban'
+    | 'unban'
     | 'initiative'
     | 'turn'
     | 'hp'
     | 'condition';
   itemName?: string;
   actorUserId?: number;
+  /** Membership action target (remove/ban/unban) — ws.ts delivers to them directly. */
+  targetUserId?: number;
   /** Concentration save required — pushed to the character's owner (damage taken while concentrating). */
   concentration?: ConcentrationCheck;
 }

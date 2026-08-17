@@ -219,6 +219,8 @@ export default function PartyPage() {
   const [party, setParty] = useState<PartyDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // 403 from the detail route: the visitor was removed/banned (or never joined).
+  const [notMember, setNotMember] = useState(false);
   const [showAddChar, setShowAddChar] = useState(false);
   const [createError, setCreateError] = useState('');
   const [inviteCopied, setInviteCopied] = useState(false);
@@ -239,8 +241,14 @@ export default function PartyPage() {
         const res = await api.get(`/api/parties/${partyId}`);
         setParty(res.data);
         setError('');
+        setNotMember(false);
       } catch (err: any) {
-        setError(err.response?.data?.error || 'Groupe introuvable');
+        if (err.response?.status === 403) {
+          // Kicked live (party:change 'remove'/'ban' reloads into this) or stale link.
+          setNotMember(true);
+        } else {
+          setError(err.response?.data?.error || 'Groupe introuvable');
+        }
       } finally {
         setLoading(false);
       }
@@ -309,6 +317,21 @@ export default function PartyPage() {
   }
 
   if (loading) return <LoadingSpinner label="Ouverture du groupe…" />;
+  if (notMember) {
+    return (
+      <div className="mx-auto w-full max-w-xl space-y-4 pt-10 text-center">
+        <h1 className="font-display text-2xl font-bold">Tu ne fais plus partie de ce groupe</h1>
+        <p className="text-sm text-ink-400">
+          Le MD t'a retiré de la table. Pour revenir, il te faudra un code d'invitation valide.
+        </p>
+        <div>
+          <Link to="/parties" className="btn-secondary">
+            Mes groupes
+          </Link>
+        </div>
+      </div>
+    );
+  }
   if (error) {
     return (
       <div className="mx-auto w-full max-w-xl space-y-3">
