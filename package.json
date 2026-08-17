@@ -21,11 +21,13 @@
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "test-weapon-stats": "tsx scripts/test-weapon-stats.ts",
-    "test-armor-stats": "tsx scripts/test-armor-stats.ts"
+    "test-armor-stats": "tsx scripts/test-armor-stats.ts",
+    "screenshots": "tsx scripts/generate-screenshots.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",
     "concurrently": "^10.0.4",
+    "playwright": "^1.62.1",
     "tsx": "^4.19.2",
     "typescript": "^7.0.2"
   },

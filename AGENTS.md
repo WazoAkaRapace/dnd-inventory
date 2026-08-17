@@ -24,6 +24,7 @@ npm run import-items     # Fetch & convert SRD items (lb→kg)
 npx tsx scripts/import-monsters.ts  # Import SRD bestiary (5e-drs, all sources)
 npm run test-weapon-stats  # Weapon/monk/unarmed/fighting-style/sneak/extra-attack checks
 npm run test-armor-stats   # AC/magic-armor/speed/wild-shape/unarmored-defense checks
+npm run screenshots        # Regenerate README's docs/screenshots/*.png (isolated stack + Playwright)
 ```
 
 ### Key conventions
@@ -77,6 +78,7 @@ auth, characters (incl. HP/concentration/condition sync side-effects), inventory
 - **Typecheck/build gates**: web `tsc -b` has an 11-error known baseline (compare the error signature before/after changes); `vite build` in `apps/web` is the real build gate; API smoke test = `PORT=4597 npx tsx src/server.ts` + curl `/api/health`
 - **E2E with state changes → isolated stack**: `API_PORT=4099 WEB_PORT=8099 docker compose -p dnd-e2e up -d --build` (own DB volume, tear down after). The MAIN stack on 8080/4010 holds the user's real campaign data — treat it read-only unless explicitly told otherwise
 - Read-only E2E on the main instance: navigation/screenshot verification; login `wfix3`/`test123` works on the Docker DB (the dev-server DB differs)
+- **README screenshots**: `npm run screenshots` (`scripts/generate-screenshots.ts`) — boots a throwaway local stack (tsx API on a free port with fresh SQLite `data/db/screenshots-demo.sqlite`, gitignored + vite dev proxying to it), seeds a demo campaign via REST ("Les Héros de Chult": Druide Lune/Guerrier/Clerc + active "Embuscade gobeline" mid-turn), then Playwright re-captures the 13 `docs/screenshots/*.png` at 390×844. `--only 03,07` for a subset, `--keep` to leave servers up. Never touches the dev/Docker DBs. One-time setup per machine: `npx playwright install chromium`. When the UI changes, refresh with a plain run — monster HP dice are the only intentional randomness
 - GUI testing: browser-use skills (bootstrap via `ZCODE_PLUGIN_ROOT` → `browser-client.mjs`), screenshots land in `gui-test-screenshots/` (gitignored); verify via screenshot + DOM cross-check, not DOM alone
 - CI (GitHub Actions) builds & pushes `ghcr.io/wazoakarapace/dnd-inventory-{api,web}:latest` on main; prod runs `docker-compose.prod.yml` — remind the user to `pull && up -d` after pushes that touch the tablet-facing build (the PWA caches: changes need a force-refresh / app restart; manifest is `orientation: any`)
 - Commits: the user asks for "commit and push" at milestones; mixed-file changes can be split with hunk-level staging (python `git diff` split + `git apply --cached`)
