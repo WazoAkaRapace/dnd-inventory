@@ -1,32 +1,111 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <title>Inventaire D&D</title>
-  <!-- Background: dark parchment/ink -->
-  <rect width="512" height="512" rx="96" fill="#2a1f14"/>
-  <!-- Inner subtle gradient -->
-  <rect x="24" y="24" width="464" height="464" rx="80" fill="#3a2a18" opacity="0.6"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="D&amp;D Inventory epic icon">
+  <defs>
+    <radialGradient id="void" cx="46%" cy="38%" r="72%">
+      <stop offset="0" stop-color="#4a1a28"/>
+      <stop offset=".45" stop-color="#1b0b16"/>
+      <stop offset="1" stop-color="#070308"/>
+    </radialGradient>
+    <linearGradient id="ember" x1="80" y1="420" x2="430" y2="80" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff7a2a"/>
+      <stop offset=".5" stop-color="#e11d2e"/>
+      <stop offset="1" stop-color="#7a0d2a"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="120" y1="70" x2="400" y2="430" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffe7a3"/>
+      <stop offset=".45" stop-color="#e0b04a"/>
+      <stop offset="1" stop-color="#8a5a16"/>
+    </linearGradient>
+    <linearGradient id="blade" x1="70" y1="40" x2="250" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset=".35" stop-color="#d7e4ef"/>
+      <stop offset="1" stop-color="#6d7d8d"/>
+    </linearGradient>
+    <linearGradient id="scroll" x1="150" y1="150" x2="340" y2="390" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f7e4b6"/>
+      <stop offset="1" stop-color="#b8884a"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="68%" cy="42%" r="28%">
+      <stop offset="0" stop-color="#ffcf6b" stop-opacity=".95"/>
+      <stop offset="1" stop-color="#ffcf6b" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="bloom" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="cast" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="14" stdDeviation="12" flood-color="#000" flood-opacity=".55"/>
+    </filter>
+  </defs>
 
-  <!-- Crossed swords (D&D icon) -->
-  <g transform="translate(256,256)">
-    <!-- Sword 1 (diagonal \) -->
-    <g transform="rotate(-45)">
-      <!-- Blade -->
-      <rect x="-8" y="-120" width="16" height="160" rx="3" fill="#e8d5b0"/>
-      <!-- Blade tip -->
-      <polygon points="-8,-120 8,-120 0,-145" fill="#e8d5b0"/>
-      <!-- Guard -->
-      <rect x="-30" y="38" width="60" height="10" rx="3" fill="#b8975a"/>
-      <!-- Grip -->
-      <rect x="-7" y="48" width="14" height="38" rx="2" fill="#7a1f1f"/>
-      <!-- Pommel -->
-      <circle cx="0" cy="92" r="10" fill="#b8975a"/>
+  <rect width="512" height="512" rx="118" fill="url(#void)"/>
+
+  <!-- Ember ring -->
+  <circle cx="256" cy="268" r="198" fill="none" stroke="url(#ember)" stroke-width="10" opacity=".55"/>
+  <circle cx="256" cy="268" r="176" fill="none" stroke="#f3c56a" stroke-width="2" opacity=".28"/>
+
+  <!-- Runes -->
+  <g fill="#f3c56a" opacity=".55" font-family="Georgia, serif" font-size="22">
+    <text x="118" y="118">ᚠ</text>
+    <text x="372" y="126">ᚱ</text>
+    <text x="92" y="392">ᚦ</text>
+    <text x="392" y="404">ᚨ</text>
+  </g>
+
+  <!-- Dragon wings -->
+  <g fill="#2a0d16" stroke="url(#gold)" stroke-width="5" filter="url(#cast)">
+    <path d="M256 168 C168 148 92 176 58 248 C126 214 168 232 206 268 C228 220 240 190 256 168Z"/>
+    <path d="M256 168 C344 148 420 176 454 248 C386 214 344 232 306 268 C284 220 272 190 256 168Z"/>
+    <path d="M92 236 L64 206 L88 214" fill="#e0b04a" stroke="none"/>
+    <path d="M420 236 L448 206 L424 214" fill="#e0b04a" stroke="none"/>
+  </g>
+
+  <!-- Character tome -->
+  <g filter="url(#cast)">
+    <path d="M168 176 H344 C356 176 364 186 364 198 V372 C364 390 348 404 330 404 H182 C164 404 148 390 148 372 V198 C148 186 156 176 168 176Z" fill="url(#scroll)"/>
+    <path d="M256 184 V396" stroke="#6b3a24" stroke-width="6" opacity=".35"/>
+    <rect x="176" y="214" width="62" height="12" rx="6" fill="#6b3a24" opacity=".7"/>
+    <rect x="176" y="238" width="62" height="7" rx="3" fill="#8a5a32" opacity=".35"/>
+    <rect x="176" y="254" width="54" height="7" rx="3" fill="#8a5a32" opacity=".28"/>
+    <rect x="274" y="214" width="62" height="12" rx="6" fill="#7a2b2b" opacity=".8"/>
+    <rect x="274" y="238" width="62" height="7" rx="3" fill="#8a5a32" opacity=".35"/>
+    <rect x="176" y="292" width="160" height="8" rx="4" fill="#8a5a32" opacity=".28"/>
+    <rect x="176" y="314" width="132" height="8" rx="4" fill="#8a5a32" opacity=".22"/>
+    <rect x="188" y="348" width="136" height="22" rx="8" fill="#2b3d66" opacity=".85"/>
+  </g>
+
+  <!-- Twin blades -->
+  <g filter="url(#cast)">
+    <g transform="rotate(-32 168 210)">
+      <polygon points="168,48 184,250 152,250" fill="url(#blade)"/>
+      <rect x="138" y="246" width="60" height="16" rx="4" fill="url(#gold)"/>
+      <rect x="160" y="262" width="16" height="46" rx="4" fill="#5a2a16"/>
     </g>
-    <!-- Sword 2 (diagonal /) -->
-    <g transform="rotate(45)">
-      <rect x="-8" y="-120" width="16" height="160" rx="3" fill="#e8d5b0"/>
-      <polygon points="-8,-120 8,-120 0,-145" fill="#e8d5b0"/>
-      <rect x="-30" y="38" width="60" height="10" rx="3" fill="#b8975a"/>
-      <rect x="-7" y="48" width="14" height="38" rx="2" fill="#7a1f1f"/>
-      <circle cx="0" cy="92" r="10" fill="#b8975a"/>
+    <g transform="rotate(32 344 210)">
+      <polygon points="344,48 360,250 328,250" fill="url(#blade)"/>
+      <rect x="314" y="246" width="60" height="16" rx="4" fill="url(#gold)"/>
+      <rect x="336" y="262" width="16" height="46" rx="4" fill="#5a2a16"/>
     </g>
+  </g>
+
+  <!-- Crown -->
+  <g filter="url(#cast)" transform="translate(0 -6)">
+    <path d="M186 156 L206 104 L256 138 L306 104 L326 156 Z" fill="url(#gold)"/>
+    <circle cx="206" cy="100" r="8" fill="#ffefc2"/>
+    <circle cx="256" cy="132" r="7" fill="#e11d2e"/>
+    <circle cx="306" cy="100" r="8" fill="#ffefc2"/>
+  </g>
+
+  <!-- Central d20 -->
+  <circle cx="336" cy="318" r="78" fill="url(#glow)"/>
+  <g filter="url(#bloom)" transform="translate(8 18)">
+    <polygon points="328,236 412,284 378,392 278,392 244,284" fill="url(#ember)"/>
+    <polygon points="328,236 412,284 328,308 244,284" fill="#ff8a4a" opacity=".7"/>
+    <polygon points="328,308 412,284 378,392" fill="#9b1224" opacity=".65"/>
+    <polygon points="328,308 244,284 278,392" fill="#5a0814" opacity=".5"/>
+    <path d="M328 256 L382 288 L360 366 L296 366 L274 288 Z" fill="none" stroke="#ffe7a3" stroke-width="6" stroke-linejoin="round"/>
+    <text x="328" y="332" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="58" font-weight="700" fill="#fff4d2">20</text>
   </g>
 </svg>

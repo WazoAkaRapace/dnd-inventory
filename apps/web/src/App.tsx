@@ -106,11 +106,10 @@ function Nav() {
           ) : (
             <Link
               to="/parties"
-              className="font-display text-lg font-semibold flex items-center gap-2"
+              className="font-display text-lg font-semibold flex items-center"
+              aria-label="Accueil"
             >
-              <span className="text-blood-500">⚔</span>
-              <span className="hidden sm:inline">Inventaire D&D</span>
-              <span className="sm:hidden">D&D</span>
+              <img src="/icon.svg" alt="" aria-hidden="true" className="w-8 h-8" />
             </Link>
           )}
         </div>
