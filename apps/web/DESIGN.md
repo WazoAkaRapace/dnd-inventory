@@ -144,12 +144,18 @@ primaires) ; tous les autres états sont des marques imprimées.
 
 Une seule courbe de sortie : `cubic-bezier(0.16, 1, 0.3, 1)`. Entrées courtes
 (0.2–0.45 s), un moment signé par surface (dock, sword-cut de tour,
-sheet-up, register-rise, stage-swap). Le registre arrive par `.register-rise` :
+sheet-up, sheet-rise, register-rise, stage-swap). Le registre arrive par `.register-rise` :
 montée de 12 px + fondu, 0.35 s, remplissage `backwards`, stagger inline plafonné
 (≤ 5 blocs × 60 ms) — les entrées se posent sous la règle de tête l'une après
 l'autre, puis plus rien ne bouge. Le théâtre du tour change de combattant par
 `.stage-swap` : montée de 8 px + fondu, 0.25 s, clé React sur le combattant
 focalisé — un seul moment par tour, rien d'autre ne bouge dans le combat.
+La fiche de personnage s'ouvre par `.sheet-rise` : le bandeau d'état monte de
+12 px + fondu (0.35 s) et la barre d'onglets desktop se pose 60 ms derrière
+lui — l'appareil d'identité d'abord, le contenu ensuite ; changer d'onglet
+fait monter le panneau par `.sheet-tab-swap` (8 px, 0.25 s, clé React sur
+l'onglet actif — un mouvement par changement, jamais au rafraîchissement des
+données).
 Sur la fiche, la ligne Agir (ou l'appel
 d'initiative) monte par `.band-rise` (6 px + fondu, 0.2 s) à l'instant où le
 tour devient tien ; le jumeau épinglé descend par `.band-drop` (−8 px, 0.2 s,

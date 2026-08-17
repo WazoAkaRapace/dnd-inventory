@@ -582,3 +582,38 @@ input[type="number"] {
     animation: none;
   }
 }
+
+/* ---------- Fiche joueur — arrivée & changement d'onglet ---------- */
+
+/* Sheet arrival — the fiche's signed moment: the state band rises onto the
+   parchment first, the desktop tab bar settles 60ms behind it (inline delay).
+   Same rise+fade dialect as the register. */
+@keyframes sheet-rise {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+}
+.sheet-rise {
+  animation: sheet-rise 0.35s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+/* Tab swap — switching tabs rises the new panel 8px into place (the
+   stage-swap dialect), keyed by the active tab so it plays once per switch
+   and never on data refreshes. */
+@keyframes sheet-tab-swap {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+}
+.sheet-tab-swap {
+  animation: sheet-tab-swap 0.25s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-rise,
+  .sheet-tab-swap {
+    animation: none;
+  }
+}

@@ -736,28 +736,34 @@ export default function CharacterInventoryPage() {
 
   return (
     <div className="space-y-4 pb-16 lg:pb-0">
-      {/* Bandeau d'état — pinned state masthead above every tab */}
-      <CharacterStateBand
-        character={character}
-        entries={data.entries}
-        encumbrance={encumbrance}
-        canEdit={canEdit}
-        combat={hubCombat}
-        combatHref={
-          hubCombat ? `/party/${hubCombat.partyId}/combat?enc=${hubCombat.encounterId}` : null
-        }
-        onNavigate={(tab) => {
-          setActiveTab(tab);
-          window.scrollTo(0, 0);
-        }}
-        onOpenInitiative={() => setHubInitOpen(true)}
-        onSaved={refreshInventory}
-        onError={(msg) => pushToast(msg, 'error')}
-        onNotice={(msg) => pushToast(msg)}
-      />
+      {/* Bandeau d'état — pinned state masthead above every tab. The sheet's
+          arrival: the band rises first, the content settles beneath it. */}
+      <div className="sheet-rise">
+        <CharacterStateBand
+          character={character}
+          entries={data.entries}
+          encumbrance={encumbrance}
+          canEdit={canEdit}
+          combat={hubCombat}
+          combatHref={
+            hubCombat ? `/party/${hubCombat.partyId}/combat?enc=${hubCombat.encounterId}` : null
+          }
+          onNavigate={(tab) => {
+            setActiveTab(tab);
+            window.scrollTo(0, 0);
+          }}
+          onOpenInitiative={() => setHubInitOpen(true)}
+          onSaved={refreshInventory}
+          onError={(msg) => pushToast(msg, 'error')}
+          onNotice={(msg) => pushToast(msg)}
+        />
+      </div>
 
-      {/* ---------- Tab navigation — desktop top bar ---------- */}
-      <div className="-mx-4 px-4 sm:mx-0 sm:px-0 hidden lg:block">
+      {/* ---------- Tab navigation — desktop top bar (settles 60ms behind the band) ---------- */}
+      <div
+        className="sheet-rise -mx-4 px-4 sm:mx-0 sm:px-0 hidden lg:block"
+        style={{ animationDelay: '60ms' }}
+      >
         <div className="flex items-center gap-1 bg-parchment-100 rounded-xl p-1 overflow-x-auto no-scrollbar">
           {CHARACTER_TABS.map((tab) => (
             <button
@@ -1035,268 +1041,273 @@ export default function CharacterInventoryPage() {
         </>
       )}
 
-      {/* ---------- Non-inventory tabs (rendered when selected) ---------- */}
-      {activeTab === 'survival' && (
-        <SurvivalPanel
-          character={character}
-          charId={Number(charId)}
-          entries={entries}
-          canEdit={canEdit}
-          markLocalMutation={markLocalMutation}
-          onSaved={refreshInventory}
-          onError={(msg) => pushToast(msg, 'error')}
-          onNotice={(msg) => pushToast(msg)}
-        />
-      )}
-      {activeTab === 'stats' && (
-        <CharacterStatsTab
-          character={character}
-          charId={Number(charId)}
-          entries={entries}
-          onSaved={refreshInventory}
-          onError={(msg) => pushToast(msg, 'error')}
-        />
-      )}
-      {activeTab === 'skills' && (
-        <CharacterSkillsTab
-          character={character}
-          charId={Number(charId)}
-          onSaved={refreshInventory}
-          onError={(msg) => pushToast(msg, 'error')}
-        />
-      )}
-      {activeTab === 'spells' && (
-        <CharacterSpellsTab
-          character={character}
-          charId={Number(charId)}
-          onSaved={refreshInventory}
-          onError={(msg) => pushToast(msg, 'error')}
-        />
-      )}
-      {activeTab === 'features' && (
-        <CharacterFeaturesTab
-          character={character}
-          charId={Number(charId)}
-          partyId={partyId}
-          onSaved={refreshInventory}
-          onError={(msg) => pushToast(msg, 'error')}
-        />
-      )}
-      {activeTab === 'description' && (
-        <CharacterDescriptionTab
-          character={character}
-          charId={Number(charId)}
-          onSaved={refreshInventory}
-          onError={(msg) => pushToast(msg, 'error')}
-        />
-      )}
-      {activeTab === 'npcs' && <NpcPage embedded />}
-      {activeTab === 'notes' && (
-        <CharacterNotesTab
-          character={character}
-          charId={Number(charId)}
-          partyId={partyId}
-          onSaved={refreshInventory}
-          onError={(msg) => pushToast(msg, 'error')}
-        />
-      )}
+      {/* ---------- Tab panels — keyed by the active tab, each switch rises into place ---------- */}
+      <div key={activeTab} className="sheet-tab-swap space-y-4">
+        {/* ---------- Non-inventory tabs (rendered when selected) ---------- */}
+        {activeTab === 'survival' && (
+          <SurvivalPanel
+            character={character}
+            charId={Number(charId)}
+            entries={entries}
+            canEdit={canEdit}
+            markLocalMutation={markLocalMutation}
+            onSaved={refreshInventory}
+            onError={(msg) => pushToast(msg, 'error')}
+            onNotice={(msg) => pushToast(msg)}
+          />
+        )}
+        {activeTab === 'stats' && (
+          <CharacterStatsTab
+            character={character}
+            charId={Number(charId)}
+            entries={entries}
+            onSaved={refreshInventory}
+            onError={(msg) => pushToast(msg, 'error')}
+          />
+        )}
+        {activeTab === 'skills' && (
+          <CharacterSkillsTab
+            character={character}
+            charId={Number(charId)}
+            onSaved={refreshInventory}
+            onError={(msg) => pushToast(msg, 'error')}
+          />
+        )}
+        {activeTab === 'spells' && (
+          <CharacterSpellsTab
+            character={character}
+            charId={Number(charId)}
+            onSaved={refreshInventory}
+            onError={(msg) => pushToast(msg, 'error')}
+          />
+        )}
+        {activeTab === 'features' && (
+          <CharacterFeaturesTab
+            character={character}
+            charId={Number(charId)}
+            partyId={partyId}
+            onSaved={refreshInventory}
+            onError={(msg) => pushToast(msg, 'error')}
+          />
+        )}
+        {activeTab === 'description' && (
+          <CharacterDescriptionTab
+            character={character}
+            charId={Number(charId)}
+            onSaved={refreshInventory}
+            onError={(msg) => pushToast(msg, 'error')}
+          />
+        )}
+        {activeTab === 'npcs' && <NpcPage embedded />}
+        {activeTab === 'notes' && (
+          <CharacterNotesTab
+            character={character}
+            charId={Number(charId)}
+            partyId={partyId}
+            onSaved={refreshInventory}
+            onError={(msg) => pushToast(msg, 'error')}
+          />
+        )}
 
-      {/* ---------- Inventory tab content ---------- */}
-      {activeTab === 'inventory' && (
-        <>
-          {/* ---------- Storage location tabs ---------- */}
-          <div className="-mx-4 px-4 sm:mx-0 sm:px-0">
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-              {locations.map((loc) => {
-                const isActive = loc.id === activeLocationResolvedId;
-                const lw = locationWeights.find((w) => w.locationId === loc.id);
-                const pct = lw ? Math.round(lw.pct) : 0;
-                const isConfirming = confirmDeleteLocationId === loc.id;
-                return (
-                  <div key={loc.id} className="flex items-center shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setActiveLocationId(loc.id)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                        isActive
-                          ? 'bg-blood-600 text-white'
-                          : 'bg-parchment-200 text-ink-700 hover:bg-parchment-300'
-                      }`}
-                      aria-pressed={isActive}
-                    >
-                      <span aria-hidden="true">{LOCATION_TYPE_ICON[loc.type]}</span>
-                      <span>{loc.name}</span>
-                      <span
-                        className={`text-xs px-1.5 py-0.5 rounded-full ${
-                          isActive ? 'bg-white/25' : 'bg-parchment-100 text-ink-500'
-                        }`}
-                      >
-                        {pct}%
-                      </span>
-                    </button>
-                    {/* Delete button for non-carried locations */}
-                    {loc.type !== 'carried' && isActive && canEdit && (
+        {/* ---------- Inventory tab content ---------- */}
+        {activeTab === 'inventory' && (
+          <>
+            {/* ---------- Storage location tabs ---------- */}
+            <div className="-mx-4 px-4 sm:mx-0 sm:px-0">
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+                {locations.map((loc) => {
+                  const isActive = loc.id === activeLocationResolvedId;
+                  const lw = locationWeights.find((w) => w.locationId === loc.id);
+                  const pct = lw ? Math.round(lw.pct) : 0;
+                  const isConfirming = confirmDeleteLocationId === loc.id;
+                  return (
+                    <div key={loc.id} className="flex items-center shrink-0">
                       <button
                         type="button"
-                        onClick={() => {
-                          if (isConfirming) {
-                            deleteLocation(loc);
-                          } else {
-                            setConfirmDeleteLocationId(loc.id);
-                            setTimeout(() => setConfirmDeleteLocationId(null), 4000);
-                          }
-                        }}
-                        onBlur={() => setConfirmDeleteLocationId(null)}
-                        className={`ml-1 w-7 h-7 rounded-full flex items-center justify-center text-sm transition-colors ${
-                          isConfirming
-                            ? 'bg-red-600 text-white hover:bg-red-700'
-                            : 'bg-parchment-200 text-ink-500 hover:bg-red-100 hover:text-red-600'
+                        onClick={() => setActiveLocationId(loc.id)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                          isActive
+                            ? 'bg-blood-600 text-white'
+                            : 'bg-parchment-200 text-ink-700 hover:bg-parchment-300'
                         }`}
-                        aria-label={
-                          isConfirming
-                            ? `Confirmer la suppression de ${loc.name}`
-                            : `Supprimer ${loc.name}`
-                        }
-                        title={isConfirming ? 'Confirmer ?' : 'Supprimer ce transport'}
+                        aria-pressed={isActive}
                       >
-                        {isConfirming ? '✓' : '🗑'}
+                        <span aria-hidden="true">{LOCATION_TYPE_ICON[loc.type]}</span>
+                        <span>{loc.name}</span>
+                        <span
+                          className={`text-xs px-1.5 py-0.5 rounded-full ${
+                            isActive ? 'bg-white/25' : 'bg-parchment-100 text-ink-500'
+                          }`}
+                        >
+                          {pct}%
+                        </span>
                       </button>
-                    )}
-                  </div>
-                );
-              })}
-              {/* Add new transport */}
-              {canEdit && (
-                <button
-                  type="button"
-                  onClick={() => setShowNewLocationModal(true)}
-                  className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium border border-dashed border-parchment-300 text-ink-500 hover:border-blood-400 hover:text-blood-600 transition-colors"
-                  aria-label="Ajouter un transport"
-                  title="Ajouter un transport"
-                >
-                  <span aria-hidden="true">+</span> Transport
-                </button>
-              )}
-            </div>
-
-            {/* Per-location weight bar (non-carried only — carried uses the header bar) */}
-            {!isActiveCarried &&
-              activeLocationWeight &&
-              activeLocationWeight.maxCapacityKg !== null && (
-                <LocationWeightBar weight={activeLocationWeight} />
-              )}
-          </div>
-
-          {/* Error toast (non-blocking) */}
-          {error && (
-            <div className="flex items-start justify-between gap-3">
-              <ErrorMsg message={error} />
-              <button
-                type="button"
-                onClick={dismissError}
-                className="btn-ghost text-ink-500 text-sm shrink-0"
-                aria-label="Fermer l'erreur"
-              >
-                ✕
-              </button>
-            </div>
-          )}
-
-          {/* First-run tour hint */}
-          {showTour && data.entries.length === 0 && (
-            <div className="card p-4 border-blood-200 bg-blood-50/50">
-              <div className="flex items-start gap-3">
-                <span className="text-2xl shrink-0" aria-hidden="true">
-                  🎲
-                </span>
-                <div className="flex-1">
-                  <p className="font-medium text-ink-900">Bienvenue !</p>
-                  <p className="text-sm text-ink-700 mt-1">
-                    Appuie sur le bouton <strong>+ Ajouter</strong> en bas de l'écran pour chercher
-                    un objet dans le catalogue, puis suivez la barre de poids pour voir si votre
-                    personnage est encombré.
-                  </p>
+                      {/* Delete button for non-carried locations */}
+                      {loc.type !== 'carried' && isActive && canEdit && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isConfirming) {
+                              deleteLocation(loc);
+                            } else {
+                              setConfirmDeleteLocationId(loc.id);
+                              setTimeout(() => setConfirmDeleteLocationId(null), 4000);
+                            }
+                          }}
+                          onBlur={() => setConfirmDeleteLocationId(null)}
+                          className={`ml-1 w-7 h-7 rounded-full flex items-center justify-center text-sm transition-colors ${
+                            isConfirming
+                              ? 'bg-red-600 text-white hover:bg-red-700'
+                              : 'bg-parchment-200 text-ink-500 hover:bg-red-100 hover:text-red-600'
+                          }`}
+                          aria-label={
+                            isConfirming
+                              ? `Confirmer la suppression de ${loc.name}`
+                              : `Supprimer ${loc.name}`
+                          }
+                          title={isConfirming ? 'Confirmer ?' : 'Supprimer ce transport'}
+                        >
+                          {isConfirming ? '✓' : '🗑'}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+                {/* Add new transport */}
+                {canEdit && (
                   <button
                     type="button"
-                    onClick={dismissTour}
-                    className="btn-primary text-sm mt-2 px-3 py-1.5"
+                    onClick={() => setShowNewLocationModal(true)}
+                    className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium border border-dashed border-parchment-300 text-ink-500 hover:border-blood-400 hover:text-blood-600 transition-colors"
+                    aria-label="Ajouter un transport"
+                    title="Ajouter un transport"
                   >
-                    Compris
+                    <span aria-hidden="true">+</span> Transport
                   </button>
+                )}
+              </div>
+
+              {/* Per-location weight bar (non-carried only — carried uses the header bar) */}
+              {!isActiveCarried &&
+                activeLocationWeight &&
+                activeLocationWeight.maxCapacityKg !== null && (
+                  <LocationWeightBar weight={activeLocationWeight} />
+                )}
+            </div>
+
+            {/* Error toast (non-blocking) */}
+            {error && (
+              <div className="flex items-start justify-between gap-3">
+                <ErrorMsg message={error} />
+                <button
+                  type="button"
+                  onClick={dismissError}
+                  className="btn-ghost text-ink-500 text-sm shrink-0"
+                  aria-label="Fermer l'erreur"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {/* First-run tour hint */}
+            {showTour && data.entries.length === 0 && (
+              <div className="card p-4 border-blood-200 bg-blood-50/50">
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl shrink-0" aria-hidden="true">
+                    🎲
+                  </span>
+                  <div className="flex-1">
+                    <p className="font-medium text-ink-900">Bienvenue !</p>
+                    <p className="text-sm text-ink-700 mt-1">
+                      Appuie sur le bouton <strong>+ Ajouter</strong> en bas de l'écran pour
+                      chercher un objet dans le catalogue, puis suivez la barre de poids pour voir
+                      si votre personnage est encombré.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={dismissTour}
+                      className="btn-primary text-sm mt-2 px-3 py-1.5"
+                    >
+                      Compris
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Two-column layout: backpack (3fr) + catalog (2fr) on desktop */}
-          <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
-            {/* ---------- LEFT: inventory grouped by category ---------- */}
-            <section className="space-y-3">
-              <h2 className="section-title">
-                {activeLocation ? activeLocation.name : 'Sac à dos'}{' '}
-                <span className="text-ink-400 text-sm font-normal">({entries.length})</span>
-              </h2>
+            {/* Two-column layout: backpack (3fr) + catalog (2fr) on desktop */}
+            <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
+              {/* ---------- LEFT: inventory grouped by category ---------- */}
+              <section className="space-y-3">
+                <h2 className="section-title">
+                  {activeLocation ? activeLocation.name : 'Sac à dos'}{' '}
+                  <span className="text-ink-400 text-sm font-normal">({entries.length})</span>
+                </h2>
 
-              {entries.length === 0 ? (
-                <div className="card p-4">
-                  <EmptyState
-                    icon={
-                      isActiveCarried ? '🎒' : LOCATION_TYPE_ICON[activeLocation?.type ?? 'carried']
-                    }
-                    title={isActiveCarried ? 'Sac à dos vide' : 'Aucun objet ici'}
-                    hint="Appuie sur + Ajouter pour chercher un objet."
-                  />
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {grouped.map((group) => (
-                    <CategoryGroup
-                      key={group.category}
-                      category={group.category}
-                      entries={group.entries}
-                      character={character}
-                      busyEntryIds={busyEntryIds}
-                      expandedId={expandedId}
-                      flashEntryId={flashEntryId}
-                      confirmDeleteId={confirmDeleteId}
-                      locations={locations}
-                      activeLocationId={activeLocationResolvedId}
-                      canEdit={canEdit}
-                      onToggleExpand={(id) => setExpandedId(expandedId === id ? null : id)}
-                      onStep={stepQuantity}
-                      onSetQuantity={setQuantity}
-                      onToggleEquipped={toggleEquipped}
-                      onConfirmDelete={confirmDelete}
-                      onCancelDelete={cancelDelete}
-                      onTransfer={(entry) => setTransferEntry(entry)}
-                      onMoveLocation={moveEntryToLocation}
+                {entries.length === 0 ? (
+                  <div className="card p-4">
+                    <EmptyState
+                      icon={
+                        isActiveCarried
+                          ? '🎒'
+                          : LOCATION_TYPE_ICON[activeLocation?.type ?? 'carried']
+                      }
+                      title={isActiveCarried ? 'Sac à dos vide' : 'Aucun objet ici'}
+                      hint="Appuie sur + Ajouter pour chercher un objet."
                     />
-                  ))}
-                </div>
-              )}
-            </section>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {grouped.map((group) => (
+                      <CategoryGroup
+                        key={group.category}
+                        category={group.category}
+                        entries={group.entries}
+                        character={character}
+                        busyEntryIds={busyEntryIds}
+                        expandedId={expandedId}
+                        flashEntryId={flashEntryId}
+                        confirmDeleteId={confirmDeleteId}
+                        locations={locations}
+                        activeLocationId={activeLocationResolvedId}
+                        canEdit={canEdit}
+                        onToggleExpand={(id) => setExpandedId(expandedId === id ? null : id)}
+                        onStep={stepQuantity}
+                        onSetQuantity={setQuantity}
+                        onToggleEquipped={toggleEquipped}
+                        onConfirmDelete={confirmDelete}
+                        onCancelDelete={cancelDelete}
+                        onTransfer={(entry) => setTransferEntry(entry)}
+                        onMoveLocation={moveEntryToLocation}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
 
-            {/* ---------- RIGHT: catalog (desktop only — mobile uses FAB + bottom sheet) ---------- */}
-            <section className="hidden lg:block space-y-3">
-              <h2 className="section-title">Catalogue</h2>
-              {catalogContent}
-            </section>
-          </div>
+              {/* ---------- RIGHT: catalog (desktop only — mobile uses FAB + bottom sheet) ---------- */}
+              <section className="hidden lg:block space-y-3">
+                <h2 className="section-title">Catalogue</h2>
+                {catalogContent}
+              </section>
+            </div>
 
-          {/* ---------- Coin purse (auto-save on blur) ---------- */}
-          <section className="card p-4 sm:p-5">
-            <CoinPurse
-              coins={coins}
-              readOnly={!canEdit}
-              onChange={(key, val) => {
-                setCoins((c) => ({ ...c, [key]: Math.max(0, val) }));
-                setCoinsDirty(true);
-              }}
-              onBlur={saveCoins}
-            />
-          </section>
-        </>
-      )}
+            {/* ---------- Coin purse (auto-save on blur) ---------- */}
+            <section className="card p-4 sm:p-5">
+              <CoinPurse
+                coins={coins}
+                readOnly={!canEdit}
+                onChange={(key, val) => {
+                  setCoins((c) => ({ ...c, [key]: Math.max(0, val) }));
+                  setCoinsDirty(true);
+                }}
+                onBlur={saveCoins}
+              />
+            </section>
+          </>
+        )}
+      </div>
 
       {/* ---------- Mobile FAB: open catalog as bottom sheet (inventory tab only) ---------- */}
       {activeTab === 'inventory' && canEdit && (
