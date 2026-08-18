@@ -16,6 +16,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
 import {
+  characterVisibleTo,
   isPartyGM,
   isPartyMember,
   mapCharacter,
@@ -48,8 +49,8 @@ export async function characterRoutes(app: FastifyInstance) {
         .prepare(`
         INSERT INTO characters
           (party_id, owner_id, name, strength, capacity_multiplier,
-           character_class, level, race, background)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           character_class, level, race, background, hidden)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
         .run(
           partyId,
@@ -61,6 +62,7 @@ export async function characterRoutes(app: FastifyInstance) {
           body.level ?? 1,
           body.race ?? null,
           body.background ?? null,
+          body.hidden ? 1 : 0,
         );
       const row = db
         .prepare(`
@@ -97,8 +99,12 @@ export async function characterRoutes(app: FastifyInstance) {
         WHERE c.party_id = ?
         ORDER BY c.name COLLATE NOCASE ASC
       `)
-        .all(partyId);
-      return reply.send({ characters: rows.map(mapCharacterSummary) });
+        .all(partyId) as any[];
+      // Hidden characters leave the party listing for everyone but their
+      // owner and the GM.
+      const callerIsGM = isPartyGM(partyId, userId);
+      const visible = rows.filter((row) => !row.hidden || row.owner_id === userId || callerIsGM);
+      return reply.send({ characters: visible.map(mapCharacterSummary) });
     },
   );
 
@@ -119,6 +125,9 @@ export async function characterRoutes(app: FastifyInstance) {
       if (!row) return reply.code(404).send({ error: 'character not found' });
       if (!isPartyMember(row.party_id, userId))
         return reply.code(403).send({ error: 'not a member' });
+      // 404 (not 403): a hidden character must not betray its existence
+      if (!characterVisibleTo(row, userId))
+        return reply.code(404).send({ error: 'character not found' });
       return reply.send({ character: mapCharacter(row) });
     },
   );
@@ -142,8 +151,12 @@ export async function characterRoutes(app: FastifyInstance) {
       if (char.owner_id !== userId && !isGM) {
         return reply.code(403).send({ error: 'only the owner or GM can edit' });
       }
-
+      // Visibility is the owner's call alone — not even the GM flips it
       const body = req.body || {};
+      if (body.hidden !== undefined && char.owner_id !== userId) {
+        return reply.code(403).send({ error: 'seul le propriétaire peut changer la visibilité' });
+      }
+      const hiding = body.hidden === true && !char.hidden;
       const allowed: (keyof PatchCharacterPayload)[] = [
         'name',
         'strength',
@@ -197,6 +210,7 @@ export async function characterRoutes(app: FastifyInstance) {
         'deathSaveFailures',
         'inspiration',
         'concentrating',
+        'hidden',
         'wildShapeHp',
         'wildShapeUses',
         'hitDiceUsed',
@@ -460,6 +474,29 @@ export async function characterRoutes(app: FastifyInstance) {
         }
       }
 
+      // --- Visibility: a hidden character is inactive everywhere — pull its
+      // player combatants out of non-ended encounters (ended fights keep
+      // their history) so rosters never leak its presence.
+      if (hiding) {
+        const removed = db
+          .prepare(`
+          DELETE FROM combatants
+          WHERE character_id = ? AND type = 'player'
+            AND encounter_id IN (
+              SELECT id FROM encounters WHERE party_id = ? AND status != 'ended'
+            )
+        `)
+          .run(char.id, char.party_id);
+        if (removed.changes > 0) {
+          bus.emitChange({
+            type: 'combat:change',
+            partyId: char.party_id,
+            action: 'remove',
+            actorUserId: userId,
+          });
+        }
+      }
+
       const row = db
         .prepare(`
         SELECT c.*, u.display_name AS owner_name
@@ -470,11 +507,14 @@ export async function characterRoutes(app: FastifyInstance) {
       // Detect if this was a coin change vs stat change for the event action
       const coinKeys = ['copper', 'silver', 'electrum', 'gold', 'platinum'];
       const isCoinChange = Object.keys(body).some((k) => coinKeys.includes(k));
+      // Visibility changes alter every member's party list — broadcast a
+      // party:change (character:change for a hidden char wouldn't fan out).
+      const visibilityChanged = body.hidden !== undefined;
       bus.emitChange({
-        type: 'character:change',
+        type: visibilityChanged ? 'party:change' : 'character:change',
         partyId: char.party_id,
         characterId: char.id,
-        action: isCoinChange ? 'coins' : 'stats',
+        action: visibilityChanged ? 'stats' : isCoinChange ? 'coins' : 'stats',
         actorUserId: userId,
         ...(concentrationCheck ? { concentration: concentrationCheck } : {}),
       });

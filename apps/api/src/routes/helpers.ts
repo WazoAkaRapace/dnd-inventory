@@ -72,6 +72,14 @@ export function isOwnerOrGM(char: any, userId: number): boolean {
   return char.owner_id === userId || isPartyGM(char.party_id, userId);
 }
 
+/**
+ * Can this user SEE this character? Hidden (secret prep) characters are
+ * visible to their owner and the GM only — other party members get 404s.
+ */
+export function characterVisibleTo(char: any, userId: number): boolean {
+  return !char.hidden || char.owner_id === userId || isPartyGM(char.party_id, userId);
+}
+
 /** Generate a 6-char invite code (uppercase, unambiguous chars, crypto-random). */
 export function generateInviteCode(): string {
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -173,6 +181,7 @@ export function mapCharacterSummary(row: any): CharacterSummary {
     deathSaveFailures: row.death_save_failures ?? 0,
     inspiration: !!row.inspiration,
     concentrating: !!row.concentrating,
+    hidden: !!row.hidden,
     wildShapeSlug: row.wild_shape_slug ?? null,
     wildShapeHp: row.wild_shape_hp ?? null,
     wildShapeMaxHp: row.wild_shape_max_hp ?? null,

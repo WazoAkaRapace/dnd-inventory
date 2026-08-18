@@ -28,26 +28,28 @@ export async function partyRoutes(app: FastifyInstance) {
     const rows = db
       .prepare(`
       SELECT p.*, pm.role, u.display_name AS gm_name,
-        (SELECT COUNT(*) FROM party_members x WHERE x.party_id = p.id) AS member_count,
-        (SELECT COUNT(*) FROM characters c WHERE c.party_id = p.id) AS character_count
+        (SELECT COUNT(*) FROM party_members x WHERE x.party_id = p.id) AS member_count
       FROM parties p
       JOIN party_members pm ON pm.party_id = p.id AND pm.user_id = ?
       LEFT JOIN users u ON u.id = p.gm_user_id
       ORDER BY p.created_at DESC
     `)
       .all(userId);
-    // Roster names for the register's current entry — parties are few, one batched query
+    // Roster names for the register's current entry — parties are few, one batched query.
+    // Hidden characters of other owners stay out of the names AND the count
+    // (the GM still sees them — GM runs the game).
     const partyIds: number[] = rows.map((r: any) => r.id);
     const rosterByParty = new Map<number, string[]>();
     if (partyIds.length > 0) {
       const placeholders = partyIds.map(() => '?').join(',');
       const nameRows = db
         .prepare(
-          `SELECT party_id, name FROM characters WHERE party_id IN (${placeholders})
+          `SELECT party_id, name, hidden, owner_id FROM characters WHERE party_id IN (${placeholders})
            ORDER BY name COLLATE NOCASE ASC`,
         )
         .all(...partyIds) as any[];
       for (const nr of nameRows) {
+        if (nr.hidden && nr.owner_id !== userId && !isPartyGM(nr.party_id, userId)) continue;
         const list = rosterByParty.get(nr.party_id) ?? [];
         list.push(nr.name);
         rosterByParty.set(nr.party_id, list);
@@ -64,7 +66,7 @@ export async function partyRoutes(app: FastifyInstance) {
         role: r.role,
         createdAt: r.created_at,
         memberCount: r.member_count,
-        characterCount: r.character_count,
+        characterCount: rosterByParty.get(r.id)?.length ?? 0,
         characterNames: rosterByParty.get(r.id) ?? [],
       })),
     });
@@ -149,6 +151,12 @@ export async function partyRoutes(app: FastifyInstance) {
       ORDER BY c.name COLLATE NOCASE ASC
     `)
         .all(partyId);
+      // Hidden (secret prep) characters stay out of other players' views —
+      // the owner and the GM (from the members rows above) still see them.
+      const callerIsGM = members.some((m: any) => m.user_id === userId && m.role === 'gm');
+      const visibleCharacters = characters.filter(
+        (c: any) => !c.hidden || c.owner_id === userId || callerIsGM,
+      );
 
       return reply.send({
         party: {
@@ -172,7 +180,7 @@ export async function partyRoutes(app: FastifyInstance) {
           displayName: b.display_name,
           bannedAt: b.banned_at,
         })),
-        characters: characters.map(mapCharacterSummary),
+        characters: visibleCharacters.map(mapCharacterSummary),
       });
     },
   );

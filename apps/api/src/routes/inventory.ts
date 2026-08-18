@@ -14,6 +14,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
 import {
+  characterVisibleTo,
   isOwnerOrGM,
   isPartyGM,
   isPartyMember,
@@ -43,6 +44,10 @@ export async function inventoryRoutes(app: FastifyInstance) {
       if (!char) return reply.code(404).send({ error: 'character not found' });
       if (!isPartyMember(char.party_id, userId)) {
         return reply.code(403).send({ error: 'not a member' });
+      }
+      // Hidden character: 404 for everyone but its owner and the GM
+      if (!characterVisibleTo(char, userId)) {
+        return reply.code(404).send({ error: 'character not found' });
       }
 
       // Re-fetch with explicit aliases to avoid column-name collisions from the JOIN.

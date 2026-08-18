@@ -195,7 +195,9 @@ export default function CombatPage() {
     setStatModalSlug(null);
     setActiveEncounter(null);
   }, []);
-  const myCharacter = party?.characters.find((c) => c.ownerId === user?.id) ?? null;
+  // "Ma fiche" targets the ACTIVE sheet: hidden (secret prep) characters are
+  // skipped — the shortcut always returns to a character the table can see.
+  const myCharacter = party?.characters.find((c) => c.ownerId === user?.id && !c.hidden) ?? null;
   // biome-ignore lint/correctness/useExhaustiveDependencies: dep narrowed to myCharacter?.id so the memoized action object keeps a stable identity across party refreshes.
   const sheetAction = useMemo(
     () =>
@@ -484,7 +486,7 @@ export default function CombatPage() {
   if (!party) return <ErrorMsg message="Groupe introuvable" />;
 
   const availableChars = party.characters.filter(
-    (c) => !activeEncounter?.combatants.some((com) => com.characterId === c.id),
+    (c) => !c.hidden && !activeEncounter?.combatants.some((com) => com.characterId === c.id),
   );
 
   return (

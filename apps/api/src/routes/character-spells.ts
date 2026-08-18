@@ -14,7 +14,13 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
-import { isPartyGM, isPartyMember, mapCharacterSpell, requireUser } from './helpers.ts';
+import {
+  characterVisibleTo,
+  isPartyGM,
+  isPartyMember,
+  mapCharacterSpell,
+  requireUser,
+} from './helpers.ts';
 
 interface AddCharacterSpellPayload {
   spellId: number;
@@ -59,6 +65,10 @@ export async function characterSpellRoutes(app: FastifyInstance) {
       if (!char) return reply.code(404).send({ error: 'character not found' });
       if (!isPartyMember(char.party_id, userId)) {
         return reply.code(403).send({ error: 'not a member' });
+      }
+      // Hidden character: 404 for everyone but its owner and the GM
+      if (!characterVisibleTo(char, userId)) {
+        return reply.code(404).send({ error: 'character not found' });
       }
 
       // JOIN character_spells with spells, aliasing spell columns with s_ to

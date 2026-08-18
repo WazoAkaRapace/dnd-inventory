@@ -71,6 +71,7 @@ const mkChar = (over: Partial<Character>): Character => ({
   deathSaveFailures: 0,
   inspiration: false,
   concentrating: false,
+  hidden: false,
   notes: null,
   copper: 0,
   silver: 0,

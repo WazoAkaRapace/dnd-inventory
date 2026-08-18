@@ -5,6 +5,7 @@
 import type { Character, PatchCharacterPayload } from '@dnd-inventory/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '../api';
+import { useAuth } from '../auth';
 
 interface Props {
   character: Character;
@@ -37,6 +38,8 @@ const PERSONALITY_FIELDS: Array<{ key: keyof Character; label: string; placehold
 ];
 
 export default function CharacterDescriptionTab({ character, charId, onSaved, onError }: Props) {
+  const { user } = useAuth();
+  const isOwner = user?.id === character.ownerId;
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -199,6 +202,38 @@ export default function CharacterDescriptionTab({ character, charId, onSaved, on
           ))}
         </div>
       </section>
+
+      {/* Visibility — the owner's call alone (secret prep) */}
+      {isOwner && (
+        <section className="card p-4 sm:p-5 space-y-3">
+          <h2 className="section-title">Visibilité</h2>
+          <p className="text-sm text-ink-500">
+            {character.hidden ? (
+              <>
+                🙈 Ce personnage est <strong>caché</strong> : les autres joueurs ne le voient nulle
+                part et il ne peut pas rejoindre les combats. Toi et le MD y avez toujours accès.
+              </>
+            ) : (
+              <>
+                Ce personnage est visible de toute la table. Cache-le pour préparer une surprise —
+                il disparaît des listes des autres joueurs, quitte les combats en cours, et «{' '}
+                <em>Ma fiche</em> » pointe sur ton personnage actif.
+              </>
+            )}
+          </p>
+          <div>
+            <button
+              type="button"
+              className={character.hidden ? 'btn-primary' : 'btn-secondary'}
+              onClick={() =>
+                patchCharacter({ hidden: !character.hidden }, 'Impossible de changer la visibilité')
+              }
+            >
+              {character.hidden ? '👁 Révéler à la table' : '🙈 Cacher des autres joueurs'}
+            </button>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

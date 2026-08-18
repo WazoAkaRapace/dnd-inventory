@@ -262,7 +262,17 @@ function CharactersTab({
                   />
                 ) : null}
                 <div className="min-w-0">
-                  <h3 className="font-display font-semibold truncate">{c.name}</h3>
+                  <h3 className="font-display font-semibold truncate flex items-center gap-2">
+                    <span className="truncate">{c.name}</span>
+                    {c.hidden && (
+                      <span
+                        className="shrink-0 rounded-full bg-ink-100 px-2 py-0.5 text-[11px] font-medium text-ink-600"
+                        title="Caché des autres joueurs par son propriétaire — inactif en combat"
+                      >
+                        Caché
+                      </span>
+                    )}
+                  </h3>
                   <p className="text-xs text-ink-400">
                     {c.characterClass ? `${c.characterClass} ` : ''}
                     {c.level ? `Niv. ${c.level}` : ''}

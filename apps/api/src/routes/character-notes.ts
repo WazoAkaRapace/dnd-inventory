@@ -11,7 +11,7 @@ import type {
 import type { FastifyInstance } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
-import { isPartyGM, isPartyMember, requireUser } from './helpers.ts';
+import { characterVisibleTo, isPartyGM, isPartyMember, requireUser } from './helpers.ts';
 
 function mapNote(row: any): CharacterNote {
   return {
@@ -44,10 +44,13 @@ export async function characterNoteRoutes(app: FastifyInstance) {
     if (!userId) return;
     const charId = Number((req.params as any).id);
     const db = getDb();
-    const char = db.prepare('SELECT party_id FROM characters WHERE id = ?').get(charId) as any;
+    const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(charId) as any;
     if (!char) return reply.code(404).send({ error: 'Character not found' });
     if (!isPartyMember(char.party_id, userId))
       return reply.code(403).send({ error: 'Not a party member' });
+    // Hidden character: 404 for everyone but its owner and the GM
+    if (!characterVisibleTo(char, userId))
+      return reply.code(404).send({ error: 'Character not found' });
 
     const rows = db
       .prepare(

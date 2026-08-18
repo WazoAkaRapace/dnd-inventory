@@ -118,6 +118,8 @@ const COLUMN_MIGRATIONS: Record<string, Array<{ name: string; ddl: string }>> = 
     { name: 'divine_domain', ddl: 'TEXT' },
     { name: 'land_circle', ddl: 'TEXT' },
     { name: 'sacred_oath', ddl: 'TEXT' },
+    // Secret character prep: hidden = invisible to other players, inactive in combat
+    { name: 'hidden', ddl: 'INTEGER NOT NULL DEFAULT 0' },
   ],
   items: [
     { name: 'survival_tags', ddl: "TEXT NOT NULL DEFAULT '[]'" },

@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS characters (
   death_save_successes INTEGER NOT NULL DEFAULT 0,  -- 0-3
   death_save_failures  INTEGER NOT NULL DEFAULT 0,  -- 0-3
   inspiration INTEGER NOT NULL DEFAULT 0,  -- 0 or 1
+  hidden      INTEGER NOT NULL DEFAULT 0,  -- secret prep: invisible to other players, inactive in combat
   notes       TEXT,
   copper      INTEGER NOT NULL DEFAULT 0,
   silver      INTEGER NOT NULL DEFAULT 0,

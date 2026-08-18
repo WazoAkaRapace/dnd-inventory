@@ -65,5 +65,33 @@ echo "=== transaction log ==="
 curl -s $API/api/parties/1/transactions -H "$AUTH" \
   | python3 -c "import sys,json;j=json.load(sys.stdin);[print('  ',t['itemName'],str(t['deltaQty']),t['reason']) for t in j['transactions']]"
 
+echo "=== hidden character (secret prep) ==="
+CODE=$(curl -s $API/api/parties/1 -H "$AUTH" | python3 -c "import sys,json;print(json.load(sys.stdin)['party']['inviteCode'])")
+OWNER="own_$RANDOM"; VIEWER="view_$RANDOM"
+curl -s -X POST $API/api/auth/register -H 'Content-Type: application/json' -d '{"username":"'"$OWNER"'","password":"password123"}' > /dev/null
+P1_TOKEN=$(curl -s -X POST $API/api/auth/login -H 'Content-Type: application/json' -d '{"username":"'"$OWNER"'","password":"password123"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])")
+curl -s -X POST $API/api/parties/join -H "Authorization: Bearer $P1_TOKEN" -H 'Content-Type: application/json' -d '{"inviteCode":"'"$CODE"'"}' > /dev/null
+curl -s -X POST $API/api/auth/register -H 'Content-Type: application/json' -d '{"username":"'"$VIEWER"'","password":"password123"}' > /dev/null
+P2_TOKEN=$(curl -s -X POST $API/api/auth/login -H 'Content-Type: application/json' -d '{"username":"'"$VIEWER"'","password":"password123"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])")
+curl -s -X POST $API/api/parties/join -H "Authorization: Bearer $P2_TOKEN" -H 'Content-Type: application/json' -d '{"inviteCode":"'"$CODE"'"}' > /dev/null
+A1="Authorization: Bearer $P1_TOKEN"; A2="Authorization: Bearer $P2_TOKEN"
+
+HID=$(curl -s -X POST $API/api/parties/1/characters -H "$A1" -H 'Content-Type: application/json' \
+  -d '{"name":"Secret One","strength":10,"hidden":true}' | python3 -c "import sys,json;print(json.load(sys.stdin)['character']['id'])")
+echo "  hidden character created (id=$HID)"
+
+curl -s $API/api/parties/1 -H "$A2" | python3 -c "
+import sys,json
+names=[c['name'] for c in json.load(sys.stdin)['characters']]
+print('  viewer list contains hidden:', 'Secret One' in names)
+exit(1 if 'Secret One' in names else 0)"
+echo "  viewer GET hidden char: $(curl -s -o /dev/null -w '%{http_code}' $API/api/characters/$HID -H "$A2") (expect 404)"
+echo "  owner GET hidden char: $(curl -s -o /dev/null -w '%{http_code}' $API/api/characters/$HID -H "$A1") (expect 200)"
+echo "  GM PATCH visibility: $(curl -s -o /dev/null -w '%{http_code}' -X PATCH $API/api/characters/$HID -H "$AUTH" -H 'Content-Type: application/json' -d '{"hidden":false}') (expect 403 — owner only)"
+
+ENC=$(curl -s -X POST $API/api/parties/1/encounters -H "$AUTH" -H 'Content-Type: application/json' \
+  -d '{"name":"Smoke Fight"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['encounter']['id'])")
+echo "  GM add hidden to combat: $(curl -s -o /dev/null -w '%{http_code}' -X POST $API/api/encounters/$ENC/combatants/player -H "$AUTH" -H 'Content-Type: application/json' -d '{"characterIds":['"$HID"']}') (expect 400)"
+
 echo ""
 echo "✓ All API routes working"

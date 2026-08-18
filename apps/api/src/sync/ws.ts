@@ -98,6 +98,25 @@ export async function registerWsRoutes(app: FastifyInstance) {
         }
       }
     }
+    // Hidden (secret prep) characters: character:change events — including
+    // the concentration payloads that carry the character name — reach only
+    // the owner and the GM. Other event types carry no sheet data and stay
+    // public (party:change / combat:change refresh lists for everyone).
+    let restrictTo: Set<number> | null = null;
+    if (event.type === 'character:change' && event.characterId !== undefined) {
+      const db = getDb();
+      const char = db
+        .prepare('SELECT hidden, owner_id FROM characters WHERE id = ?')
+        .get(event.characterId) as any;
+      // No row = deleted character: deliver to everyone so lists refresh
+      if (char?.hidden) {
+        restrictTo = new Set([char.owner_id]);
+        const gms = db
+          .prepare("SELECT user_id FROM party_members WHERE party_id = ? AND role = 'gm'")
+          .all(event.partyId) as any[];
+        for (const g of gms) restrictTo.add(g.user_id);
+      }
+    }
     for (const client of clients) {
       if (client.ws.readyState !== 1) {
         // OPEN
@@ -111,6 +130,8 @@ export async function registerWsRoutes(app: FastifyInstance) {
       // views must stay in sync (initiative widget, HP mirroring).
       const isEchoExempt = event.type === 'combat:change' || event.type === 'character:change';
       if (event.actorUserId && client.userId === event.actorUserId && !isEchoExempt) continue;
+      // Hidden-character events stop at owner / GM connections
+      if (restrictTo && !restrictTo.has(client.userId)) continue;
       // Only push to clients who are members of the affected party
       if (client.partyIds.has(event.partyId)) {
         try {

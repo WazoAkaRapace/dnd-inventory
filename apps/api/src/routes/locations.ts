@@ -7,7 +7,7 @@ import type { CreateStorageLocationPayload } from '@dnd-inventory/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
-import { isOwnerOrGM, isPartyMember, requireUser } from './helpers.ts';
+import { characterVisibleTo, isOwnerOrGM, isPartyMember, requireUser } from './helpers.ts';
 
 /** Ensure a character has a default "carried" location. Returns its ID. */
 export function ensureCarriedLocation(db: any, characterId: number): number {
@@ -39,6 +39,9 @@ export async function locationRoutes(app: FastifyInstance) {
       if (!char) return reply.code(404).send({ error: 'character not found' });
       if (!isPartyMember(char.party_id, userId))
         return reply.code(403).send({ error: 'not a member' });
+      // Hidden character: 404 for everyone but its owner and the GM
+      if (!characterVisibleTo(char, userId))
+        return reply.code(404).send({ error: 'character not found' });
 
       // Ensure carried exists
       ensureCarriedLocation(db, char.id);

@@ -232,6 +232,7 @@ export default function PartyPage() {
   const [charClass, setCharClass] = useState('');
   const [charLevel, setCharLevel] = useState(1);
   const [charRace, setCharRace] = useState('');
+  const [charHidden, setCharHidden] = useState(false);
 
   const load = useCallback(
     async (silent = false) => {
@@ -296,6 +297,7 @@ export default function PartyPage() {
       characterClass: charClass.trim() || undefined,
       level: charLevel || undefined,
       race: charRace.trim() || undefined,
+      hidden: charHidden || undefined,
     };
     try {
       await api.post(`/api/parties/${partyId}/characters`, payload);
@@ -305,6 +307,7 @@ export default function PartyPage() {
       setCharClass('');
       setCharLevel(1);
       setCharRace('');
+      setCharHidden(false);
       await load(true);
     } catch (err: any) {
       const status = err.response?.status;
@@ -393,8 +396,18 @@ export default function PartyPage() {
                 >
                   <Portrait c={c} own />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate font-display text-xl font-bold leading-tight">
-                      {c.name}
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate font-display text-xl font-bold leading-tight">
+                        {c.name}
+                      </span>
+                      {c.hidden && (
+                        <span
+                          className="shrink-0 rounded-full bg-ink-100 px-2 py-0.5 text-[11px] font-medium text-ink-600"
+                          title="Invisible des autres joueurs (le MD le voit) — actif nulle part : ni liste, ni combat"
+                        >
+                          Caché
+                        </span>
+                      )}
                     </span>
                     {charMeta(c) && (
                       <span className="mt-1 block truncate text-sm text-ink-500">
@@ -557,6 +570,22 @@ export default function PartyPage() {
             </div>
           </div>
           {createError && <div className="text-sm text-red-600">{createError}</div>}
+          <div className="flex items-start gap-2.5 rounded-xl border border-parchment-200 p-3">
+            <input
+              id="new-char-hidden"
+              type="checkbox"
+              className="mt-0.5 w-4 h-4 accent-blood-600"
+              checked={charHidden}
+              onChange={(e) => setCharHidden(e.target.checked)}
+            />
+            <label htmlFor="new-char-hidden" className="text-sm font-medium text-ink-700">
+              Personnage secret
+              <span className="mt-0.5 block text-xs font-normal text-ink-400">
+                Prépare-le à l'abri des regards : invisible des autres joueurs et inactif (ni liste,
+                ni combat). Toi et le MD le voyez toujours.
+              </span>
+            </label>
+          </div>
           <button type="submit" className="btn-primary w-full">
             Créer
           </button>

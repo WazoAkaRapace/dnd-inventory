@@ -319,6 +319,9 @@ export interface CharacterSummary {
   // Druid Circle of the Land terrain + Paladin Sacred Oath
   landCircle: string | null;
   sacredOath: string | null;
+  // Secret prep: hidden characters are invisible to other players (owner + GM
+  // still see them) and inactive — excluded from combat rosters and adds.
+  hidden: boolean;
 }
 
 /** A Constitution save required to maintain concentration after taking damage. */
@@ -351,6 +354,8 @@ export interface CreateCharacterPayload {
   level?: number;
   race?: string;
   background?: string;
+  /** Create as a secret character (hidden from other players). */
+  hidden?: boolean;
 }
 
 export interface PatchCharacterPayload {
@@ -416,6 +421,8 @@ export interface PatchCharacterPayload {
   divineDomain?: string | null;
   landCircle?: string | null;
   sacredOath?: string | null;
+  /** Owner-only: hide this character from other players (secret prep). */
+  hidden?: boolean;
 }
 
 // ---------- D&D 5e Abilities (Caractéristiques) ----------

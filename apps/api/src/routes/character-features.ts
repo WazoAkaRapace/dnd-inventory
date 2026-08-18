@@ -19,7 +19,13 @@ import type {
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
-import { isPartyGM, isPartyMember, mapFeature, requireUser } from './helpers.ts';
+import {
+  characterVisibleTo,
+  isPartyGM,
+  isPartyMember,
+  mapFeature,
+  requireUser,
+} from './helpers.ts';
 
 /**
  * Fetch the (feature, character) pair for a character_features row.
@@ -54,6 +60,10 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
       if (!char) return reply.code(404).send({ error: 'character not found' });
       if (!isPartyMember(char.party_id, userId)) {
         return reply.code(403).send({ error: 'not a member' });
+      }
+      // Hidden character: 404 for everyone but its owner and the GM
+      if (!characterVisibleTo(char, userId)) {
+        return reply.code(404).send({ error: 'character not found' });
       }
 
       const rows = db

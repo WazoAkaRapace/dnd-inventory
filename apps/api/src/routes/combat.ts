@@ -539,6 +539,12 @@ export async function combatRoutes(app: FastifyInstance) {
       if (chars.some((char) => char.party_id !== enc.party_id)) {
         return reply.code(400).send({ error: 'Personnage pas dans ce groupe' });
       }
+      // Hidden characters are inactive — they don't join fights
+      if (chars.some((char) => char.hidden)) {
+        return reply
+          .code(400)
+          .send({ error: 'Personnage caché — il ne peut pas rejoindre un combat' });
+      }
 
       const invStmt = db.prepare(`
         SELECT i.category AS category, i.ac_base AS ac_base, i.str_min AS str_min,
