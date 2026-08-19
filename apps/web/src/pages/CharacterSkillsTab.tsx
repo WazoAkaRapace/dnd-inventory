@@ -16,15 +16,20 @@ import {
   auraOfProtectionBonus,
   auraRadiusMeters,
   type Character,
+  classWeaponProficiencies,
   DND_ABILITIES,
   DND_LANGUAGES,
   DND_SKILLS,
   DND_TOOLS,
+  effectiveWeaponProficiencies,
   expertiseSlots,
   expertiseUsed,
+  FIGHTING_STYLE_CLASSES,
+  FIGHTING_STYLE_LABELS_FR,
   findClass,
   formatModifier,
   hasAutomaticToolExpertise,
+  MUNDANE_WEAPONS,
   type PatchCharacterPayload,
   proficiencyBonus,
   type SkillKey,
@@ -544,8 +549,171 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
               <p className="text-sm text-ink-400">Aucune langue — ✎ Modifier pour en ajouter.</p>
             )}
           </section>
+
+          {/* Weapon mastery — read mode shows mastered chips, editing follows the tab's ✎ lock */}
+          <WeaponMasteryCard character={character} editMode={editMode} patch={patchSheet} />
         </div>
       </div>
     </div>
+  );
+}
+
+/** Weapon mastery: read mode lists what is mastered (chips + fighting style);
+ *  edit mode shows the simple/martial toggles and the fighting style select. */
+function WeaponMasteryCard({
+  character,
+  editMode,
+  patch,
+}: {
+  character: Character;
+  editMode: boolean;
+  patch: (payload: PatchCharacterPayload) => Promise<void>;
+}) {
+  const effective = effectiveWeaponProficiencies(character);
+  const isCustom = character.weaponProficiencies != null;
+  const classDefault = classWeaponProficiencies(character.characterClass);
+  const hasFightingStyle = (FIGHTING_STYLE_CLASSES as readonly string[]).includes(
+    character.characterClass ?? '',
+  );
+  const styleLabel = character.fightingStyle
+    ? FIGHTING_STYLE_LABELS_FR[character.fightingStyle]
+    : null;
+
+  const toggle = (token: 'simple' | 'martial') => {
+    // Materialize the effective list (class defaults when untouched), then flip
+    const tokens: string[] = [];
+    if (token === 'simple' ? !effective.simple : effective.simple) tokens.push('simple');
+    if (token === 'martial' ? !effective.martial : effective.martial) tokens.push('martial');
+    tokens.push(...effective.specific);
+    patch({ weaponProficiencies: tokens });
+  };
+
+  const specificFr = effective.specific.map(
+    (nameEn) => MUNDANE_WEAPONS.find((m) => m.nameEn === nameEn)?.nameFr ?? nameEn,
+  );
+
+  const masteredFr = [
+    effective.simple && 'Armes simples',
+    effective.martial && 'Armes de guerre',
+    ...specificFr,
+  ].filter(Boolean) as string[];
+
+  const chip = (active: boolean) =>
+    `flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+      active
+        ? 'bg-blood-600 text-white border-blood-700'
+        : 'bg-parchment-50 text-ink-600 border-parchment-200 hover:border-blood-400'
+    }`;
+
+  return (
+    <section className="card p-4 sm:p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="section-title">Maîtrise d'armes</h2>
+        {editMode && isCustom && (
+          <button
+            type="button"
+            onClick={() => patch({ weaponProficiencies: null })}
+            className="text-xs text-blood-600 hover:underline"
+            title="Revenir aux maîtrises par défaut de la classe"
+          >
+            ↺ Selon la classe
+          </button>
+        )}
+      </div>
+      {editMode ? (
+        <>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => toggle('simple')}
+              className={chip(effective.simple)}
+              aria-pressed={effective.simple}
+            >
+              <span aria-hidden="true">🗡</span> Armes simples
+            </button>
+            <button
+              type="button"
+              onClick={() => toggle('martial')}
+              className={chip(effective.martial)}
+              aria-pressed={effective.martial}
+            >
+              <span aria-hidden="true">⚔️</span> Armes de guerre
+            </button>
+          </div>
+          {specificFr.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-ink-400">Spécifiques :</span>
+              {specificFr.map((fr) => (
+                <span
+                  key={fr}
+                  className="px-2 py-0.5 rounded-full bg-parchment-100 border border-parchment-300 text-xs font-medium text-ink-700"
+                >
+                  {fr}
+                </span>
+              ))}
+            </div>
+          )}
+          {hasFightingStyle && (
+            <label className="flex items-center justify-between gap-3">
+              <span className="text-sm font-medium text-ink-700">Style de combat</span>
+              <select
+                className="input py-1.5 text-sm w-auto max-w-[60%]"
+                value={character.fightingStyle ?? ''}
+                onChange={(e) =>
+                  patch({ fightingStyle: e.target.value === '' ? null : e.target.value })
+                }
+                aria-label="Style de combat"
+              >
+                <option value="">—</option>
+                {Object.entries(FIGHTING_STYLE_LABELS_FR).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </>
+      ) : (
+        <>
+          {masteredFr.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {masteredFr.map((fr) => (
+                <span
+                  key={fr}
+                  className="px-3 py-1.5 rounded-full border text-sm text-ink-700 bg-blood-50 border-blood-300"
+                >
+                  <span className="text-blood-600 text-xs mr-1">●</span>
+                  {fr}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-ink-400">
+              Aucune maîtrise d'arme — ✎ Modifier pour en choisir.
+            </p>
+          )}
+          {styleLabel && (
+            <p className="text-sm text-ink-700">
+              Style de combat : <strong>{styleLabel}</strong>
+            </p>
+          )}
+        </>
+      )}
+      <p className="text-xs text-ink-400">
+        {isCustom
+          ? 'Maîtrises personnalisées.'
+          : `Selon la classe ${character.characterClass ?? '—'} : ${
+              [
+                classDefault.simple && 'armes simples',
+                classDefault.martial && 'armes de guerre',
+                classDefault.specific.length > 0 &&
+                  `${classDefault.specific.length} arme(s) spécifique(s)`,
+              ]
+                .filter(Boolean)
+                .join(' + ') || 'aucune maîtrise'
+            }.`}
+      </p>
+    </section>
   );
 }
