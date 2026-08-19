@@ -1,10 +1,12 @@
 /**
- * Compétences tab — 18 skills + 6 saving throws with proficiency toggles,
- * plus Outils and Langues below. Skill/tool rows cycle ○ → ● (maîtrise) →
- * ◉ (expertise) → ○; when no SRD slot is free the cycle skips ◉ (● → ○) so
- * proficiency stays removable. Expertise doubles the proficiency bonus and
- * is gated by SRD slots (Roublard 1/6 — compétences ou outils de voleur,
- * Barde 3/10, Clerc du Domaine du Savoir 1) — see expertiseSlots() in shared.
+ * Compétences tab — read-first: 18 skills + 6 saving throws are static by
+ * default (tapping a skill reveals its modifier breakdown, no mutation);
+ * mastery editing sits behind an explicit "✎ Modifier" lock. In edit mode,
+ * skill/tool rows cycle ○ → ● (maîtrise) → ◉ (expertise) → ○; when no SRD
+ * slot is free the cycle skips ◉ (● → ○) so proficiency stays removable.
+ * Expertise doubles the proficiency bonus and is gated by SRD slots
+ * (Roublard 1/6 — compétences ou outils de voleur, Barde 3/10, Clerc du
+ * Domaine du Savoir 1) — see expertiseSlots() in shared.
  */
 
 import {
@@ -32,7 +34,7 @@ import {
   type ToolCategory,
   toolProficiencyLevel,
 } from '@dnd-inventory/shared';
-import { type FormEvent, useCallback, useState } from 'react';
+import { type FormEvent, Fragment, useCallback, useState } from 'react';
 import api from '../api';
 
 interface Props {
@@ -52,6 +54,36 @@ function saveProficiency(character: Character, ability: AbilityKey): boolean {
   return (character.savingThrowProficiencies ?? []).includes(ability);
 }
 
+/** One term of a skill modifier breakdown ("DEX +4", "maîtrise +3"…). */
+interface BreakdownSegment {
+  text: string;
+  className: string;
+}
+
+/** Decompose a skill modifier into its colored rule terms (teaches the math). */
+function skillBreakdownSegments(
+  character: Character,
+  ability: AbilityKey,
+  prof: number,
+  profBonus: number,
+): BreakdownSegment[] {
+  const mod = abilityModifier(abilityScore(character, ability));
+  const segments: BreakdownSegment[] = [
+    { text: `${ABILITY_SHORT_FR[ability]} ${formatModifier(mod)}`, className: 'text-ink-600' },
+  ];
+  if (prof === 2) {
+    segments.push({
+      text: `maîtrise ×2 ${formatModifier(profBonus * 2)}`,
+      className: 'text-gold-700',
+    });
+  } else if (prof === 1) {
+    segments.push({ text: `maîtrise ${formatModifier(profBonus)}`, className: 'text-blood-600' });
+  } else {
+    segments.push({ text: 'sans maîtrise', className: 'text-ink-400' });
+  }
+  return segments;
+}
+
 const TOOL_CATEGORIES = Object.keys(TOOL_CATEGORY_LABELS_FR) as ToolCategory[];
 
 export default function CharacterSkillsTab({ character, charId, onSaved, onError }: Props) {
@@ -65,6 +97,9 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
   const languages = character.languages ?? [];
   const customLanguages = languages.filter((l) => !DND_LANGUAGES.includes(l));
   const [newLang, setNewLang] = useState('');
+  // Lecture par défaut : les rangées sont statiques, l'édition est délibérée
+  const [editMode, setEditMode] = useState(false);
+  const [expandedSkill, setExpandedSkill] = useState<SkillKey | null>(null);
 
   const patchSheet = useCallback(
     async (payload: PatchCharacterPayload) => {
@@ -148,12 +183,13 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
     setNewLang('');
   };
 
-  // Expertise reminder banner — always visible so players know where they stand
+  // Expertise reminder — edit-mode only: it guides spending SRD slots.
+  // In read mode the ◉ dots carry the state on their own.
   let expertiseBanner: string;
   if (maxExpertise > 0 && usedExpertise >= maxExpertise) {
-    expertiseBanner = `Expertise : ${usedExpertise}/${maxExpertise} — touchez ◉ pour libérer un emplacement`;
+    expertiseBanner = `Expertise : ${usedExpertise}/${maxExpertise} — touche ◉ pour libérer un emplacement`;
   } else if (maxExpertise > 0) {
-    expertiseBanner = `Expertise : ${usedExpertise}/${maxExpertise} — touchez une maîtrise ● pour la passer en ◉${
+    expertiseBanner = `Expertise : ${usedExpertise}/${maxExpertise} — touche une maîtrise ● pour la passer en ◉${
       className === 'Roublard' ? ' (outils de voleur compris)' : ''
     }`;
   } else if (className === 'Barde') {
@@ -171,185 +207,345 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
     skills: DND_SKILLS.filter((s) => s.ability === abi.key),
   })).filter((g) => g.skills.length > 0);
 
+  const masteredTools = DND_TOOLS.filter((t) => toolProficiencyLevel(character, t.key) > 0);
+  const knownLanguages = [...DND_LANGUAGES, ...customLanguages].filter((l) =>
+    languages.includes(l),
+  );
+
   const profDotClass = (prof: number) =>
     prof === 2 ? 'text-gold-600' : prof === 1 ? 'text-blood-600' : 'text-parchment-300';
   const profDotGlyph = (prof: number) => (prof === 2 ? '◉' : prof === 1 ? '●' : '○');
 
   return (
     <div className="space-y-4">
-      {/* Expertise reminder */}
-      <p className="card p-3 flex items-center gap-2 text-xs text-ink-500">
-        <span className="text-sm leading-none">⭐</span>
-        <span>{expertiseBanner}</span>
-      </p>
-
-      {/* Saving throws */}
-      <section className="card p-4 sm:p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="section-title">Jets de sauvegarde</h2>
-          <span className="text-xs text-ink-400">
-            Bonus de maîtrise {formatModifier(profBonus)}
-          </span>
-        </div>
-        {auraOfProtection > 0 && (
-          <p className="text-xs text-gold-700 bg-gold-400/10 border border-gold-400/40 rounded-lg px-2.5 py-1.5">
-            🛡️ Aura de protection : +{auraOfProtection} à toutes tes sauvegardes — et à celles des
-            alliés à {auraRadiusMeters(level)} m (inclus dans les totaux ci-dessous)
+      {/* Edit lock — read by default so a stray tap never mutates the sheet */}
+      <div className="flex items-center justify-between gap-3">
+        {editMode ? (
+          <div
+            aria-live="polite"
+            className="flex-1 min-w-0 space-y-1 rounded-lg border border-gold-400/40 bg-gold-400/10 px-2.5 py-1.5"
+          >
+            <p className="text-xs text-gold-700 flex items-center gap-2">
+              <span className="text-sm leading-none">✎</span>
+              <span>Mode édition — touche une ligne pour cycler ○ maîtrise → ◉ expertise</span>
+            </p>
+            <p className="text-xs text-ink-600 flex items-center gap-2">
+              <span className="text-sm leading-none">⭐</span>
+              <span>{expertiseBanner}</span>
+            </p>
+          </div>
+        ) : (
+          <p className="flex-1 min-w-0 text-xs text-ink-500">
+            Lecture — touche une compétence pour voir le détail de son bonus.
           </p>
         )}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {DND_ABILITIES.map((abi) => {
-            const score = abilityScore(character, abi.key);
-            const mod = abilityModifier(score);
-            const proficient = saveProficiency(character, abi.key);
-            const total = mod + (proficient ? profBonus : 0) + auraOfProtection;
-            return (
-              <button
-                type="button"
-                key={abi.key}
-                onClick={() => toggleSave(abi.key)}
-                className={`flex items-center justify-between px-3 py-2 rounded-lg border transition-colors text-left ${
+        <button
+          type="button"
+          aria-pressed={editMode}
+          onClick={() => {
+            setEditMode((v) => !v);
+            setExpandedSkill(null);
+          }}
+          className={`shrink-0 text-sm px-3 py-1.5 ${editMode ? 'btn-primary' : 'btn-secondary'}`}
+        >
+          {editMode ? '✓ Terminer' : '✎ Modifier'}
+        </button>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[3fr_2fr] lg:items-start">
+        <div className="space-y-4">
+          {/* Saving throws — the tab's hero: the most-rolled numbers */}
+          <section className="card p-4 sm:p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="section-title">Jets de sauvegarde</h2>
+              <span className="text-xs text-ink-400">
+                Bonus de maîtrise {formatModifier(profBonus)}
+              </span>
+            </div>
+            {auraOfProtection > 0 && (
+              <p className="text-xs text-gold-700 bg-gold-400/10 border border-gold-400/40 rounded-lg px-2.5 py-1.5">
+                🛡️ Aura de protection : +{auraOfProtection} à toutes tes sauvegardes — et à celles
+                des alliés à {auraRadiusMeters(level)} m (inclus dans les totaux ci-dessous)
+              </p>
+            )}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {DND_ABILITIES.map((abi) => {
+                const score = abilityScore(character, abi.key);
+                const mod = abilityModifier(score);
+                const proficient = saveProficiency(character, abi.key);
+                const total = mod + (proficient ? profBonus : 0) + auraOfProtection;
+                const tileClass = `px-3 py-2.5 rounded-xl border text-center transition-colors ${
                   proficient
                     ? 'bg-blood-50 border-blood-300'
-                    : 'bg-parchment-100 border-parchment-200 hover:border-parchment-300'
-                }`}
-                aria-pressed={proficient}
-              >
-                <span className="text-sm font-medium text-ink-700">{abi.label}</span>
-                <span className="flex items-center gap-1.5">
-                  {proficient && <span className="text-blood-600 text-xs">●</span>}
-                  <span className="font-bold text-ink-800">{formatModifier(total)}</span>
+                    : 'bg-parchment-50 border-parchment-200'
+                }`;
+                const tileBody = (
+                  <>
+                    <span className="flex items-center justify-center gap-1.5 text-xs font-medium text-ink-500">
+                      {proficient && <span className="text-blood-600">●</span>}
+                      <span>{abi.label}</span>
+                      {auraOfProtection > 0 && <span aria-hidden="true">🛡️</span>}
+                    </span>
+                    <span className="block mt-0.5 text-xl font-bold tabular-nums text-ink-800">
+                      {formatModifier(total)}
+                    </span>
+                  </>
+                );
+                return editMode ? (
+                  <button
+                    type="button"
+                    key={abi.key}
+                    onClick={() => toggleSave(abi.key)}
+                    className={`${tileClass} hover:border-blood-400`}
+                    aria-pressed={proficient}
+                  >
+                    {tileBody}
+                  </button>
+                ) : (
+                  <div key={abi.key} className={tileClass}>
+                    {tileBody}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* Skills grouped by ability — full-width rows, breakdown on tap */}
+          <section className="card p-4 sm:p-5 space-y-3">
+            <h2 className="section-title">Compétences</h2>
+            {skillsByAbility.map((group) => (
+              <div key={group.ability}>
+                <div className="text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">
+                  {ABILITY_SHORT_FR[group.ability as AbilityKey]} — {group.label}
+                </div>
+                <div className="space-y-1.5">
+                  {group.skills.map((skill) => {
+                    const prof = skillProficiencyLevel(character, skill.key);
+                    const total = skillModifier(character, skill.key);
+                    const expanded = expandedSkill === skill.key;
+                    if (editMode) {
+                      return (
+                        <button
+                          type="button"
+                          key={skill.key}
+                          onClick={() => toggleSkill(skill.key)}
+                          className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border transition-colors text-left hover:border-blood-400 ${
+                            prof > 0
+                              ? 'bg-blood-50 border-blood-300'
+                              : 'bg-parchment-50 border-parchment-200'
+                          }`}
+                          aria-pressed={prof > 0}
+                        >
+                          <span className="flex items-center gap-2 min-w-0">
+                            <span className={`text-xs w-4 shrink-0 ${profDotClass(prof)}`}>
+                              {profDotGlyph(prof)}
+                            </span>
+                            <span className="text-sm text-ink-700 truncate">{skill.label}</span>
+                          </span>
+                          <span className="font-bold text-ink-800 shrink-0">
+                            {formatModifier(total)}
+                          </span>
+                        </button>
+                      );
+                    }
+                    return (
+                      <div key={skill.key}>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedSkill(expanded ? null : skill.key)}
+                          aria-expanded={expanded}
+                          aria-controls={`skill-detail-${skill.key}`}
+                          className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border transition-colors text-left ${
+                            prof > 0
+                              ? 'bg-blood-50 border-blood-300'
+                              : 'bg-parchment-50 border-parchment-200 hover:border-parchment-300'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2 min-w-0">
+                            <span className={`text-xs w-4 shrink-0 ${profDotClass(prof)}`}>
+                              {profDotGlyph(prof)}
+                            </span>
+                            <span className="text-sm text-ink-700 truncate">{skill.label}</span>
+                          </span>
+                          <span className="flex items-center gap-1.5 shrink-0">
+                            <span className="font-bold text-ink-800">{formatModifier(total)}</span>
+                            <span
+                              className={`text-xs text-ink-400 w-4 chevron ${
+                                expanded ? 'is-open' : 'is-closed'
+                              }`}
+                            >
+                              ▼
+                            </span>
+                          </span>
+                        </button>
+                        <div
+                          id={`skill-detail-${skill.key}`}
+                          className={`expand-grid ${expanded ? '' : 'is-collapsed'}`}
+                        >
+                          <div className="expand-inner">
+                            <p className="mt-1 mx-2 rounded-md bg-parchment-100 px-2.5 py-1.5 text-xs flex flex-wrap items-center gap-x-1">
+                              {skillBreakdownSegments(
+                                character,
+                                skill.ability,
+                                prof,
+                                profBonus,
+                              ).map((seg, i) => (
+                                <Fragment key={seg.text}>
+                                  {i > 0 && <span className="text-ink-300">·</span>}
+                                  <span className={seg.className}>{seg.text}</span>
+                                </Fragment>
+                              ))}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </section>
+        </div>
+
+        <div className="space-y-4">
+          {/* Tools — read mode shows only what is mastered */}
+          <section className="card p-4 sm:p-5 space-y-3">
+            <h2 className="section-title">Outils</h2>
+            {hasAutomaticToolExpertise(character) && (
+              <p className="text-xs text-ink-500 flex items-center gap-2">
+                <span className="text-sm leading-none">⭐</span>
+                <span>
+                  Maîtrise des outils (niv 6) : bonus de maîtrise doublé sur tous les outils.
                 </span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* Skills grouped by ability */}
-      <section className="card p-4 sm:p-5 space-y-3">
-        <h2 className="section-title">Compétences</h2>
-        {skillsByAbility.map((group) => (
-          <div key={group.ability}>
-            <div className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-1.5">
-              {ABILITY_SHORT_FR[group.ability as AbilityKey]} — {group.label}
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {group.skills.map((skill) => {
-                const prof = skillProficiencyLevel(character, skill.key);
-                const total = skillModifier(character, skill.key);
-                return (
-                  <button
-                    type="button"
-                    key={skill.key}
-                    onClick={() => toggleSkill(skill.key)}
-                    className={`w-full flex items-center justify-between gap-1 px-3 py-2 rounded-lg border transition-colors text-left ${
-                      prof > 0
-                        ? 'bg-blood-50 border-blood-300'
-                        : 'bg-parchment-50 border-parchment-200 hover:border-parchment-300'
-                    }`}
-                    aria-pressed={prof > 0}
-                  >
-                    <span className="flex items-center gap-2 min-w-0">
-                      <span className={`text-xs w-4 shrink-0 ${profDotClass(prof)}`}>
-                        {profDotGlyph(prof)}
+              </p>
+            )}
+            {editMode ? (
+              TOOL_CATEGORIES.map((cat) => (
+                <div key={cat}>
+                  <div className="text-xs font-semibold text-ink-500 uppercase tracking-wide mb-1.5">
+                    {TOOL_CATEGORY_LABELS_FR[cat]}
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {DND_TOOLS.filter((t) => t.category === cat).map((tool) => {
+                      const prof = toolProficiencyLevel(character, tool.key);
+                      return (
+                        <button
+                          type="button"
+                          key={tool.key}
+                          onClick={() => toggleTool(tool.key)}
+                          className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-left hover:border-blood-400 ${
+                            prof > 0
+                              ? 'bg-blood-50 border-blood-300'
+                              : 'bg-parchment-50 border-parchment-200'
+                          }`}
+                          aria-pressed={prof > 0}
+                        >
+                          <span className={`text-xs w-4 shrink-0 ${profDotClass(prof)}`}>
+                            {profDotGlyph(prof)}
+                          </span>
+                          <span className="text-sm text-ink-700 truncate">{tool.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
+            ) : masteredTools.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {masteredTools.map((tool) => {
+                  const prof = toolProficiencyLevel(character, tool.key);
+                  return (
+                    <span
+                      key={tool.key}
+                      className={`px-3 py-1.5 rounded-full border text-sm text-ink-700 ${
+                        prof === 2
+                          ? 'bg-gold-400/10 border-gold-400/40'
+                          : 'bg-blood-50 border-blood-300'
+                      }`}
+                    >
+                      <span
+                        className={`text-xs mr-1 ${
+                          prof === 2 ? 'text-gold-700' : 'text-blood-600'
+                        }`}
+                      >
+                        {prof === 2 ? '◉' : '●'}
                       </span>
-                      <span className="text-sm text-ink-700 truncate">{skill.label}</span>
+                      {tool.label}
                     </span>
-                    <span className="font-bold text-ink-800 shrink-0">{formatModifier(total)}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </section>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-ink-400">
+                Aucune maîtrise d'outil — ✎ Modifier pour en choisir.
+              </p>
+            )}
+          </section>
 
-      {/* Tools grouped by category */}
-      <section className="card p-4 sm:p-5 space-y-3">
-        <h2 className="section-title">Outils</h2>
-        {hasAutomaticToolExpertise(character) && (
-          <p className="text-xs text-ink-500 flex items-center gap-2">
-            <span className="text-sm leading-none">⭐</span>
-            <span>Maîtrise des outils (niv 6) : bonus de maîtrise doublé sur tous les outils.</span>
-          </p>
-        )}
-        {TOOL_CATEGORIES.map((cat) => (
-          <div key={cat}>
-            <div className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-1.5">
-              {TOOL_CATEGORY_LABELS_FR[cat]}
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {DND_TOOLS.filter((t) => t.category === cat).map((tool) => {
-                const prof = toolProficiencyLevel(character, tool.key);
-                return (
+          {/* Languages — read mode shows known tongues only */}
+          <section className="card p-4 sm:p-5 space-y-3">
+            <h2 className="section-title">Langues</h2>
+            {editMode ? (
+              <>
+                <div className="flex flex-wrap gap-1.5">
+                  {[...DND_LANGUAGES, ...customLanguages].map((lang) => {
+                    const known = languages.includes(lang);
+                    return (
+                      <button
+                        type="button"
+                        key={lang}
+                        onClick={() => toggleLanguage(lang)}
+                        className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${
+                          known
+                            ? 'bg-blood-50 border-blood-300 text-ink-700'
+                            : 'bg-parchment-50 border-parchment-200 hover:border-parchment-300 text-ink-500'
+                        }`}
+                        aria-pressed={known}
+                      >
+                        {known && <span className="text-blood-600 text-xs mr-1">●</span>}
+                        {lang}
+                      </button>
+                    );
+                  })}
+                </div>
+                <form onSubmit={addLanguage} className="flex gap-2">
+                  <label htmlFor="new-language" className="sr-only">
+                    Nouvelle langue
+                  </label>
+                  <input
+                    id="new-language"
+                    value={newLang}
+                    onChange={(e) => setNewLang(e.target.value)}
+                    placeholder="Autre langue…"
+                    maxLength={40}
+                    className="flex-1 px-3 py-2 rounded-lg border bg-parchment-50 border-parchment-200 placeholder:text-ink-400 text-sm text-ink-700"
+                  />
                   <button
-                    type="button"
-                    key={tool.key}
-                    onClick={() => toggleTool(tool.key)}
-                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-left ${
-                      prof > 0
-                        ? 'bg-blood-50 border-blood-300'
-                        : 'bg-parchment-50 border-parchment-200 hover:border-parchment-300'
-                    }`}
-                    aria-pressed={prof > 0}
+                    type="submit"
+                    className="px-3 py-2 rounded-lg border bg-parchment-100 border-parchment-200 hover:border-parchment-300 text-sm font-medium text-ink-600"
                   >
-                    <span className={`text-xs w-4 shrink-0 ${profDotClass(prof)}`}>
-                      {profDotGlyph(prof)}
-                    </span>
-                    <span className="text-sm text-ink-700 truncate">{tool.label}</span>
+                    Ajouter
                   </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </section>
-
-      {/* Languages */}
-      <section className="card p-4 sm:p-5 space-y-3">
-        <h2 className="section-title">Langues</h2>
-        <div className="flex flex-wrap gap-1.5">
-          {[...DND_LANGUAGES, ...customLanguages].map((lang) => {
-            const known = languages.includes(lang);
-            return (
-              <button
-                type="button"
-                key={lang}
-                onClick={() => toggleLanguage(lang)}
-                className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${
-                  known
-                    ? 'bg-blood-50 border-blood-300 text-ink-700'
-                    : 'bg-parchment-50 border-parchment-200 hover:border-parchment-300 text-ink-500'
-                }`}
-                aria-pressed={known}
-              >
-                {known && <span className="text-blood-600 text-xs mr-1">●</span>}
-                {lang}
-              </button>
-            );
-          })}
+                </form>
+              </>
+            ) : knownLanguages.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {knownLanguages.map((lang) => (
+                  <span
+                    key={lang}
+                    className="px-3 py-1.5 rounded-full border text-sm text-ink-700 bg-blood-50 border-blood-300"
+                  >
+                    <span className="text-blood-600 text-xs mr-1">●</span>
+                    {lang}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-ink-400">Aucune langue — ✎ Modifier pour en ajouter.</p>
+            )}
+          </section>
         </div>
-        <form onSubmit={addLanguage} className="flex gap-2">
-          <label htmlFor="new-language" className="sr-only">
-            Nouvelle langue
-          </label>
-          <input
-            id="new-language"
-            value={newLang}
-            onChange={(e) => setNewLang(e.target.value)}
-            placeholder="Autre langue…"
-            maxLength={40}
-            className="flex-1 px-3 py-2 rounded-lg border bg-parchment-50 border-parchment-200 placeholder:text-ink-400 text-sm text-ink-700"
-          />
-          <button
-            type="submit"
-            className="px-3 py-2 rounded-lg border bg-parchment-100 border-parchment-200 hover:border-parchment-300 text-sm font-medium text-ink-600"
-          >
-            Ajouter
-          </button>
-        </form>
-      </section>
+      </div>
     </div>
   );
 }
