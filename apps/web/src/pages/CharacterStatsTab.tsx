@@ -1,5 +1,7 @@
 /**
- * Caractéristiques tab — ability scores, class/race/level, derived stats.
+ * Caractéristiques tab — zone de lecture d'abord (caractéristiques, stats
+ * dérivées : ce que le joueur consulte en jeu), zone de configuration ensuite
+ * (identité & classe, maîtrise d'armes : ce qui se règle rarement).
  * Part of the character sheet integration.
  */
 
@@ -32,6 +34,7 @@ import {
 } from '@dnd-inventory/shared';
 import { useCallback, useEffect, useState } from 'react';
 import api from '../api';
+import { BottomSheet } from '../components/ui';
 
 interface Props {
   character: Character;
@@ -80,6 +83,11 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
   const [bgDraft, setBgDraft] = useState(character.background ?? '');
   const [levelDraft, setLevelDraft] = useState(String(character.level ?? 1));
   const [speedDraft, setSpeedDraft] = useState(String(character.speed ?? 9));
+
+  // Feuilles d'édition (configuration peu fréquente)
+  const [identityOpen, setIdentityOpen] = useState(false);
+  const [portageOpen, setPortageOpen] = useState(false);
+  const [multDraft, setMultDraft] = useState('');
 
   useEffect(() => {
     const drafts: Record<string, string> = {};
@@ -159,12 +167,23 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
     patchCharacter({ speed: Math.max(0, Math.round(val * 10) / 10) }, 'Erreur de mise à jour');
   };
 
+  // Fermeture de la feuille identité : on commite les brouillons restants
+  // (fermer par le scrim ne déclenche pas leur blur)
+  const closeIdentity = () => {
+    commitClass();
+    commitLevel();
+    commitRace();
+    commitBackground();
+    setIdentityOpen(false);
+  };
+
   // Armor-dependent class speed features (Moine / Barbare)
   const speedResult = computeSpeed(character, entries);
 
   // Derived stats
   const level = character.level ?? 1;
   const classInfo = findClass(character.characterClass);
+  const clsName = classInfo?.name ?? '';
   const profBonus = proficiencyBonus(level);
   const dexMod = abilityModifier(character.dexterity ?? 10);
   const wisMod = abilityModifier(character.wisdom ?? 10);
@@ -185,11 +204,7 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
   const [acDraft, setAcDraft] = useState('');
   const [editingAC, setEditingAC] = useState(false);
 
-  // Portage multiplier — the manual input behind the derived max-carry stat
-  // (moved from the old cog modal; same input, same help)
-  const [multDraft, setMultDraft] = useState('');
-  const [editingMult, setEditingMult] = useState(false);
-  const [showMultHelp, setShowMultHelp] = useState(false);
+  // Portage — max dérivé de FOR × 7,5 kg × multiplicateur (édité dans sa feuille)
   const capacityMult = character.capacityMultiplier ?? 1;
   const portageMaxKg = computeEncumbrance(
     0,
@@ -198,8 +213,12 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
     0,
     capacityMult,
   ).maxCarryKg;
-  const commitMult = () => {
-    setEditingMult(false);
+  const openPortage = () => {
+    setMultDraft(String(capacityMult));
+    setPortageOpen(true);
+  };
+  const saveMult = () => {
+    setPortageOpen(false);
     const parsed = Number(multDraft);
     if (!Number.isFinite(parsed) || parsed <= 0) return;
     const newMult = Math.round(parsed * 100) / 100;
@@ -225,223 +244,38 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
     setEditingAC(false);
   };
 
+  // Sous-classes choisies, pour la ligne résumé de la carte identité
+  const subclassLines: string[] = [];
+  if (clsName === 'Clerc' && character.divineDomain) {
+    const label = DIVINE_DOMAINS.find((d) => d.key === character.divineDomain)?.label;
+    if (label) subclassLines.push(label);
+  }
+  if (clsName === 'Druide' && character.druidCircle) {
+    subclassLines.push(
+      character.druidCircle === 'terre' ? 'Cercle de la Terre' : 'Cercle de la Lune',
+    );
+    if (character.druidCircle === 'terre' && character.landCircle) {
+      const label = LAND_CIRCLES.find((t) => t.key === character.landCircle)?.label;
+      if (label) subclassLines.push(label);
+    }
+  }
+  if (clsName === 'Paladin' && character.sacredOath) {
+    const label = SACRED_OATHS.find((o) => o.key === character.sacredOath)?.label;
+    if (label) subclassLines.push(label);
+  }
+  if (character.subclass && CLASS_SUBCLASSES[clsName]) {
+    const label = CLASS_SUBCLASSES[clsName].find((s) => s.key === character.subclass)?.label;
+    if (label) subclassLines.push(label);
+  }
+  const hasSubclassPicker =
+    clsName === 'Clerc' ||
+    clsName === 'Druide' ||
+    clsName === 'Paladin' ||
+    Boolean(GENERIC_SUBCLASS_LABELS[clsName]);
+
   return (
     <div className="space-y-4">
-      {/* Identity: class, level, race, background */}
-      <section className="card p-4 sm:p-5 space-y-3">
-        <h2 className="section-title">Identité</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <label className="block">
-            <span className="label">Classe</span>
-            <input
-              type="text"
-              list="dnd-classes"
-              className="input"
-              value={classDraft}
-              onChange={(e) => setClassDraft(e.target.value)}
-              onBlur={commitClass}
-              placeholder="Magicien"
-            />
-            <datalist id="dnd-classes">
-              {DND_CLASSES.map((c) => (
-                <option key={c.name} value={c.name} />
-              ))}
-            </datalist>
-          </label>
-          <label className="block">
-            <span className="label">Niveau</span>
-            <input
-              type="number"
-              min={1}
-              max={20}
-              className="input"
-              value={levelDraft}
-              onChange={(e) => setLevelDraft(e.target.value)}
-              onBlur={commitLevel}
-            />
-          </label>
-          <label className="block">
-            <span className="label">Race</span>
-            <input
-              type="text"
-              className="input"
-              value={raceDraft}
-              onChange={(e) => setRaceDraft(e.target.value)}
-              onBlur={commitRace}
-              placeholder="Haut-elfe"
-            />
-          </label>
-          <label className="block">
-            <span className="label">Historique</span>
-            <input
-              type="text"
-              className="input"
-              value={bgDraft}
-              onChange={(e) => setBgDraft(e.target.value)}
-              onBlur={commitBackground}
-              placeholder="Sage"
-            />
-          </label>
-        </div>
-        {findClass(character.characterClass)?.name === 'Clerc' && (
-          <label className="flex items-center justify-between gap-3 max-w-xs">
-            <span className="label mb-0">Domaine divin</span>
-            <select
-              className="input py-1.5 text-sm w-auto"
-              value={character.divineDomain ?? ''}
-              onChange={(e) =>
-                patchCharacter(
-                  { divineDomain: e.target.value === '' ? null : e.target.value },
-                  'Erreur de mise à jour',
-                )
-              }
-              aria-label="Domaine divin"
-            >
-              <option value="">—</option>
-              {DIVINE_DOMAINS.map((d) => (
-                <option key={d.key} value={d.key}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {findClass(character.characterClass)?.name === 'Druide' &&
-          character.druidCircle === 'terre' && (
-            <label className="flex items-center justify-between gap-3 max-w-xs">
-              <span className="label mb-0">
-                Terrain du cercle
-                {level < DEDICATED_SUBCLASS_LEVELS.terrain && (
-                  <span className="text-ink-400 font-normal">
-                    {' '}
-                    (niv. {DEDICATED_SUBCLASS_LEVELS.terrain})
-                  </span>
-                )}
-              </span>
-              <select
-                className="input py-1.5 text-sm w-auto"
-                value={character.landCircle ?? ''}
-                disabled={level < DEDICATED_SUBCLASS_LEVELS.terrain}
-                onChange={(e) =>
-                  patchCharacter(
-                    { landCircle: e.target.value === '' ? null : e.target.value },
-                    'Erreur de mise à jour',
-                  )
-                }
-                aria-label="Terrain du cercle"
-              >
-                <option value="">—</option>
-                {LAND_CIRCLES.map((t) => (
-                  <option key={t.key} value={t.key}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-        {findClass(character.characterClass)?.name === 'Paladin' && (
-          <label className="flex items-center justify-between gap-3 max-w-xs">
-            <span className="label mb-0">
-              Serment sacré
-              {level < DEDICATED_SUBCLASS_LEVELS.serment && (
-                <span className="text-ink-400 font-normal">
-                  {' '}
-                  (niv. {DEDICATED_SUBCLASS_LEVELS.serment})
-                </span>
-              )}
-            </span>
-            <select
-              className="input py-1.5 text-sm w-auto"
-              value={character.sacredOath ?? ''}
-              disabled={level < DEDICATED_SUBCLASS_LEVELS.serment}
-              onChange={(e) =>
-                patchCharacter(
-                  { sacredOath: e.target.value === '' ? null : e.target.value },
-                  'Erreur de mise à jour',
-                )
-              }
-              aria-label="Serment sacré"
-            >
-              <option value="">—</option>
-              {SACRED_OATHS.map((o) => (
-                <option key={o.key} value={o.key}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {findClass(character.characterClass)?.name === 'Druide' && (
-          <label className="flex items-center justify-between gap-3 max-w-xs">
-            <span className="label mb-0">
-              Cercle druidique
-              {level < DEDICATED_SUBCLASS_LEVELS.cercle && (
-                <span className="text-ink-400 font-normal">
-                  {' '}
-                  (niv. {DEDICATED_SUBCLASS_LEVELS.cercle})
-                </span>
-              )}
-            </span>
-            <select
-              className="input py-1.5 text-sm w-auto"
-              value={character.druidCircle ?? ''}
-              disabled={level < DEDICATED_SUBCLASS_LEVELS.cercle}
-              onChange={(e) =>
-                patchCharacter(
-                  { druidCircle: e.target.value === '' ? null : e.target.value },
-                  'Erreur de mise à jour',
-                )
-              }
-              aria-label="Cercle druidique"
-            >
-              <option value="">—</option>
-              <option value="terre">Cercle de la Terre</option>
-              <option value="lune">Cercle de la Lune</option>
-            </select>
-          </label>
-        )}
-        {(() => {
-          // Sous-classe générique (SRD 5.1) — remplit la colonne `subclass`.
-          // Verrouillé tant que le niveau d'acquisition de la classe n'est pas
-          // atteint (1 : Ensorceleur/Occultiste — 2 : Magicien — 3 : le reste).
-          const cls = findClass(character.characterClass)?.name ?? '';
-          const label = GENERIC_SUBCLASS_LABELS[cls];
-          const options = CLASS_SUBCLASSES[cls];
-          if (!label || !options) return null;
-          const unlockLevel = Math.min(...options.map((s) => s.level));
-          const locked = level < unlockLevel;
-          return (
-            <label className="flex items-center justify-between gap-3 max-w-xs">
-              <span className="label mb-0">
-                {label}
-                {locked && <span className="text-ink-400 font-normal"> (niv. {unlockLevel})</span>}
-              </span>
-              <select
-                className="input py-1.5 text-sm w-auto"
-                value={character.subclass ?? ''}
-                disabled={locked}
-                onChange={(e) =>
-                  patchCharacter(
-                    { subclass: e.target.value === '' ? null : e.target.value },
-                    'Erreur de mise à jour',
-                  )
-                }
-                aria-label={label}
-              >
-                <option value="">—</option>
-                {options.map((s) => (
-                  <option key={s.key} value={s.key}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          );
-        })()}
-      </section>
-
-      {/* Weapon mastery */}
-      <WeaponMasteryCard character={character} patchCharacter={patchCharacter} />
+      {/* ── Zone de lecture ─────────────────────────────────────────── */}
 
       {/* Ability scores */}
       <section className="card p-4 sm:p-5 space-y-3">
@@ -487,7 +321,7 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
               <input
                 type="number"
                 min={0}
-                className="w-12 text-center text-xl font-bold text-ink-800 bg-white border border-parchment-300 rounded-md py-0.5 focus:outline-none focus:border-blood-500"
+                className="w-12 text-center text-xl font-bold text-ink-800 bg-white border border-parchment-300 rounded-md py-1.5 focus:outline-none focus:border-blood-500"
                 value={acDraft}
                 onChange={(e) => setAcDraft(e.target.value)}
                 onBlur={commitAC}
@@ -505,28 +339,40 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
                   setAcDraft(acOverride ? String(acOverride) : '');
                   setEditingAC(true);
                 }}
-                className="text-2xl font-bold text-ink-800 hover:text-blood-600 transition-colors"
-                title="Cliquer pour modifier"
+                className="w-full min-h-11 flex items-center justify-center gap-1.5 text-2xl font-bold text-ink-800 hover:text-blood-600 transition-colors"
+                aria-label="Modifier la classe d'armure"
               >
                 {effectiveAC}
+                <span className="text-sm font-normal text-ink-500" aria-hidden="true">
+                  ✎
+                </span>
               </button>
             )}
-            <div className="text-[10px] text-ink-400 mt-0.5">
-              {acOverride !== null ? <span className="text-blood-600">Manuel · </span> : null}
-              {acOverride !== null && (
-                <button
-                  type="button"
-                  onClick={() => patchCharacter({ armorClassOverride: null }, 'Erreur')}
-                  className="text-blood-500 hover:underline"
-                >
-                  ↺ Auto
-                </button>
+            <div className="text-[11px] text-ink-500 mt-0.5">
+              {acOverride !== null ? (
+                <>
+                  <span className="font-medium text-blood-600">Manuel</span>
+                  {' · '}
+                  <button
+                    type="button"
+                    onClick={() => patchCharacter({ armorClassOverride: null }, 'Erreur')}
+                    className="text-blood-600 hover:underline py-1"
+                  >
+                    ↺ Auto
+                  </button>
+                </>
+              ) : (
+                acResult.source
               )}
-              {acOverride === null && acResult.source}
             </div>
           </div>
-          <DerivedStat label="Bonus de maîtrise" value={formatModifier(profBonus)} />
           <DerivedStat label="Initiative" value={formatModifier(dexMod)} />
+          {isSpellcaster && (
+            <>
+              <DerivedStat label="DD de sauvegarde" value={String(spellDC)} />
+              <DerivedStat label="Attaque de sort" value={formatModifier(castingMod + profBonus)} />
+            </>
+          )}
           <DerivedStat label="Perception passive" value={String(passPerc)} />
           <DerivedStat
             label="Vitesse"
@@ -541,94 +387,34 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
                 : undefined
             }
           />
-          {/* Portage max — derived from FOR × 15 × the multiplier (editable) */}
-          <div className="bg-parchment-100 rounded-xl p-3 text-center">
-            <div className="text-xs font-medium text-ink-500 mb-1">Portage max</div>
-            {editingMult ? (
-              <input
-                type="number"
-                min={1}
-                step={0.5}
-                className="w-14 text-center text-xl font-bold text-ink-800 bg-white border border-parchment-300 rounded-md py-0.5 focus:outline-none focus:border-blood-500"
-                value={multDraft}
-                onChange={(e) => setMultDraft(e.target.value)}
-                onBlur={commitMult}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                  if (e.key === 'Escape') setEditingMult(false);
-                }}
-                placeholder={`×${capacityMult}`}
-                autoFocus
-                aria-label="Multiplicateur de portage"
-              />
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setMultDraft('');
-                  setEditingMult(true);
-                }}
-                className="text-2xl font-bold text-ink-800 hover:text-blood-600 transition-colors"
-                title="Cliquer pour modifier le multiplicateur de portage"
-              >
-                {portageMaxKg} kg
-              </button>
-            )}
-            <div className="text-[10px] text-ink-400 mt-0.5 flex items-center justify-center gap-1">
-              <span title="Règle métrique : FOR × 7,5 kg par point de Force (FOR × 15 lb en impérial), multiplié par le multiplicateur de portage.">
-                FOR {character.strength ?? 10} × 7,5 kg{' '}
-                <span className="font-semibold text-ink-600">×{capacityMult}</span>
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowMultHelp((s) => !s)}
-                className="text-ink-400 hover:text-blood-600 leading-none"
-                aria-label="Aide sur le multiplicateur de portage"
-                aria-expanded={showMultHelp}
-                title="Aide"
-              >
-                ?
-              </button>
-            </div>
-          </div>
-          {showMultHelp && (
-            <div className="col-span-2 sm:col-span-4 text-left text-xs text-ink-600 bg-parchment-50 border border-parchment-200 rounded-lg p-3 space-y-1.5">
-              <p>
-                <strong>×1 (défaut)</strong> : créature de taille M sans capacité spéciale.
-              </p>
-              <p>
-                <strong>×2</strong> : Construction massive (Goliath, Firbolg, Demi-Orc, Bugbear,
-                Orc, Loxodon) ou créature de taille G. Le personnage compte comme une catégorie de
-                taille supérieure pour le calcul du poids transportable.
-              </p>
-              <p>
-                <strong>×3</strong> : Créature de taille TG.
-              </p>
-              <p>
-                <strong>×4</strong> : Créature de taille Gig.
-              </p>
-              <p className="text-ink-400">
-                Ce multiplicateur s'applique aux trois paliers (encombré, lourdement encombré, max).
-                Modifie-le si ton personnage a un trait qui augmente sa capacité de portage. La
-                barre d'encombrement du bandeau suit automatiquement.
-              </p>
-            </div>
-          )}
-          {isSpellcaster && (
-            <>
-              <DerivedStat label="DD de sauvegarde" value={String(spellDC)} />
-              <DerivedStat label="Attaque de sort" value={formatModifier(castingMod + profBonus)} />
-            </>
-          )}
           {classInfo && (
             <DerivedStat
               label="Dé de vie"
               value={`d${classInfo.hitDie} · ${Math.max(0, (character.level ?? 1) - (character.hitDiceUsed ?? 0))}/${character.level ?? 1}`}
             />
           )}
+          <DerivedStat label="Bonus de maîtrise" value={formatModifier(profBonus)} />
+          {/* Portage max — FOR × 7,5 kg × multiplicateur (feuille dédiée) */}
+          <div className="bg-parchment-100 rounded-xl p-3 text-center">
+            <div className="text-xs font-medium text-ink-500 mb-1">Portage max</div>
+            <button
+              type="button"
+              onClick={openPortage}
+              className="w-full min-h-11 flex items-center justify-center gap-1.5 text-2xl font-bold text-ink-800 hover:text-blood-600 transition-colors"
+              aria-label="Modifier le multiplicateur de portage"
+            >
+              {portageMaxKg} kg
+              <span className="px-1.5 py-0.5 rounded-full bg-blood-50 border border-blood-200 text-blood-700 text-[11px] font-semibold">
+                ×{capacityMult}
+              </span>
+            </button>
+            <div className="text-[11px] text-ink-500 mt-0.5">
+              FOR {character.strength ?? 10} × 7,5 kg
+            </div>
+          </div>
         </div>
         {classInfo && (
-          <p className="text-xs text-ink-400">
+          <p className="text-xs text-ink-500">
             Sauvegardes maîtrisées :{' '}
             {classInfo.savingThrows.map((s) => ABILITY_SHORT_FR[s]).join(', ')}
             {isSpellcaster &&
@@ -637,6 +423,326 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
           </p>
         )}
       </section>
+
+      {/* ── Zone de configuration ───────────────────────────────────── */}
+
+      {/* Identity: summary card, full editor in bottom sheet */}
+      <section className="card p-4 sm:p-5 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="section-title">Identité & classe</h2>
+          <button
+            type="button"
+            onClick={() => setIdentityOpen(true)}
+            className="btn-secondary text-sm px-3 py-2"
+          >
+            ✎ Modifier
+          </button>
+        </div>
+        <div className="space-y-1">
+          <p className="font-display text-lg font-semibold text-ink-800">
+            {character.characterClass
+              ? `${character.characterClass} · niv. ${level}`
+              : `Niveau ${level} · classe non définie`}
+          </p>
+          {subclassLines.length > 0 && (
+            <p className="text-sm text-ink-700">{subclassLines.join(' · ')}</p>
+          )}
+          <p className="text-sm text-ink-500">
+            {[character.race, character.background].filter(Boolean).join(' · ') ||
+              'Race et historique non définies'}
+          </p>
+        </div>
+      </section>
+
+      {/* Weapon mastery */}
+      <WeaponMasteryCard character={character} patchCharacter={patchCharacter} />
+
+      {/* Identity editor sheet */}
+      <BottomSheet
+        open={identityOpen}
+        onClose={closeIdentity}
+        title="Identité & classe"
+        mobileOnly={false}
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="label">Classe</span>
+              <input
+                type="text"
+                list="dnd-classes"
+                className="input"
+                value={classDraft}
+                onChange={(e) => setClassDraft(e.target.value)}
+                onBlur={commitClass}
+                placeholder="Magicien"
+              />
+              <datalist id="dnd-classes">
+                {DND_CLASSES.map((c) => (
+                  <option key={c.name} value={c.name} />
+                ))}
+              </datalist>
+            </label>
+            <label className="block">
+              <span className="label">Niveau</span>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                className="input"
+                value={levelDraft}
+                onChange={(e) => setLevelDraft(e.target.value)}
+                onBlur={commitLevel}
+              />
+            </label>
+            <label className="block">
+              <span className="label">Race</span>
+              <input
+                type="text"
+                className="input"
+                value={raceDraft}
+                onChange={(e) => setRaceDraft(e.target.value)}
+                onBlur={commitRace}
+                placeholder="Haut-elfe"
+              />
+            </label>
+            <label className="block">
+              <span className="label">Historique</span>
+              <input
+                type="text"
+                className="input"
+                value={bgDraft}
+                onChange={(e) => setBgDraft(e.target.value)}
+                onBlur={commitBackground}
+                placeholder="Sage"
+              />
+            </label>
+          </div>
+          {hasSubclassPicker && (
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide">
+                Voie de classe
+              </p>
+              {clsName === 'Clerc' && (
+                <label className="flex items-center justify-between gap-3">
+                  <span className="label mb-0">Domaine divin</span>
+                  <select
+                    className="input py-1.5 text-sm w-auto max-w-[60%]"
+                    value={character.divineDomain ?? ''}
+                    onChange={(e) =>
+                      patchCharacter(
+                        { divineDomain: e.target.value === '' ? null : e.target.value },
+                        'Erreur de mise à jour',
+                      )
+                    }
+                    aria-label="Domaine divin"
+                  >
+                    <option value="">—</option>
+                    {DIVINE_DOMAINS.map((d) => (
+                      <option key={d.key} value={d.key}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {clsName === 'Druide' && (
+                <label className="flex items-center justify-between gap-3">
+                  <span className="label mb-0">
+                    Cercle druidique
+                    {level < DEDICATED_SUBCLASS_LEVELS.cercle && (
+                      <span className="text-ink-400 font-normal">
+                        {' '}
+                        (niv. {DEDICATED_SUBCLASS_LEVELS.cercle})
+                      </span>
+                    )}
+                  </span>
+                  <select
+                    className="input py-1.5 text-sm w-auto max-w-[60%]"
+                    value={character.druidCircle ?? ''}
+                    disabled={level < DEDICATED_SUBCLASS_LEVELS.cercle}
+                    onChange={(e) =>
+                      patchCharacter(
+                        { druidCircle: e.target.value === '' ? null : e.target.value },
+                        'Erreur de mise à jour',
+                      )
+                    }
+                    aria-label="Cercle druidique"
+                  >
+                    <option value="">—</option>
+                    <option value="terre">Cercle de la Terre</option>
+                    <option value="lune">Cercle de la Lune</option>
+                  </select>
+                </label>
+              )}
+              {clsName === 'Druide' && character.druidCircle === 'terre' && (
+                <label className="flex items-center justify-between gap-3">
+                  <span className="label mb-0">
+                    Terrain du cercle
+                    {level < DEDICATED_SUBCLASS_LEVELS.terrain && (
+                      <span className="text-ink-400 font-normal">
+                        {' '}
+                        (niv. {DEDICATED_SUBCLASS_LEVELS.terrain})
+                      </span>
+                    )}
+                  </span>
+                  <select
+                    className="input py-1.5 text-sm w-auto max-w-[60%]"
+                    value={character.landCircle ?? ''}
+                    disabled={level < DEDICATED_SUBCLASS_LEVELS.terrain}
+                    onChange={(e) =>
+                      patchCharacter(
+                        { landCircle: e.target.value === '' ? null : e.target.value },
+                        'Erreur de mise à jour',
+                      )
+                    }
+                    aria-label="Terrain du cercle"
+                  >
+                    <option value="">—</option>
+                    {LAND_CIRCLES.map((t) => (
+                      <option key={t.key} value={t.key}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {clsName === 'Paladin' && (
+                <label className="flex items-center justify-between gap-3">
+                  <span className="label mb-0">
+                    Serment sacré
+                    {level < DEDICATED_SUBCLASS_LEVELS.serment && (
+                      <span className="text-ink-400 font-normal">
+                        {' '}
+                        (niv. {DEDICATED_SUBCLASS_LEVELS.serment})
+                      </span>
+                    )}
+                  </span>
+                  <select
+                    className="input py-1.5 text-sm w-auto max-w-[60%]"
+                    value={character.sacredOath ?? ''}
+                    disabled={level < DEDICATED_SUBCLASS_LEVELS.serment}
+                    onChange={(e) =>
+                      patchCharacter(
+                        { sacredOath: e.target.value === '' ? null : e.target.value },
+                        'Erreur de mise à jour',
+                      )
+                    }
+                    aria-label="Serment sacré"
+                  >
+                    <option value="">—</option>
+                    {SACRED_OATHS.map((o) => (
+                      <option key={o.key} value={o.key}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {(() => {
+                // Sous-classe générique (SRD 5.1) — remplit la colonne `subclass`.
+                // Verrouillé tant que le niveau d'acquisition de la classe n'est pas
+                // atteint (1 : Ensorceleur/Occultiste — 2 : Magicien — 3 : le reste).
+                const label = GENERIC_SUBCLASS_LABELS[clsName];
+                const options = CLASS_SUBCLASSES[clsName];
+                if (!label || !options) return null;
+                const unlockLevel = Math.min(...options.map((s) => s.level));
+                const locked = level < unlockLevel;
+                return (
+                  <label className="flex items-center justify-between gap-3">
+                    <span className="label mb-0">
+                      {label}
+                      {locked && (
+                        <span className="text-ink-400 font-normal"> (niv. {unlockLevel})</span>
+                      )}
+                    </span>
+                    <select
+                      className="input py-1.5 text-sm w-auto max-w-[60%]"
+                      value={character.subclass ?? ''}
+                      disabled={locked}
+                      onChange={(e) =>
+                        patchCharacter(
+                          { subclass: e.target.value === '' ? null : e.target.value },
+                          'Erreur de mise à jour',
+                        )
+                      }
+                      aria-label={label}
+                    >
+                      <option value="">—</option>
+                      {options.map((s) => (
+                        <option key={s.key} value={s.key}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                );
+              })()}
+            </div>
+          )}
+        </div>
+      </BottomSheet>
+
+      {/* Portage sheet — multiplier editor + metric rule help */}
+      <BottomSheet
+        open={portageOpen}
+        onClose={() => setPortageOpen(false)}
+        title="Portage maximum"
+        mobileOnly={false}
+        size="md"
+        footer={
+          <button type="button" onClick={saveMult} className="btn-primary flex-1">
+            Enregistrer
+          </button>
+        }
+      >
+        <div className="space-y-4">
+          <div className="bg-parchment-100 rounded-xl p-4 text-center">
+            <div className="text-2xl font-bold text-ink-800">
+              {portageMaxKg} kg
+              <span className="ml-2 text-base font-semibold text-ink-600">×{capacityMult}</span>
+            </div>
+            <div className="text-[11px] text-ink-500 mt-1">
+              FOR {character.strength ?? 10} × 7,5 kg × multiplicateur
+            </div>
+          </div>
+          <label className="block">
+            <span className="label">Multiplicateur de portage</span>
+            <input
+              type="number"
+              min={1}
+              step={0.5}
+              className="input"
+              value={multDraft}
+              onChange={(e) => setMultDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') saveMult();
+              }}
+            />
+          </label>
+          <div className="text-xs text-ink-600 bg-parchment-50 border border-parchment-200 rounded-lg p-3 space-y-1.5">
+            <p>
+              <strong>×1 (défaut)</strong> : créature de taille M sans capacité spéciale.
+            </p>
+            <p>
+              <strong>×2</strong> : Construction massive (Goliath, Firbolg, Demi-Orc, Bugbear, Orc,
+              Loxodon) ou créature de taille G. Le personnage compte comme une catégorie de taille
+              supérieure pour le calcul du poids transportable.
+            </p>
+            <p>
+              <strong>×3</strong> : Créature de taille TG.
+            </p>
+            <p>
+              <strong>×4</strong> : Créature de taille Gig.
+            </p>
+            <p className="text-ink-500">
+              Ce multiplicateur s'applique aux trois paliers (encombré, lourdement encombré, max).
+              Modifie-le si ton personnage a un trait qui augmente sa capacité de portage. La barre
+              d'encombrement du bandeau suit automatiquement.
+            </p>
+          </div>
+        </div>
+      </BottomSheet>
     </div>
   );
 }
@@ -661,19 +767,21 @@ function DerivedStat({
   return (
     <div className="bg-parchment-100 rounded-xl p-3 text-center">
       <div className="text-xs font-medium text-ink-500 mb-1">{label}</div>
-      {hint && <div className="text-[10px] text-blood-600 font-medium leading-tight">{hint}</div>}
+      {hint && <div className="text-[11px] text-blood-600 font-medium leading-tight">{hint}</div>}
       {editable ? (
         <input
           type="number"
           min={0}
           step={0.5}
-          className="w-16 text-center text-lg font-bold text-ink-800 bg-white border border-parchment-300 rounded-md py-0.5 focus:outline-none focus:border-blood-500"
+          className="mt-1 block mx-auto w-16 min-h-11 text-center text-lg font-bold text-ink-800 bg-white border border-parchment-300 rounded-md py-1 focus:outline-none focus:border-blood-500"
           value={draftValue ?? ''}
           onChange={(e) => onChange?.(e.target.value)}
           onBlur={onBlur}
         />
       ) : (
-        <div className="text-xl font-bold text-ink-800">{value}</div>
+        <div className="min-h-11 flex items-center justify-center text-xl font-bold text-ink-800">
+          {value}
+        </div>
       )}
     </div>
   );
