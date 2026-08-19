@@ -132,7 +132,8 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
       setSpeedDraft(String(current));
       return;
     }
-    patchCharacter({ speed: Math.max(0, Math.round(val)) }, 'Erreur de mise à jour');
+    // Les demi-mètres sont valides (petites races : 7,5 m) — normalise à 1 décimale
+    patchCharacter({ speed: Math.max(0, Math.round(val * 10) / 10) }, 'Erreur de mise à jour');
   };
 
   // Armor-dependent class speed features (Moine / Barbare)
@@ -577,6 +578,7 @@ function DerivedStat({
         <input
           type="number"
           min={0}
+          step={0.5}
           className="w-16 text-center text-lg font-bold text-ink-800 bg-white border border-parchment-300 rounded-md py-0.5 focus:outline-none focus:border-blood-500"
           value={draftValue ?? ''}
           onChange={(e) => onChange?.(e.target.value)}

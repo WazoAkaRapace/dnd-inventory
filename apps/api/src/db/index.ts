@@ -82,7 +82,7 @@ const COLUMN_MIGRATIONS: Record<string, Array<{ name: string; ddl: string }>> = 
     { name: 'character_class', ddl: 'TEXT' },
     { name: 'race', ddl: 'TEXT' },
     { name: 'background', ddl: 'TEXT' },
-    { name: 'speed', ddl: 'INTEGER NOT NULL DEFAULT 9' },
+    { name: 'speed', ddl: 'REAL NOT NULL DEFAULT 9' },
     { name: 'skill_proficiencies', ddl: "TEXT NOT NULL DEFAULT '[]'" },
     { name: 'saving_throw_proficiencies', ddl: "TEXT NOT NULL DEFAULT '[]'" },
     { name: 'spell_slots_used', ddl: "TEXT NOT NULL DEFAULT '[0,0,0,0,0,0,0,0,0]'" },

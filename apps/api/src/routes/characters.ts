@@ -157,6 +157,13 @@ export async function characterRoutes(app: FastifyInstance) {
         return reply.code(403).send({ error: 'seul le propriétaire peut changer la visibilité' });
       }
       const hiding = body.hidden === true && !char.hidden;
+      // Speed is metric meters — halves are valid (small races: 7.5 m)
+      if (
+        body.speed !== undefined &&
+        (typeof body.speed !== 'number' || !Number.isFinite(body.speed) || body.speed < 0)
+      ) {
+        return reply.code(400).send({ error: 'vitesse invalide (nombre positif en mètres)' });
+      }
       const allowed: (keyof PatchCharacterPayload)[] = [
         'name',
         'strength',

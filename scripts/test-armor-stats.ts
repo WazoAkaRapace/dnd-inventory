@@ -402,6 +402,28 @@ check(
   0,
 );
 
+// --- Vitesse décimale (petites races : base 7,5 m) ---
+check('Base 7.5 sans classe → conservée telle quelle', computeSpeed({ level: 5, speed: 7.5 }, []), {
+  speed: 7.5,
+  bonus: 0,
+  sources: [],
+});
+check(
+  'Moine niv 6 base 7.5 → +4.5 m (7.5 → 12)',
+  computeSpeed({ characterClass: 'Moine', level: 6, speed: 7.5 }, []),
+  { speed: 12, bonus: 4.5, sources: ['Déplacement sans armure +4.5 m'] },
+);
+check(
+  'Moine niv 14 base 7.5 → +7.5 m (7.5 → 15)',
+  computeSpeed({ characterClass: 'Moine', level: 14, speed: 7.5 }, []),
+  { speed: 15, bonus: 7.5, sources: ['Déplacement sans armure +7.5 m'] },
+);
+check(
+  'Barbare niv 5 base 7.5 → +3 m (7.5 → 10.5)',
+  computeSpeed({ characterClass: 'Barbare', level: 5, speed: 7.5 }, []),
+  { speed: 10.5, bonus: 3, sources: ['Déplacement rapide +3 m'] },
+);
+
 console.log('class rules: done');
 
 // --- Heavy armor STR-minimum speed penalty (SRD) ---
@@ -477,6 +499,23 @@ check(
     ),
   ]),
   { speed: 6, bonus: -3, sources: ['Armure lourde −3 m (FOR insuffisante)'] },
+);
+
+check(
+  'Cotte de mailles (min 13) avec FOR 12, base 7.5 → −3 m (7.5 → 4.5)',
+  computeSpeed({ characterClass: 'Guerrier', level: 10, speed: 7.5, strength: 12 }, [
+    entry(
+      mkArmor({
+        name: 'Chain Mail',
+        nameFr: 'Cotte de mailles',
+        rarity: 'none' as any,
+        acBase: 16,
+        strMin: 13,
+        description: '',
+      }),
+    ),
+  ]),
+  { speed: 4.5, bonus: -3, sources: ['Armure lourde −3 m (FOR insuffisante)'] },
 );
 
 console.log(failures === 0 ? '\n✅ All armor stats checks pass' : `\n❌ ${failures} failure(s)`);

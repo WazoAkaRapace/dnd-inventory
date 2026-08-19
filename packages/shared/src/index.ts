@@ -2742,7 +2742,7 @@ export const TEMPLATE_VARIABLES: Array<{ syntax: string; description: string }> 
   { syntax: '{{skill:athletics}}', description: "Modificateur d'Athlétisme (+4)" },
   { syntax: '{{passive_perception}}', description: 'Perception passive (14)' },
   { syntax: '{{initiative}}', description: 'Initiative (+2)' },
-  { syntax: '{{speed}}', description: 'Vitesse en mètres (9)' },
+  { syntax: '{{speed}}', description: 'Vitesse en mètres (9, ou 7.5 pour les petites races)' },
   { syntax: '{{max_hp}}', description: 'PV maximum' },
 ];
 
