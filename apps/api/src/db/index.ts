@@ -122,6 +122,8 @@ const COLUMN_MIGRATIONS: Record<string, Array<{ name: string; ddl: string }>> = 
     { name: 'divine_domain', ddl: 'TEXT' },
     { name: 'land_circle', ddl: 'TEXT' },
     { name: 'sacred_oath', ddl: 'TEXT' },
+    // Subclass key (CLASS_SUBCLASSES) for classes without a dedicated column
+    { name: 'subclass', ddl: 'TEXT' },
     // Secret character prep: hidden = invisible to other players, inactive in combat
     { name: 'hidden', ddl: 'INTEGER NOT NULL DEFAULT 0' },
   ],
@@ -146,6 +148,10 @@ const COLUMN_MIGRATIONS: Record<string, Array<{ name: string; ddl: string }>> = 
   character_features: [
     { name: 'counter_max', ddl: 'INTEGER' },
     { name: 'counter_current', ddl: 'INTEGER' },
+    // Link to the SRD feature catalog (classFeatures.ts) — powers rest resets
+    { name: 'catalog_id', ddl: 'TEXT' },
+    // Manual rest recharge for non-catalog traits: 'short' | 'long' | NULL
+    { name: 'reset_type', ddl: 'TEXT' },
   ],
   combatants: [
     { name: 'group_id', ddl: 'INTEGER' },

@@ -196,6 +196,7 @@ export function mapCharacterSummary(row: any): CharacterSummary {
     divineDomain: row.divine_domain ?? null,
     landCircle: row.land_circle ?? null,
     sacredOath: row.sacred_oath ?? null,
+    subclass: row.subclass ?? null,
   };
 }
 
@@ -337,6 +338,8 @@ export function mapFeature(row: any): CharacterFeature {
     title: row.title,
     category: row.category,
     description: row.description,
+    catalogId: row.catalog_id ?? null,
+    resetType: (row.reset_type as 'short' | 'long' | null) ?? null,
     counterMax: row.counter_max ?? null,
     counterCurrent: row.counter_current ?? null,
     sortOrder: row.sort_order,

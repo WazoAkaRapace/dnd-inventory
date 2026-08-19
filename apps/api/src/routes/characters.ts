@@ -230,6 +230,7 @@ export async function characterRoutes(app: FastifyInstance) {
         'divineDomain',
         'landCircle',
         'sacredOath',
+        'subclass',
       ];
       const sets: string[] = [];
       const vals: any[] = [];

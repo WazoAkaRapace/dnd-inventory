@@ -337,6 +337,46 @@ check(
   14,
 );
 
+// --- Ensorceleur / Lignée draconique : Résilience draconique (13 + DEX, bouclier ok) ---
+const draconique = {
+  constitution: 10,
+  wisdom: 10,
+  characterClass: 'Ensorceleur',
+  subclass: 'draconique',
+};
+check('Draconique sans armure → 13 + 4 DEX = 17', computeAC([], 4, false, draconique).ac, 17);
+check(
+  'Draconique sans armure + bouclier → 17 + 2 = 19',
+  computeAC(
+    [
+      entry(
+        mkArmor({
+          name: 'Shield',
+          nameFr: 'Bouclier',
+          rarity: 'none' as any,
+          acBase: 2,
+          strMin: 0,
+          description: '',
+        }),
+      ),
+    ],
+    4,
+    false,
+    draconique,
+  ).ac,
+  19,
+);
+check(
+  'Draconique en armure → règle normale (Cuir 11 + 4)',
+  computeAC([entry(cuir)], 4, false, draconique).ac,
+  15,
+);
+check(
+  'Ensorceleur sans lignée → 10 + DEX',
+  computeAC([], 4, false, { characterClass: 'Ensorceleur', subclass: 'sauvage' }).ac,
+  14,
+);
+
 // Speed
 check(
   'Moine niv 10 sans armure → +6 m (9 → 15)',

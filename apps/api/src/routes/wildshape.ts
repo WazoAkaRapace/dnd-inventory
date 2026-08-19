@@ -151,6 +151,7 @@ export async function wildShapeRoutes(app: FastifyInstance) {
       return reply.send({
         forms,
         uses: char.wild_shape_uses ?? 2,
+        unlimited: (char.level ?? 1) >= 20, // Archidruide (niveau 20)
         shaped: char.wild_shape_slug ?? null,
         maxCR,
         canSwim,
@@ -183,7 +184,8 @@ export async function wildShapeRoutes(app: FastifyInstance) {
       if (char.wild_shape_slug) {
         return reply.code(400).send({ error: 'Déjà sous forme animale' });
       }
-      if ((char.wild_shape_uses ?? 2) <= 0) {
+      // Archidruide (niveau 20) : forme sauvage illimitée
+      if ((char.wild_shape_uses ?? 2) <= 0 && (char.level ?? 1) < 20) {
         return reply.code(400).send({ error: "Plus d'utilisations — repos court requis" });
       }
 
@@ -227,9 +229,11 @@ export async function wildShapeRoutes(app: FastifyInstance) {
       const hp = rollHitPoints(beast.hit_dice, beast.hit_points ?? 1, 0);
 
       const tx = db.transaction(() => {
+        // Niveau 20 (Archidruide) : pas de décrément
+        const usesExpr = (char.level ?? 1) >= 20 ? 'wild_shape_uses' : 'wild_shape_uses - 1';
         db.prepare(`
           UPDATE characters
-          SET wild_shape_slug = ?, wild_shape_hp = ?, wild_shape_max_hp = ?, wild_shape_uses = wild_shape_uses - 1
+          SET wild_shape_slug = ?, wild_shape_hp = ?, wild_shape_max_hp = ?, wild_shape_uses = ${usesExpr}
           WHERE id = ?
         `).run(beast.slug, hp, hp, char.id);
 

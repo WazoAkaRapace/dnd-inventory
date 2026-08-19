@@ -11,6 +11,8 @@ import {
   ABILITY_SHORT_FR,
   type AbilityKey,
   abilityModifier,
+  auraOfProtectionBonus,
+  auraRadiusMeters,
   type Character,
   DND_ABILITIES,
   DND_LANGUAGES,
@@ -58,6 +60,8 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
   const className = findClass(character.characterClass)?.name ?? null;
   const maxExpertise = expertiseSlots(character);
   const usedExpertise = expertiseUsed(character);
+  // Paladin niv 6+ : Aura de protection (+CHA min 1) sur toutes les sauvegardes
+  const auraOfProtection = auraOfProtectionBonus(character);
   const languages = character.languages ?? [];
   const customLanguages = languages.filter((l) => !DND_LANGUAGES.includes(l));
   const [newLang, setNewLang] = useState('');
@@ -187,12 +191,18 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
             Bonus de maîtrise {formatModifier(profBonus)}
           </span>
         </div>
+        {auraOfProtection > 0 && (
+          <p className="text-xs text-gold-700 bg-gold-400/10 border border-gold-400/40 rounded-lg px-2.5 py-1.5">
+            🛡️ Aura de protection : +{auraOfProtection} à toutes tes sauvegardes — et à celles des
+            alliés à {auraRadiusMeters(level)} m (inclus dans les totaux ci-dessous)
+          </p>
+        )}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {DND_ABILITIES.map((abi) => {
             const score = abilityScore(character, abi.key);
             const mod = abilityModifier(score);
             const proficient = saveProficiency(character, abi.key);
-            const total = mod + (proficient ? profBonus : 0);
+            const total = mod + (proficient ? profBonus : 0) + auraOfProtection;
             return (
               <button
                 type="button"

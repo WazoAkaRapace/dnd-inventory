@@ -16,6 +16,7 @@ import type {
   CreateCharacterFeaturePayload,
   PatchCharacterFeaturePayload,
 } from '@dnd-inventory/shared';
+import { classFeatureResourceMax, findClassFeature } from '@dnd-inventory/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
@@ -23,6 +24,7 @@ import {
   characterVisibleTo,
   isPartyGM,
   isPartyMember,
+  mapCharacter,
   mapFeature,
   requireUser,
 } from './helpers.ts';
@@ -106,8 +108,16 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
 
       const category = body.category ?? 'custom';
       const description = body.description ?? null;
-      const counterMax = body.counterMax ?? null;
+      const catalogId = body.catalogId ?? null;
+      // From the catalog without an explicit counterMax: derive it from the
+      // SRD formula at the character's current level (null = no counter).
+      let counterMax = body.counterMax ?? null;
+      if (counterMax === null && catalogId) {
+        const def = findClassFeature(catalogId);
+        if (def) counterMax = classFeatureResourceMax(def, mapCharacter(char));
+      }
       const counterCurrent = counterMax ?? null; // initialize to max
+      const resetType = body.resetType ?? null;
 
       // Compute sort_order as MAX(sort_order)+1 for this character (0 if none yet).
       const maxRow = db
@@ -119,14 +129,16 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
 
       const info = db
         .prepare(`
-        INSERT INTO character_features (character_id, title, category, description, counter_max, counter_current, sort_order)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO character_features (character_id, title, category, description, catalog_id, reset_type, counter_max, counter_current, sort_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
         .run(
           char.id,
           body.title.trim(),
           category,
           description,
+          catalogId,
+          resetType,
           counterMax,
           counterCurrent,
           sortOrder,
@@ -180,6 +192,14 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
       if (body.description !== undefined) {
         sets.push('description = ?');
         vals.push(body.description);
+      }
+      if (body.catalogId !== undefined) {
+        sets.push('catalog_id = ?');
+        vals.push(body.catalogId);
+      }
+      if (body.resetType !== undefined) {
+        sets.push('reset_type = ?');
+        vals.push(body.resetType);
       }
       if (body.counterMax !== undefined) {
         sets.push('counter_max = ?');

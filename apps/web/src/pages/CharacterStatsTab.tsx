@@ -9,6 +9,7 @@ import {
   type AbilityKey,
   abilityModifier,
   type Character,
+  CLASS_SUBCLASSES,
   classWeaponProficiencies,
   computeAC,
   computeEncumbrance,
@@ -49,6 +50,27 @@ const ABILITY_FIELDS: { key: keyof Character; ability: AbilityKey }[] = [
   { key: 'wisdom', ability: 'wisdom' },
   { key: 'charisma', ability: 'charisma' },
 ];
+
+/** Classes using the generic `subclass` column, with their French picker label.
+ *  Clerc/Druide/Paladin keep their dedicated columns (domaine/cercle/serment). */
+const GENERIC_SUBCLASS_LABELS: Record<string, string> = {
+  Barbare: 'Voie primordiale',
+  Barde: 'Collège bardique',
+  Ensorceleur: 'Origine de sorcellerie',
+  Guerrier: 'Archétype martial',
+  Magicien: 'École de magie',
+  Moine: 'Tradition monastique',
+  Occultiste: 'Patron surnaturel',
+  Rôdeur: 'Archétype de rôdeur',
+  Roublard: 'Archétype roublard',
+};
+
+/** Niveau RAW d'acquisition des sous-classes à colonne dédiée. */
+const DEDICATED_SUBCLASS_LEVELS: Record<string, number> = {
+  cercle: 2, // Druide — Cercle druidique
+  terrain: 2, // Druide — Terrain du cercle (cercle de la Terre)
+  serment: 3, // Paladin — Serment sacré
+};
 
 export default function CharacterStatsTab({ character, charId, entries, onSaved, onError }: Props) {
   // Drafts for ability scores (auto-save on blur)
@@ -287,10 +309,19 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
         {findClass(character.characterClass)?.name === 'Druide' &&
           character.druidCircle === 'terre' && (
             <label className="flex items-center justify-between gap-3 max-w-xs">
-              <span className="label mb-0">Terrain du cercle</span>
+              <span className="label mb-0">
+                Terrain du cercle
+                {level < DEDICATED_SUBCLASS_LEVELS.terrain && (
+                  <span className="text-ink-400 font-normal">
+                    {' '}
+                    (niv. {DEDICATED_SUBCLASS_LEVELS.terrain})
+                  </span>
+                )}
+              </span>
               <select
                 className="input py-1.5 text-sm w-auto"
                 value={character.landCircle ?? ''}
+                disabled={level < DEDICATED_SUBCLASS_LEVELS.terrain}
                 onChange={(e) =>
                   patchCharacter(
                     { landCircle: e.target.value === '' ? null : e.target.value },
@@ -310,10 +341,19 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
           )}
         {findClass(character.characterClass)?.name === 'Paladin' && (
           <label className="flex items-center justify-between gap-3 max-w-xs">
-            <span className="label mb-0">Serment sacré</span>
+            <span className="label mb-0">
+              Serment sacré
+              {level < DEDICATED_SUBCLASS_LEVELS.serment && (
+                <span className="text-ink-400 font-normal">
+                  {' '}
+                  (niv. {DEDICATED_SUBCLASS_LEVELS.serment})
+                </span>
+              )}
+            </span>
             <select
               className="input py-1.5 text-sm w-auto"
               value={character.sacredOath ?? ''}
+              disabled={level < DEDICATED_SUBCLASS_LEVELS.serment}
               onChange={(e) =>
                 patchCharacter(
                   { sacredOath: e.target.value === '' ? null : e.target.value },
@@ -333,10 +373,19 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
         )}
         {findClass(character.characterClass)?.name === 'Druide' && (
           <label className="flex items-center justify-between gap-3 max-w-xs">
-            <span className="label mb-0">Cercle druidique</span>
+            <span className="label mb-0">
+              Cercle druidique
+              {level < DEDICATED_SUBCLASS_LEVELS.cercle && (
+                <span className="text-ink-400 font-normal">
+                  {' '}
+                  (niv. {DEDICATED_SUBCLASS_LEVELS.cercle})
+                </span>
+              )}
+            </span>
             <select
               className="input py-1.5 text-sm w-auto"
               value={character.druidCircle ?? ''}
+              disabled={level < DEDICATED_SUBCLASS_LEVELS.cercle}
               onChange={(e) =>
                 patchCharacter(
                   { druidCircle: e.target.value === '' ? null : e.target.value },
@@ -351,6 +400,44 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
             </select>
           </label>
         )}
+        {(() => {
+          // Sous-classe générique (SRD 5.1) — remplit la colonne `subclass`.
+          // Verrouillé tant que le niveau d'acquisition de la classe n'est pas
+          // atteint (1 : Ensorceleur/Occultiste — 2 : Magicien — 3 : le reste).
+          const cls = findClass(character.characterClass)?.name ?? '';
+          const label = GENERIC_SUBCLASS_LABELS[cls];
+          const options = CLASS_SUBCLASSES[cls];
+          if (!label || !options) return null;
+          const unlockLevel = Math.min(...options.map((s) => s.level));
+          const locked = level < unlockLevel;
+          return (
+            <label className="flex items-center justify-between gap-3 max-w-xs">
+              <span className="label mb-0">
+                {label}
+                {locked && <span className="text-ink-400 font-normal"> (niv. {unlockLevel})</span>}
+              </span>
+              <select
+                className="input py-1.5 text-sm w-auto"
+                value={character.subclass ?? ''}
+                disabled={locked}
+                onChange={(e) =>
+                  patchCharacter(
+                    { subclass: e.target.value === '' ? null : e.target.value },
+                    'Erreur de mise à jour',
+                  )
+                }
+                aria-label={label}
+              >
+                <option value="">—</option>
+                {options.map((s) => (
+                  <option key={s.key} value={s.key}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          );
+        })()}
       </section>
 
       {/* Weapon mastery */}

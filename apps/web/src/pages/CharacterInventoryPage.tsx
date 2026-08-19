@@ -1,5 +1,6 @@
 import type {
   Character,
+  CharacterFeature,
   CharacterInventory,
   CharacterSummary,
   ConcentrationCheck,
@@ -20,7 +21,9 @@ import {
   DND_CONDITIONS_FR,
   extraAttacks,
   findClass,
+  findClassFeature,
   formatModifier,
+  maxSpellSlots,
   proficiencyBonus,
   RARITY_LABELS_FR,
   resolveMagicArmorBase,
@@ -2563,6 +2566,33 @@ function SurvivalPanel({
   const [shapeSeenOnly, setShapeSeenOnly] = useState(true);
   const [shapeStatBlock, setShapeStatBlock] = useState<string | null>(null);
   const [shapeHpDraft, setShapeHpDraft] = useState<string | null>(null);
+  // Ressources de classe (traits du catalogue avec compteur) + repos
+  const [resourceFeatures, setResourceFeatures] = useState<CharacterFeature[]>([]);
+  const [restSheet, setRestSheet] = useState<'short' | 'long' | null>(null);
+  const [restHitDice, setRestHitDice] = useState(0);
+  // Soin annoncé par le joueur après avoir lancé ses dés de vie (repos court)
+  const [restHealed, setRestHealed] = useState('');
+  const [restBusy, setRestBusy] = useState(false);
+  // Châtiment divin (Paladin) : arme de mêlée choisie + niveau d'emplacement
+  const [smiteOpen, setSmiteOpen] = useState(false);
+  const [smiteBusy, setSmiteBusy] = useState(false);
+
+  // Traits du catalogue avec compteur → pips « Ressources de classe »
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refetch délibéré après un repos (compteurs rechargés côté API) ou un changement de niveau — pas seulement au montage.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get(`/api/characters/${charId}/features`)
+      .then((res) => {
+        if (cancelled) return;
+        const all: CharacterFeature[] = res.data?.features ?? [];
+        setResourceFeatures(all.filter((f) => f.catalogId && f.counterMax && f.counterMax > 0));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [charId, character.hitDiceUsed, character.currentHp, character.level]);
 
   // Count available food/water from tagged inventory items
   // Water: skip items marked 'empty' in notes
@@ -2701,6 +2731,96 @@ function SurvivalPanel({
     await patchCharacter({ [kind]: next }, 'Erreur de mise à jour');
   };
 
+  // --- Repos court / long (POST /rest — récupération SRD côté API) ---
+  // Les dés de vie sont lancés PAR LE JOUEUR à la table : l'app compte les dés
+  // dépensés et applique le total de PV annoncé.
+  const doRest = async () => {
+    if (!restSheet) return;
+    setRestBusy(true);
+    markLocalMutation();
+    try {
+      const announced = restSheet === 'short' ? Number(restHealed) : NaN;
+      const res = await api.post(`/api/characters/${charId}/rest`, {
+        type: restSheet,
+        hitDiceSpent: restSheet === 'short' ? restHitDice : undefined,
+        healedHp: restSheet === 'short' && Number.isFinite(announced) ? announced : undefined,
+      });
+      const healed = res.data?.healed ?? 0;
+      const diceSpent = res.data?.diceSpent ?? 0;
+      const resetCount = res.data?.resetFeatures ?? 0;
+      const parts: string[] = [];
+      if (diceSpent > 0)
+        parts.push(
+          `${diceSpent} dé${diceSpent > 1 ? 's' : ''} de vie dépensé${diceSpent > 1 ? 's' : ''}`,
+        );
+      if (healed > 0) parts.push(`+${healed} PV`);
+      if (restSheet === 'long') parts.push('PV au max, emplacements et ressources restaurés');
+      if (resetCount > 0)
+        parts.push(
+          `${resetCount} ressource${resetCount > 1 ? 's' : ''} rechargée${resetCount > 1 ? 's' : ''}`,
+        );
+      onNotice?.(
+        `⛺ Repos ${restSheet === 'short' ? 'court' : 'long'}${parts.length ? ` — ${parts.join(' · ')}` : ''}`,
+      );
+      setRestSheet(null);
+      setRestHitDice(0);
+      setRestHealed('');
+      await onSaved();
+    } catch (err: any) {
+      onError(err.response?.data?.error || 'Erreur lors du repos');
+    } finally {
+      setRestBusy(false);
+    }
+  };
+
+  // --- Châtiment divin (Paladin) : consomme un emplacement de sort ---
+  const smiteMaxSlots = maxSpellSlots(character.level ?? 1, 'half');
+  const smiteUsed = character.spellSlotsUsed ?? [0, 0, 0, 0, 0, 0, 0, 0, 0];
+  const smiteAvailable = smiteMaxSlots
+    .map((max, i) => ({
+      level: i + 1,
+      max,
+      used: smiteUsed[i] ?? 0,
+      left: max - (smiteUsed[i] ?? 0),
+    }))
+    .filter((s) => s.left > 0 && s.level >= 1 && s.level <= 5);
+  const doSmite = async (slotLevel: number) => {
+    const next = [...smiteUsed];
+    next[slotLevel - 1] = (next[slotLevel - 1] ?? 0) + 1;
+    setSmiteBusy(true);
+    markLocalMutation();
+    try {
+      await api.patch(`/api/characters/${charId}`, { spellSlotsUsed: next });
+      const dice = 1 + slotLevel + 1; // 2d8 au niv. 1, +1d8 par niveau au-delà
+      onNotice?.(
+        `✨ Châtiment divin : ${dice}d8 dégâts radiants (emplacement de niv. ${slotLevel} consommé)`,
+      );
+      setSmiteOpen(false);
+      await onSaved();
+    } catch {
+      onError('Erreur lors du Châtiment divin');
+    } finally {
+      setSmiteBusy(false);
+    }
+  };
+
+  // --- Pips d'une ressource de classe (même UX que la forme sauvage) ---
+  const stepResource = async (feature: CharacterFeature, value: number) => {
+    const max = feature.counterMax ?? 0;
+    const current = feature.counterCurrent ?? max;
+    if (value === current || value < 0 || value > max) return;
+    markLocalMutation();
+    try {
+      await api.patch(`/api/character-features/${feature.id}`, { counterCurrent: value });
+      setResourceFeatures((prev) =>
+        prev.map((f) => (f.id === feature.id ? { ...f, counterCurrent: value } : f)),
+      );
+      await onSaved();
+    } catch {
+      onError('Erreur de mise à jour');
+    }
+  };
+
   return (
     <section className="card p-4 sm:p-5 space-y-4">
       <h2 className="section-title flex items-center gap-2">
@@ -2783,6 +2903,28 @@ function SurvivalPanel({
                           ✨ +{stats.magicBonus}
                         </Chip>
                       )}
+                      {stats.critRange < 20 && (
+                        <Chip
+                          tone="blood"
+                          soft
+                          title={`Critique amélioré (Champion) : touche critique sur ${stats.critRange}-20`}
+                        >
+                          🩸 crit {stats.critRange}-20
+                        </Chip>
+                      )}
+                      {findClass(character.characterClass)?.name === 'Paladin' &&
+                        (character.level ?? 1) >= 2 &&
+                        !stats.ranged &&
+                        canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => setSmiteOpen(true)}
+                            className="text-[11px] px-2 py-1 rounded-md border border-purple-300 bg-purple-50 text-purple-800 hover:border-purple-500 transition-colors"
+                            title="Dépenser un emplacement de sort : +2d8 dégâts radiants (+1d8/niveau, +1d8 vs morts-vivants et fiélons)"
+                          >
+                            ✨ Châtiment divin
+                          </button>
+                        )}
                       {stats.presumedBase && (
                         <span className="text-[10px] text-ink-400 italic">base présumée</span>
                       )}
@@ -3227,6 +3369,66 @@ function SurvivalPanel({
           />
         )}
 
+        {/* Ressources de classe — traits du catalogue avec compteur (rage, ki, canalisation…) */}
+        {resourceFeatures.length > 0 && (
+          <div>
+            <span className="text-sm font-medium text-ink-700 block mb-1.5">
+              ⚡ Ressources de classe
+            </span>
+            <div className="space-y-1.5">
+              {resourceFeatures.map((feature) => {
+                const def = findClassFeature(feature.catalogId ?? '');
+                const max = feature.counterMax ?? 0;
+                const current = feature.counterCurrent ?? max;
+                const isPool = def?.resource?.unit === 'PV';
+                const resetShort =
+                  def?.resource?.reset === 'short' ||
+                  (def?.resource?.shortFromLevel !== undefined &&
+                    (character.level ?? 1) >= def.resource.shortFromLevel);
+                return (
+                  <div
+                    key={feature.id}
+                    className="flex items-center justify-between gap-2 bg-parchment-50 rounded-lg px-3 py-2 border border-parchment-200"
+                  >
+                    <span className="text-sm font-medium text-ink-800 truncate flex items-center gap-1.5">
+                      {isPool ? '❤️' : '⚡'} {feature.title}
+                    </span>
+                    <span className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => stepResource(feature, current - 1)}
+                        disabled={current <= 0}
+                        className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center"
+                        aria-label={`Dépenser ${feature.title}`}
+                      >
+                        −
+                      </button>
+                      <span className="text-sm font-bold tabular-nums text-ink-800 min-w-10 text-center">
+                        {current}
+                        <span className="text-ink-400 font-normal">
+                          {' '}
+                          / {max}
+                          {isPool ? ' PV' : ''}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => stepResource(feature, current + 1)}
+                        disabled={current >= max}
+                        className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center"
+                        aria-label={`Récupérer ${feature.title}`}
+                        title={resetShort ? 'Repos court ou long' : 'Repos long'}
+                      >
+                        +
+                      </button>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Hit dice — spent on a short rest to heal */}
         {(() => {
           const classInfo = findClass(character.characterClass);
@@ -3282,6 +3484,32 @@ function SurvivalPanel({
             </div>
           );
         })()}
+
+        {/* Repos court / long — restauration SRD (emplacements de pacte, forme sauvage, dés de vie, épuisement, ressources) */}
+        {canEdit && (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setRestHitDice(0);
+                setRestHealed('');
+                setRestSheet('short');
+              }}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-indigo-50 text-indigo-800 border border-indigo-200 hover:border-indigo-400 transition-colors"
+              title="Emplacements de pacte, forme sauvage, ressources « repos court » ; dés de vie lancés par le joueur"
+            >
+              ⛺ Repos court
+            </button>
+            <button
+              type="button"
+              onClick={() => setRestSheet('long')}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-purple-50 text-purple-800 border border-purple-200 hover:border-purple-400 transition-colors"
+              title="PV au maximum, tous les emplacements, la moitié du niveau en dés de vie (min 1), épuisement −1, toutes les ressources"
+            >
+              🌙 Repos long
+            </button>
+          </div>
+        )}
 
         {/* Inspiration + Concentration toggles */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -3465,6 +3693,192 @@ function SurvivalPanel({
           </div>
         </div>
       </div>
+
+      {/* --- Sheet repos court : dépense de dés de vie + résumé --- */}
+      <BottomSheet
+        open={restSheet === 'short'}
+        onClose={() => setRestSheet(null)}
+        title="⛺ Repos court (1 h)"
+        mobileOnly={false}
+        size="md"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={doRest}
+              disabled={restBusy}
+              className="btn-primary flex-1 disabled:opacity-50"
+            >
+              {restBusy ? '…' : 'Se reposer'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setRestSheet(null)}
+              className="btn-ghost text-ink-700"
+            >
+              Annuler
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-sm text-ink-700">
+          <p>
+            Récupéré après un repos court : emplacements de pacte (Occultiste), utilisations de
+            forme sauvage, ressources marquées « repos court », et dés de vie dépensés pour soigner.
+          </p>
+          {(() => {
+            const classInfo = findClass(character.characterClass);
+            const die = classInfo?.hitDie ?? 8;
+            const total = character.level ?? 1;
+            const remaining = Math.max(0, total - (character.hitDiceUsed ?? 0));
+            const conMod = Math.floor(((character.constitution ?? 10) - 10) / 2);
+            return (
+              <div className="bg-parchment-100 rounded-lg p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">
+                    🎲 Dés de vie dépensés (d{die}
+                    {conMod !== 0 ? ` ${conMod > 0 ? '+' : ''}${conMod}` : ''})
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setRestHitDice((n) => Math.max(0, n - 1))}
+                      disabled={restHitDice <= 0}
+                      className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 font-medium"
+                      aria-label="Un dé de vie de moins"
+                    >
+                      −
+                    </button>
+                    <span className="font-bold tabular-nums w-10 text-center">
+                      {restHitDice}
+                      <span className="text-ink-400 font-normal"> / {remaining}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setRestHitDice((n) => Math.min(remaining, n + 1))}
+                      disabled={restHitDice >= remaining}
+                      className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 font-medium"
+                      aria-label="Un dé de vie de plus"
+                    >
+                      +
+                    </button>
+                  </span>
+                </div>
+                {restHitDice > 0 && (
+                  <label className="block">
+                    <span className="text-xs font-medium text-ink-500">
+                      Lance tes dés ({restHitDice}d{die}
+                      {conMod !== 0 ? `${conMod > 0 ? '+' : ''}${conMod * restHitDice}` : ''}) puis
+                      indique le total regagné :
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      className="input py-1.5 text-sm mt-1"
+                      value={restHealed}
+                      onChange={(e) => setRestHealed(e.target.value)}
+                      placeholder="PV regagnés (ex. 23)"
+                      inputMode="numeric"
+                    />
+                    <span className="text-[10px] text-ink-400 block mt-1">
+                      Le compteur de dés est mis à jour et le soin appliqué (plafonné aux PV max) ;
+                      tout PV récupéré efface les sauvegardes de mort.
+                    </span>
+                  </label>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+      </BottomSheet>
+
+      {/* --- Sheet repos long : résumé de récupération --- */}
+      <BottomSheet
+        open={restSheet === 'long'}
+        onClose={() => setRestSheet(null)}
+        title="🌙 Repos long (8 h)"
+        mobileOnly={false}
+        size="md"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={doRest}
+              disabled={restBusy}
+              className="btn-primary flex-1 disabled:opacity-50"
+            >
+              {restBusy ? '…' : 'Se reposer'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setRestSheet(null)}
+              className="btn-ghost text-ink-700"
+            >
+              Annuler
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-sm text-ink-700">
+          <p>Après un repos long (au plus un par 24 h), tu récupères :</p>
+          <ul className="list-disc pl-5 space-y-1 text-sm">
+            <li>Tous tes PV (les PV temporaires disparaissent)</li>
+            <li>Tous tes emplacements de sort</li>
+            <li>
+              {Math.max(1, Math.floor((character.level ?? 1) / 2))} dés de vie (la moitié de ton
+              niveau, min 1)
+            </li>
+            {character.exhaustion > 0 && <li>1 niveau d'épuisement en moins</li>}
+            <li>Forme sauvage et toutes les ressources de classe</li>
+            {(character.concentrating ?? false) && <li>La concentration prend fin</li>}
+          </ul>
+          <p className="text-xs text-ink-400">
+            Les états et la soif/faim ne sont pas touchés — gérés séparément dans l'onglet Survie.
+          </p>
+        </div>
+      </BottomSheet>
+
+      {/* --- Sheet Châtiment divin (Paladin) --- */}
+      <BottomSheet
+        open={smiteOpen}
+        onClose={() => setSmiteOpen(false)}
+        title="✨ Châtiment divin"
+        mobileOnly={false}
+        size="md"
+      >
+        <div className="space-y-3 text-sm text-ink-700">
+          <p>
+            Quand tu touches avec une arme de mêlée, dépense un emplacement de sort :
+            <strong className="text-purple-800"> 2d8 dégâts radiants</strong>, +1d8 par niveau
+            d'emplacement au-delà de 1, et +1d8 contre les morts-vivants et les fiélons.
+          </p>
+          {smiteAvailable.length === 0 ? (
+            <p className="text-ink-400 italic">Aucun emplacement disponible — repos long requis.</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              {smiteAvailable.map((s) => (
+                <button
+                  type="button"
+                  key={s.level}
+                  onClick={() => doSmite(s.level)}
+                  disabled={smiteBusy}
+                  className="rounded-lg border border-purple-200 bg-purple-50 hover:border-purple-400 px-3 py-2.5 text-left transition-colors disabled:opacity-50"
+                >
+                  <span className="block font-semibold text-purple-900">
+                    Emplacement de niv. {s.level}
+                  </span>
+                  <span className="block text-xs text-purple-700">
+                    {2 + s.level}d8 radiants ({s.left} restant{s.left > 1 ? 's' : ''})
+                  </span>
+                  <span className="block text-[10px] text-purple-500">
+                    {3 + s.level}d8 vs morts-vivants / fiélons
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </BottomSheet>
     </section>
   );
 }

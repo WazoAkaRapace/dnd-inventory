@@ -23,6 +23,7 @@ import { locationRoutes } from './routes/locations.ts';
 import { monsterRoutes } from './routes/monsters.ts';
 import { npcRoutes } from './routes/npcs.ts';
 import { partyRoutes } from './routes/parties.ts';
+import { restRoutes } from './routes/rest.ts';
 import { spellRoutes } from './routes/spells.ts';
 import { wildShapeRoutes } from './routes/wildshape.ts';
 import { registerWsRoutes } from './sync/ws.ts';
@@ -124,6 +125,7 @@ async function buildServer() {
   await app.register(combatRoutes, { prefix: '/api' });
   await app.register(wildShapeRoutes, { prefix: '/api' });
   await app.register(domainSpellRoutes, { prefix: '/api' });
+  await app.register(restRoutes, { prefix: '/api' });
 
   // WebSocket (real-time sync)
   await registerWsRoutes(app);

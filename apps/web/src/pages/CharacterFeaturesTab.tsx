@@ -6,8 +6,14 @@
 import {
   type Character,
   type CharacterFeature,
+  CLASS_FEATURES,
+  CLASS_SUBCLASSES,
+  type ClassFeatureDef,
+  DND_CLASSES,
   FEATURE_CATEGORY_LABELS_FR,
   type FeatureCategory,
+  findClass,
+  nextClassFeatureGain,
   renderFeatureTemplate,
   TEMPLATE_VARIABLES,
 } from '@dnd-inventory/shared';
@@ -51,6 +57,8 @@ export default function CharacterFeaturesTab({
   const [category, setCategory] = useState<FeatureCategory>('class');
   const [description, setDescription] = useState('');
   const [counterMax, setCounterMax] = useState('');
+  const [resetShort, setResetShort] = useState(false);
+  const [resetLong, setResetLong] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -86,6 +94,8 @@ export default function CharacterFeaturesTab({
     setCategory('class');
     setDescription('');
     setCounterMax('');
+    setResetShort(false);
+    setResetLong(false);
     setShowTemplateHelp(false);
     setShowModal(true);
   };
@@ -96,6 +106,8 @@ export default function CharacterFeaturesTab({
     setCategory(feature.category);
     setDescription(feature.description ?? '');
     setCounterMax(feature.counterMax ? String(feature.counterMax) : '');
+    setResetShort(feature.resetType === 'short');
+    setResetLong(feature.resetType === 'short' || feature.resetType === 'long');
     setShowTemplateHelp(false);
     setShowModal(true);
   };
@@ -107,6 +119,8 @@ export default function CharacterFeaturesTab({
     }
     const cm = counterMax.trim() ? Math.max(0, Number(counterMax)) : null;
     const cmVal = cm !== null && cm > 0 ? cm : null;
+    // Un repos court inclut le repos long : court ⇒ les deux.
+    const resetType = !cmVal ? null : resetShort ? 'short' : resetLong ? 'long' : null;
     setSaving(true);
     try {
       if (editing) {
@@ -115,6 +129,7 @@ export default function CharacterFeaturesTab({
           category,
           description: description.trim() || null,
           counterMax: cmVal,
+          resetType,
         });
       } else {
         await api.post(`/api/characters/${charId}/features`, {
@@ -122,6 +137,7 @@ export default function CharacterFeaturesTab({
           category,
           description: description.trim() || undefined,
           counterMax: cmVal ?? undefined,
+          resetType,
         });
       }
       setShowModal(false);
@@ -158,6 +174,22 @@ export default function CharacterFeaturesTab({
     }
   };
 
+  // Catalogue : ajout en 1 clic — le compteur est déduit de la formule SRD côté API
+  const addFromCatalog = async (def: ClassFeatureDef) => {
+    try {
+      await api.post(`/api/characters/${charId}/features`, {
+        title: def.name,
+        category: 'class',
+        description: def.description,
+        catalogId: def.id,
+      });
+      await load();
+      await onSaved();
+    } catch {
+      onError("Erreur d'ajout depuis le catalogue");
+    }
+  };
+
   // Group features by category
   const categories = Object.keys(FEATURE_CATEGORY_LABELS_FR) as FeatureCategory[];
   const grouped = categories
@@ -166,6 +198,8 @@ export default function CharacterFeaturesTab({
       items: features.filter((f) => f.category === cat),
     }))
     .filter((g) => g.items.length > 0);
+
+  const addedCatalogIds = new Set(features.map((f) => f.catalogId).filter(Boolean) as string[]);
 
   if (loading) {
     return <p className="text-sm text-ink-400 animate-pulse">Chargement…</p>;
@@ -181,6 +215,9 @@ export default function CharacterFeaturesTab({
           + Ajouter
         </button>
       </div>
+
+      {/* Catalogue SRD par classe/niveau — ajout en 1 clic avec compteur pré-rempli */}
+      <CatalogCard character={character} addedCatalogIds={addedCatalogIds} onAdd={addFromCatalog} />
 
       {features.length === 0 ? (
         <div className="card p-8">
@@ -275,6 +312,20 @@ export default function CharacterFeaturesTab({
                             </div>
                           );
                         })()}
+
+                      {/* Badge de recharge aux repos (traits libres) */}
+                      {(feature.counterMax ?? 0) > 0 && feature.resetType && (
+                        <span
+                          className="self-start text-[10px] px-2 py-0.5 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-200"
+                          title={
+                            feature.resetType === 'short'
+                              ? 'Se recharge après un repos court ou long'
+                              : 'Se recharge après un repos long'
+                          }
+                        >
+                          ↻ {feature.resetType === 'short' ? 'repos court' : 'repos long'}
+                        </span>
+                      )}
 
                       <span
                         className={`inline-block self-start text-[10px] px-2 py-0.5 rounded-full border ${CATEGORY_COLORS[feature.category]}`}
@@ -371,6 +422,44 @@ export default function CharacterFeaturesTab({
             </p>
           </label>
 
+          {/* Recharge aux repos — traits libres uniquement (le catalogue suit la règle SRD) */}
+          {counterMax.trim() !== '' && Number(counterMax) > 0 && !editing?.catalogId && (
+            <div className="bg-parchment-50 rounded-lg p-3 border border-parchment-200 space-y-1.5">
+              <span className="text-xs font-medium text-ink-500 block">
+                Le compteur se restaure aux repos (boutons de l'onglet Survie) :
+              </span>
+              <label className="flex items-center gap-2 text-sm text-ink-700">
+                <input
+                  type="checkbox"
+                  checked={resetShort}
+                  onChange={(e) => {
+                    setResetShort(e.target.checked);
+                    if (e.target.checked) setResetLong(true); // court ⇒ long aussi
+                  }}
+                  className="w-4 h-4 accent-blood-600"
+                />
+                ↻ Repos court (et donc long)
+              </label>
+              <label className="flex items-center gap-2 text-sm text-ink-700">
+                <input
+                  type="checkbox"
+                  checked={resetLong}
+                  onChange={(e) => {
+                    setResetLong(e.target.checked);
+                    if (!e.target.checked) setResetShort(false); // pas de court sans long
+                  }}
+                  className="w-4 h-4 accent-blood-600"
+                />
+                ↻ Repos long uniquement
+              </label>
+              {!resetShort && !resetLong && (
+                <p className="text-xs text-ink-400">
+                  Aucune case cochée : rechargement manuel uniquement.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Live preview */}
           {description.trim() && (
             <div className="bg-parchment-100 rounded-lg p-3">
@@ -427,6 +516,205 @@ export default function CharacterFeaturesTab({
           </div>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+// ---------- Catalogue SRD (capacités par classe/niveau) ----------
+
+function resetLabel(def: ClassFeatureDef, character: Character): string | null {
+  if (!def.resource) return null;
+  const short =
+    def.resource.reset === 'short' ||
+    (def.resource.shortFromLevel !== undefined &&
+      (character.level ?? 1) >= def.resource.shortFromLevel);
+  const unit = def.resource.unit === 'PV' ? ' PV' : '';
+  return short ? `${unit || 'util.'} / repos court*` : `${unit || 'util.'} / repos long`;
+}
+
+function CatalogCard({
+  character,
+  addedCatalogIds,
+  onAdd,
+}: {
+  character: Character;
+  addedCatalogIds: Set<string>;
+  onAdd: (def: ClassFeatureDef) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const charClassName = findClass(character.characterClass)?.name ?? 'Guerrier';
+  const [cls, setCls] = useState(charClassName);
+  const [subFilter, setSubFilter] = useState('base');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [addingId, setAddingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setCls(charClassName);
+    setSubFilter('base');
+  }, [charClassName]);
+
+  const level = character.level ?? 1;
+  const isOwnClass = cls === charClassName;
+  const subclasses = CLASS_SUBCLASSES[cls] ?? [];
+  const defs: ClassFeatureDef[] =
+    subFilter === 'base'
+      ? (CLASS_FEATURES[cls] ?? [])
+      : (subclasses.find((s) => s.key === subFilter)?.features ?? []);
+  const sorted = [...defs].sort((a, b) => a.level - b.level);
+
+  // Prochaine acquisition (base + sous-classe active du perso)
+  const nextGain = nextClassFeatureGain(character);
+
+  const add = async (def: ClassFeatureDef) => {
+    setAddingId(def.id);
+    try {
+      await onAdd(def);
+    } finally {
+      setAddingId(null);
+    }
+  };
+
+  return (
+    <div className="card p-4">
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-2 text-sm font-semibold text-ink-700 hover:text-blood-700 transition-colors"
+          aria-expanded={open}
+        >
+          <span aria-hidden="true">📚</span> Catalogue de classe
+          <span className="text-xs font-normal text-ink-400">{open ? '▼' : '▶'}</span>
+        </button>
+        {nextGain && (
+          <span className="text-[11px] text-ink-500 text-right">
+            Au niveau {nextGain.level} : {nextGain.features.map((f) => f.name).join(', ')}
+          </span>
+        )}
+      </div>
+
+      {open && (
+        <div className="mt-3 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs text-ink-500">
+              Classe
+              <select
+                className="input py-1 text-xs w-auto"
+                value={cls}
+                onChange={(e) => {
+                  setCls(e.target.value);
+                  setSubFilter('base');
+                }}
+                aria-label="Classe du catalogue"
+              >
+                {DND_CLASSES.map((c) => (
+                  <option key={c.name} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {subclasses.length > 0 && (
+              <label className="flex items-center gap-1.5 text-xs text-ink-500">
+                Voie
+                <select
+                  className="input py-1 text-xs w-auto"
+                  value={subFilter}
+                  onChange={(e) => setSubFilter(e.target.value)}
+                  aria-label="Sous-classe du catalogue"
+                >
+                  <option value="base">Classe de base</option>
+                  {subclasses.map((s) => (
+                    <option key={s.key} value={s.key}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+
+          <div className="divide-y divide-parchment-100 rounded-lg border border-parchment-200 overflow-hidden">
+            {sorted.length === 0 && (
+              <p className="text-xs text-ink-400 p-3">Aucune capacité cataloguée ici.</p>
+            )}
+            {sorted.map((def) => {
+              const added = addedCatalogIds.has(def.id);
+              const locked = isOwnClass && def.level > level;
+              const expanded = expandedId === def.id;
+              const reset = resetLabel(def, character);
+              return (
+                <div key={def.id} className="bg-parchment-50/60">
+                  <div className="flex items-center gap-2 px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedId(expanded ? null : def.id)}
+                      className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                      aria-expanded={expanded}
+                    >
+                      <span
+                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                          isOwnClass && def.level <= level
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-parchment-200 text-ink-500'
+                        }`}
+                      >
+                        Niv {def.level}
+                      </span>
+                      <span className="text-sm font-medium text-ink-800 truncate">{def.name}</span>
+                      {def.native && (
+                        <span className="text-[10px] text-ink-400 italic shrink-0">
+                          géré par la fiche
+                        </span>
+                      )}
+                      {reset && (
+                        <span
+                          className="text-[10px] text-blood-600 shrink-0"
+                          title={
+                            def.resource?.reset === 'short'
+                              ? 'Récupéré après un repos court ou long'
+                              : 'Récupéré après un repos long'
+                          }
+                        >
+                          ↻ {reset}
+                        </span>
+                      )}
+                    </button>
+                    {added ? (
+                      <span className="text-xs text-green-700 font-semibold shrink-0">
+                        ✓ ajouté
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => add(def)}
+                        disabled={locked || addingId === def.id}
+                        className={`text-xs px-2 py-1 rounded-lg shrink-0 transition-colors ${
+                          locked
+                            ? 'bg-parchment-200 text-ink-400 cursor-not-allowed'
+                            : 'bg-blood-600 text-white hover:bg-blood-700 disabled:opacity-50'
+                        }`}
+                        title={locked ? `Nécessite le niveau ${def.level}` : 'Ajouter aux traits'}
+                      >
+                        {locked ? `Niv ${def.level}` : addingId === def.id ? '…' : '+ Ajouter'}
+                      </button>
+                    )}
+                  </div>
+                  {expanded && (
+                    <p className="text-xs text-ink-600 px-3 pb-2.5 leading-relaxed whitespace-pre-line">
+                      {renderFeatureTemplate(def.description, character)}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-ink-400">
+            * le compteur se recharge via les boutons Repos de l'onglet Survie. Le maximum est
+            recalculé à ton niveau actuel lors de l'ajout.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

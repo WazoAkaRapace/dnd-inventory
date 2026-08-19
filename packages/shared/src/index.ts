@@ -3,6 +3,17 @@
  * Weights are ALWAYS in kilograms (SI). The SRD source data (lb) is converted at import.
  */
 
+import {
+  bardicInspirationDie,
+  classFeatureResourceMax,
+  eldritchInvocationsCount,
+  findClassFeature,
+  resourceResetsOn,
+  songOfRestDie,
+} from './classFeatures.ts';
+
+export * from './classFeatures.ts';
+
 // ---------- Items ----------
 
 export type ItemCategory =
@@ -318,6 +329,10 @@ export interface CharacterSummary {
   wildShapeSeen: string[];
   // Druidic circle: 'terre' | 'lune' | null
   druidCircle: string | null;
+  // Subclass for the classes without a dedicated column (Barbare, Barde,
+  // Ensorceleur, Guerrier, Magicien, Moine, Occultiste, Rôdeur, Roublard):
+  // a CLASS_SUBCLASSES key. Clerc/Druide/Paladin use their dedicated columns.
+  subclass: string | null;
   // Divine domain (Clerc): 'savoir' | 'vie' | … | null
   divineDomain: string | null;
   // Druid Circle of the Land terrain + Paladin Sacred Oath
@@ -426,6 +441,7 @@ export interface PatchCharacterPayload {
   hitDiceUsed?: number;
   wildShapeSeen?: string[];
   druidCircle?: string | null;
+  subclass?: string | null;
   divineDomain?: string | null;
   landCircle?: string | null;
   sacredOath?: string | null;
@@ -945,32 +961,32 @@ export const SPELL_SLOTS_ARTIFICIER: number[][] = [
 ];
 
 /**
- * Pact magic (Warlock) slots by level (1-20).
- * Warlocks get 2 slots of a single level that scales with character level.
- * Represented as [slotLevel-1 filled with the count, rest 0].
- * e.g. level 5 = [0,2,0,0,0,0,0,0,0] (2 slots of level 2).
+ * Pact magic (Warlock) slots by level (1-20), SRD RAW.
+ * 1 slot of level 1 at level 1, 2 slots from level 2, 3 slots at level 11,
+ * 4 slots at level 17 — the slot level scales: L1 (1-2), L2 (3-4), L3 (5-6),
+ * L4 (7-8), L5 (9+). Represented as [slotLevel-1 filled with the count, rest 0].
  */
 export const SPELL_SLOTS_PACT: number[][] = [
-  [2, 0, 0, 0, 0, 0, 0, 0, 0], // L1
+  [1, 0, 0, 0, 0, 0, 0, 0, 0], // L1
   [2, 0, 0, 0, 0, 0, 0, 0, 0], // L2
-  [2, 0, 0, 0, 0, 0, 0, 0, 0], // L3
+  [0, 2, 0, 0, 0, 0, 0, 0, 0], // L3
   [0, 2, 0, 0, 0, 0, 0, 0, 0], // L4
-  [0, 2, 0, 0, 0, 0, 0, 0, 0], // L5
+  [0, 0, 2, 0, 0, 0, 0, 0, 0], // L5
   [0, 0, 2, 0, 0, 0, 0, 0, 0], // L6
-  [0, 0, 2, 0, 0, 0, 0, 0, 0], // L7
+  [0, 0, 0, 2, 0, 0, 0, 0, 0], // L7
   [0, 0, 0, 2, 0, 0, 0, 0, 0], // L8
-  [0, 0, 0, 2, 0, 0, 0, 0, 0], // L9
+  [0, 0, 0, 0, 2, 0, 0, 0, 0], // L9
   [0, 0, 0, 0, 2, 0, 0, 0, 0], // L10
-  [0, 0, 0, 0, 2, 0, 0, 0, 0], // L11
-  [0, 0, 0, 0, 2, 0, 0, 0, 0], // L12
-  [0, 0, 0, 0, 2, 0, 0, 0, 0], // L13
-  [0, 0, 0, 0, 2, 0, 0, 0, 0], // L14
-  [0, 0, 0, 0, 2, 0, 0, 0, 0], // L15
-  [0, 0, 0, 0, 2, 0, 0, 0, 0], // L16
-  [0, 0, 0, 0, 0, 2, 0, 0, 0], // L17
-  [0, 0, 0, 0, 0, 2, 0, 0, 0], // L18
-  [0, 0, 0, 0, 0, 2, 0, 0, 0], // L19
-  [0, 0, 0, 0, 0, 0, 2, 0, 0], // L20
+  [0, 0, 0, 0, 3, 0, 0, 0, 0], // L11
+  [0, 0, 0, 0, 3, 0, 0, 0, 0], // L12
+  [0, 0, 0, 0, 3, 0, 0, 0, 0], // L13
+  [0, 0, 0, 0, 3, 0, 0, 0, 0], // L14
+  [0, 0, 0, 0, 3, 0, 0, 0, 0], // L15
+  [0, 0, 0, 0, 3, 0, 0, 0, 0], // L16
+  [0, 0, 0, 0, 4, 0, 0, 0, 0], // L17
+  [0, 0, 0, 0, 4, 0, 0, 0, 0], // L18
+  [0, 0, 0, 0, 4, 0, 0, 0, 0], // L19
+  [0, 0, 0, 0, 4, 0, 0, 0, 0], // L20
 ];
 
 /** Get max spell slots for a character level + spellcasting type. Returns 9-element array. */
@@ -1034,7 +1050,12 @@ export function computeAC(
   }>,
   dexMod: number,
   defenseStyle = false,
-  character?: { constitution?: number; wisdom?: number; characterClass?: string | null },
+  character?: {
+    constitution?: number;
+    wisdom?: number;
+    characterClass?: string | null;
+    subclass?: string | null;
+  },
 ): ArmorClassResult {
   // Find equipped armor (non-shield) and shield
   let armor: { acBase: number; armorType: 'light' | 'medium' | 'heavy'; name: string } | null =
@@ -1102,6 +1123,10 @@ export function computeAC(
       const conMod = abilityModifier(character?.constitution ?? 10);
       ac = 10 + dexMod + conMod;
       source = `Sans armure · 10 ${formatModifier(dexMod)} ${formatModifier(conMod)} (Barbare)`;
+    } else if (cls === 'Ensorceleur' && character?.subclass === 'draconique') {
+      // Draconic Resilience (Lignée draconique): 13 + DEX, shield allowed
+      ac = 13 + dexMod;
+      source = `Sans armure · 13 ${formatModifier(dexMod)} (Résilience draconique)`;
     } else if (cls === 'Moine' && !hasShield) {
       const wisMod = abilityModifier(character?.wisdom ?? 10);
       ac = 10 + dexMod + wisMod;
@@ -1739,6 +1764,8 @@ export interface WeaponAttackStats {
   presumedBase: boolean;
   /** Moine: the martial arts die replaced the weapon's damage die (SRD). */
   martialArtsDie: boolean;
+  /** Lower d20 bound for a critical hit (Champion: 19 or 18; 20 = default). */
+  critRange: 18 | 19 | 20;
   ranged: boolean;
   finesse: boolean;
 }
@@ -1766,6 +1793,7 @@ export function computeWeaponStats(
   character: Pick<Character, 'strength' | 'dexterity' | 'level' | 'characterClass'> & {
     weaponProficiencies?: string[] | null;
     fightingStyle?: FightingStyle | null;
+    subclass?: string | null;
   },
 ): WeaponAttackStats | null {
   if (item.category !== 'weapon') return null;
@@ -1862,6 +1890,7 @@ export function computeWeaponStats(
     magicBonus,
     presumedBase,
     martialArtsDie: martialDieApplied,
+    critRange: criticalRange(character.characterClass, character.subclass, character.level ?? 1),
     ranged,
     finesse,
   };
@@ -2399,7 +2428,7 @@ export function sneakAttackDice(level: number): string {
 
 /**
  * Extra Attack: attacks per Attack action.
- * Guerrier 2/3/4 at levels 5/11/20; Barbare, Paladin, Rôdeur 2 at level 5.
+ * Guerrier 2/3/4 at levels 5/11/20; Barbare, Paladin, Rôdeur, Moine 2 at level 5.
  */
 export function extraAttacks(characterClass: string | null | undefined, level: number): number {
   const cls = findClass(characterClass)?.name;
@@ -2407,10 +2436,47 @@ export function extraAttacks(characterClass: string | null | undefined, level: n
     if (level >= 20) return 4;
     if (level >= 11) return 3;
     if (level >= 5) return 2;
-  } else if ((cls === 'Barbare' || cls === 'Paladin' || cls === 'Rôdeur') && level >= 5) {
+  } else if (
+    (cls === 'Barbare' || cls === 'Paladin' || cls === 'Rôdeur' || cls === 'Moine') &&
+    level >= 5
+  ) {
     return 2;
   }
   return 1;
+}
+
+// ---------- Critical range & Paladin auras (SRD) ----------
+
+/**
+ * Weapon crit range on the d20 (lower bound; 20 = default).
+ * Guerrier Champion: 19 at level 3, 18 at level 15 (Critique amélioré/supérieur).
+ */
+export function criticalRange(
+  characterClass: string | null | undefined,
+  subclass: string | null | undefined,
+  level: number,
+): 18 | 19 | 20 {
+  if (findClass(characterClass)?.name === 'Guerrier' && subclass === 'champion') {
+    if (level >= 15) return 18;
+    if (level >= 3) return 19;
+  }
+  return 20;
+}
+
+/** Paladin Aura of Protection (level 6): +CHA mod (min 1) to all saves. */
+export function auraOfProtectionBonus(character: {
+  characterClass?: string | null;
+  level?: number;
+  charisma?: number;
+}): number {
+  if (findClass(character.characterClass)?.name !== 'Paladin') return 0;
+  if ((character.level ?? 1) < 6) return 0;
+  return Math.max(1, abilityModifier(character.charisma ?? 10));
+}
+
+/** Paladin aura radius in meters (3 m, 9 m from level 18). */
+export function auraRadiusMeters(level: number): number {
+  return level >= 18 ? 9 : 3;
 }
 
 // ---------- Unarmed strikes (SRD) ----------
@@ -2752,6 +2818,12 @@ export interface CharacterFeature {
   title: string;
   category: FeatureCategory;
   description: string | null; // template text with {{variables}}
+  /** Catalog link (classFeatures.ts id) when added from the SRD catalog — powers
+   *  rest resets (short/long) and level-scaled counterMax recomputation. */
+  catalogId: string | null;
+  /** Manual rest recharge (traits without a catalog link): 'short' = court OU
+   *  long, 'long' = repos long uniquement, null = manual only. */
+  resetType: 'short' | 'long' | null;
   counterMax: number | null; // null/0 = no counter; positive = max charges
   counterCurrent: number | null;
   sortOrder: number;
@@ -2762,6 +2834,8 @@ export interface CreateCharacterFeaturePayload {
   title: string;
   category?: FeatureCategory;
   description?: string;
+  catalogId?: string | null;
+  resetType?: 'short' | 'long' | null;
   counterMax?: number;
 }
 
@@ -2769,6 +2843,8 @@ export interface PatchCharacterFeaturePayload {
   title?: string;
   category?: FeatureCategory;
   description?: string | null;
+  catalogId?: string | null;
+  resetType?: 'short' | 'long' | null;
   counterMax?: number | null;
   counterCurrent?: number | null;
 }
@@ -2824,6 +2900,13 @@ export function renderFeatureTemplate(text: string, character: Character): strin
     passive_perception: String(passivePerception(wisMod, prof, perceptionLevel)),
   };
 
+  // Class-resource variables (feature catalog formulas)
+  vars.bardic_die = bardicInspirationDie(level);
+  vars.song_die = songOfRestDie(level);
+  vars.invocations = String(eldritchInvocationsCount(level));
+  vars.lay_on_hands = String(5 * level);
+  vars.sneak_dice = sneakAttackDice(level);
+
   // Spellcasting variables
   if (isCaster) {
     vars.save_dc = String(spellSaveDC(castingMod, prof));
@@ -2859,6 +2942,119 @@ export function renderFeatureTemplate(text: string, character: Character): strin
   return text.replace(/\{\{(\w+:[\w]+|\w+)\}\}/g, (match, key: string) => {
     return vars[key] ?? match; // Leave unknown variables as-is
   });
+}
+
+// ---------- Rests (repos court / repos long, SRD) ----------
+
+/** What a rest changes: the character PATCH plus catalog-feature counter resets. */
+export interface RestResult {
+  characterPatch: PatchCharacterPayload;
+  featureResets: Array<{
+    featureId: number;
+    counterMax: number;
+    counterCurrent: number;
+  }>;
+  /** Hit dice spent on the rest (counted — the PLAYER rolls them at the table). */
+  diceSpent: number;
+  /** Total HP actually regained (the player-entered healing, capped at max HP). */
+  healed: number;
+}
+
+/**
+ * Apply a short or long rest (pure — returns the patch, the caller persists it).
+ *
+ * Short rest: pact-magic slots restored (Occultiste), wild shape uses reset,
+ * short-rest catalog counters reset, optional hit-dice spending. The dice are
+ * rolled BY THE PLAYER at the table — we only count them (hitDiceSpent) and
+ * apply the healing they announce (healedHp), capped at max HP; any HP regained
+ * clears death saves.
+ *
+ * Long rest: HP to max, temp HP to 0, all slots restored, half the level (min 1)
+ * hit dice regained, exhaustion −1, death saves cleared, concentration dropped,
+ * wild shape uses reset, every catalog counter reset (max recomputed from the
+ * formula at the current level). Conditions and food/water are untouched
+ * (conditions persist through rests per SRD; survival flow is separate).
+ */
+export function applyRest(
+  character: Character,
+  features: Array<
+    Pick<CharacterFeature, 'id' | 'catalogId' | 'resetType' | 'counterMax' | 'counterCurrent'>
+  >,
+  options: { type: 'short' | 'long'; hitDiceSpent?: number; healedHp?: number },
+): RestResult {
+  const level = character.level ?? 1;
+  const classInfo = findClass(character.characterClass);
+  const patch: PatchCharacterPayload = {};
+
+  // Counters to reset on this rest type: catalog traits follow the SRD rule
+  // (max recomputed at the current level), manual traits follow their
+  // « repos court / repos long » checkbox (stored max, no formula).
+  const featureResets: RestResult['featureResets'] = [];
+  for (const feature of features) {
+    if ((feature.counterMax ?? 0) <= 0) continue;
+    if (feature.catalogId) {
+      const def = findClassFeature(feature.catalogId);
+      if (!def?.resource) continue;
+      if (!resourceResetsOn(def, character, options.type)) continue;
+      const max = classFeatureResourceMax(def, character);
+      if (max == null) continue; // unlimited (Rage @20): no counter to track
+      featureResets.push({ featureId: feature.id, counterMax: max, counterCurrent: max });
+    } else if (feature.resetType) {
+      // 'short' recharges on short AND long rests; 'long' only on long rests
+      if (feature.resetType !== 'short' && options.type !== 'long') continue;
+      const max = feature.counterMax ?? 0;
+      featureResets.push({ featureId: feature.id, counterMax: max, counterCurrent: max });
+    }
+  }
+
+  // Hit-dice spending on a short rest: the player rolls their own dice at the
+  // table — we only COUNT them and apply the healing they announce (capped).
+  let diceSpent = 0;
+  let healed = 0;
+  if (options.type === 'short') {
+    const available = Math.max(0, level - character.hitDiceUsed);
+    diceSpent = Math.max(0, Math.min(options.hitDiceSpent ?? 0, available));
+    const announced = Math.max(0, Math.floor(options.healedHp ?? 0));
+    if (diceSpent > 0) {
+      patch.hitDiceUsed = character.hitDiceUsed + diceSpent;
+    }
+    if (announced > 0) {
+      const currentHp = Math.min(
+        character.maxHp ?? Number.POSITIVE_INFINITY,
+        character.currentHp + announced,
+      );
+      healed = currentHp - character.currentHp; // what was actually applied
+      patch.currentHp = currentHp;
+      // Regaining any HP ends the death-save tally (SRD)
+      patch.deathSaveSuccesses = 0;
+      patch.deathSaveFailures = 0;
+    }
+  }
+
+  if (options.type === 'short') {
+    // Pact magic recharges on a short rest (Occultiste)
+    if (classInfo?.spellcasting === 'pact') {
+      patch.spellSlotsUsed = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    }
+    if (classInfo?.name === 'Druide') {
+      patch.wildShapeUses = 2;
+    }
+  } else {
+    patch.currentHp = character.maxHp;
+    patch.tempHp = 0;
+    patch.spellSlotsUsed = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    const regained = Math.max(1, Math.floor(level / 2));
+    patch.hitDiceUsed = Math.max(0, character.hitDiceUsed - regained);
+    patch.exhaustion = Math.max(0, character.exhaustion - 1);
+    patch.deathSaveSuccesses = 0;
+    patch.deathSaveFailures = 0;
+    patch.concentrating = false;
+    if (classInfo?.name === 'Druide') {
+      patch.wildShapeUses = 2;
+    }
+  }
+
+  return { characterPatch: patch, featureResets, diceSpent, healed };
 }
 
 // ---------- Character notes (free-form with simple formatting) ----------

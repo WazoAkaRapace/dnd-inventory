@@ -454,10 +454,11 @@ check(
   [1, 2, 3, 4],
 );
 check(
-  'Extra Attack : Barbare 5 → 2, Moine 10 → 1, Magicien 20 → 1',
+  'Extra Attack : Barbare 5 → 2, Moine 10 → 2 (SRD @5), Magicien 20 → 1',
   [extraAttacks('Barbare', 5), extraAttacks('Moine', 10), extraAttacks('Magicien', 20)],
-  [2, 1, 1],
+  [2, 2, 1],
 );
+check('Extra Attack : Moine 4 → 1 (débloqué au niveau 5)', extraAttacks('Moine', 4), 1);
 
 const bouleDeFeu: any = {
   level: 3,
