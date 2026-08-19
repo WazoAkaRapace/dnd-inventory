@@ -26,6 +26,7 @@ import {
   expertiseUsed,
   FIGHTING_STYLE_CLASSES,
   FIGHTING_STYLE_LABELS_FR,
+  type FightingStyle,
   findClass,
   formatModifier,
   hasAutomaticToolExpertise,
@@ -413,6 +414,9 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
         </div>
 
         <div className="space-y-4">
+          {/* Weapon mastery — read mode shows mastered chips, editing follows the tab's ✎ lock */}
+          <WeaponMasteryCard character={character} editMode={editMode} patch={patchSheet} />
+
           {/* Tools — read mode shows only what is mastered */}
           <section className="card p-4 sm:p-5 space-y-3">
             <h2 className="section-title">Outils</h2>
@@ -549,9 +553,6 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
               <p className="text-sm text-ink-500">Aucune langue — ✎ Modifier pour en ajouter.</p>
             )}
           </section>
-
-          {/* Weapon mastery — read mode shows mastered chips, editing follows the tab's ✎ lock */}
-          <WeaponMasteryCard character={character} editMode={editMode} patch={patchSheet} />
         </div>
       </div>
     </div>
@@ -660,7 +661,9 @@ function WeaponMasteryCard({
                 className="input py-1.5 text-sm w-auto max-w-[60%]"
                 value={character.fightingStyle ?? ''}
                 onChange={(e) =>
-                  patch({ fightingStyle: e.target.value === '' ? null : e.target.value })
+                  patch({
+                    fightingStyle: e.target.value === '' ? null : (e.target.value as FightingStyle),
+                  })
                 }
                 aria-label="Style de combat"
               >
@@ -689,7 +692,7 @@ function WeaponMasteryCard({
               ))}
             </div>
           ) : (
-            <p className="text-sm text-ink-400">
+            <p className="text-sm text-ink-500">
               Aucune maîtrise d'arme — ✎ Modifier pour en choisir.
             </p>
           )}
