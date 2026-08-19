@@ -1,8 +1,10 @@
 /**
- * Compétences tab — 18 skills + 6 saving throws with proficiency toggles.
- * Skill rows cycle ○ → ● (maîtrise) → ◉ (expertise) → ○. Expertise doubles the
- * proficiency bonus and is gated by SRD slots (Roublard 1/6, Barde 3/10,
- * Clerc du Domaine du Savoir 1) — see expertiseSlots() in the shared engine.
+ * Compétences tab — 18 skills + 6 saving throws with proficiency toggles,
+ * plus Outils and Langues below. Skill/tool rows cycle ○ → ● (maîtrise) →
+ * ◉ (expertise) → ○; when no SRD slot is free the cycle skips ◉ (● → ○) so
+ * proficiency stays removable. Expertise doubles the proficiency bonus and
+ * is gated by SRD slots (Roublard 1/6 — compétences ou outils de voleur,
+ * Barde 3/10, Clerc du Domaine du Savoir 1) — see expertiseSlots() in shared.
  */
 
 import {
@@ -11,16 +13,24 @@ import {
   abilityModifier,
   type Character,
   DND_ABILITIES,
+  DND_LANGUAGES,
   DND_SKILLS,
+  DND_TOOLS,
   expertiseSlots,
+  expertiseUsed,
   findClass,
   formatModifier,
+  hasAutomaticToolExpertise,
+  type PatchCharacterPayload,
   proficiencyBonus,
   type SkillKey,
   skillModifier,
   skillProficiencyLevel,
+  TOOL_CATEGORY_LABELS_FR,
+  type ToolCategory,
+  toolProficiencyLevel,
 } from '@dnd-inventory/shared';
-import { useCallback } from 'react';
+import { type FormEvent, useCallback, useState } from 'react';
 import api from '../api';
 
 interface Props {
@@ -40,21 +50,22 @@ function saveProficiency(character: Character, ability: AbilityKey): boolean {
   return (character.savingThrowProficiencies ?? []).includes(ability);
 }
 
+const TOOL_CATEGORIES = Object.keys(TOOL_CATEGORY_LABELS_FR) as ToolCategory[];
+
 export default function CharacterSkillsTab({ character, charId, onSaved, onError }: Props) {
   const level = character.level ?? 1;
   const profBonus = proficiencyBonus(level);
   const className = findClass(character.characterClass)?.name ?? null;
   const maxExpertise = expertiseSlots(character);
-  const usedExpertise = (character.skillExpertise ?? []).length;
+  const usedExpertise = expertiseUsed(character);
+  const languages = character.languages ?? [];
+  const customLanguages = languages.filter((l) => !DND_LANGUAGES.includes(l));
+  const [newLang, setNewLang] = useState('');
 
-  const patchProficiencies = useCallback(
-    async (skills: string[], expertise: string[], saves: string[]) => {
+  const patchSheet = useCallback(
+    async (payload: PatchCharacterPayload) => {
       try {
-        await api.patch(`/api/characters/${charId}`, {
-          skillProficiencies: skills,
-          skillExpertise: expertise,
-          savingThrowProficiencies: saves,
-        });
+        await api.patch(`/api/characters/${charId}`, payload);
         await onSaved();
       } catch {
         onError('Erreur de mise à jour');
@@ -69,27 +80,9 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
     const expert = [...(character.skillExpertise ?? [])];
     if (current === 0) {
       profs.push(skillKey); // ○ → ●
-    } else if (current === 1) {
-      // ● → ◉ — SRD gating: block the class/level or when all slots are used
-      if (usedExpertise >= maxExpertise) {
-        if (maxExpertise === 0) {
-          onError(
-            className === 'Barde'
-              ? '⭐ Expertise disponible dès le niveau 3 (Barde)'
-              : className === 'Clerc'
-                ? '⭐ Expertise réservée au Domaine du Savoir (Clerc)'
-                : `⭐ Expertise : non disponible pour ${className ?? 'cette classe'}`,
-          );
-        } else {
-          const nextAt = className === 'Roublard' ? 6 : className === 'Barde' ? 10 : null;
-          onError(
-            `⭐ Expertise : maximum atteint (${usedExpertise}/${maxExpertise})${
-              nextAt ? ` — 2 de plus au niveau ${nextAt}` : ''
-            }`,
-          );
-        }
-        return;
-      }
+    } else if (current === 1 && usedExpertise < maxExpertise) {
+      // ● → ◉ — only when an SRD slot is free; otherwise the cycle skips
+      // ◉ entirely (● → ○) so proficiency stays removable when slots are full
       expert.push(skillKey);
     } else {
       // ◉ → ○ — expertise and proficiency both go
@@ -98,7 +91,28 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
       const p = profs.indexOf(skillKey);
       if (p >= 0) profs.splice(p, 1);
     }
-    patchProficiencies(profs, expert, character.savingThrowProficiencies ?? []);
+    patchSheet({ skillProficiencies: profs, skillExpertise: expert });
+  };
+
+  const toggleTool = (toolKey: string) => {
+    const current = toolProficiencyLevel(character, toolKey);
+    const tools = [...(character.toolProficiencies ?? [])];
+    const expert = [...(character.toolExpertise ?? [])];
+    // SRD: only the Rogue's thieves' tools can take expertise (shared slot pool)
+    const canExpertise = toolKey === 'thievesTools' && className === 'Roublard';
+    if (current === 0) {
+      tools.push(toolKey); // ○ → ●
+    } else if (current === 1 && canExpertise && usedExpertise < maxExpertise) {
+      // ● → ◉ — only when an SRD slot is free; otherwise ● → ○ (skip ◉)
+      expert.push(toolKey);
+    } else {
+      // ● → ○ (non-eligible tools, or no slot free) or ◉ → ○
+      const e = expert.indexOf(toolKey);
+      if (e >= 0) expert.splice(e, 1);
+      const p = tools.indexOf(toolKey);
+      if (p >= 0) tools.splice(p, 1);
+    }
+    patchSheet({ toolProficiencies: tools, toolExpertise: expert });
   };
 
   const toggleSave = (ability: AbilityKey) => {
@@ -110,13 +124,34 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
     } else {
       saves.push(ability);
     }
-    patchProficiencies(character.skillProficiencies ?? [], character.skillExpertise ?? [], saves);
+    patchSheet({ savingThrowProficiencies: saves });
+  };
+
+  const toggleLanguage = (lang: string) => {
+    const next = languages.includes(lang)
+      ? languages.filter((l) => l !== lang)
+      : [...languages, lang];
+    patchSheet({ languages: next });
+  };
+
+  const addLanguage = (e: FormEvent) => {
+    e.preventDefault();
+    const name = newLang.trim();
+    if (!name) return;
+    if (!languages.some((l) => l.toLowerCase() === name.toLowerCase())) {
+      patchSheet({ languages: [...languages, name] });
+    }
+    setNewLang('');
   };
 
   // Expertise reminder banner — always visible so players know where they stand
   let expertiseBanner: string;
-  if (maxExpertise > 0) {
-    expertiseBanner = `Expertise : ${usedExpertise}/${maxExpertise} — touchez une compétence ● pour la passer en ◉`;
+  if (maxExpertise > 0 && usedExpertise >= maxExpertise) {
+    expertiseBanner = `Expertise : ${usedExpertise}/${maxExpertise} — touchez ◉ pour libérer un emplacement`;
+  } else if (maxExpertise > 0) {
+    expertiseBanner = `Expertise : ${usedExpertise}/${maxExpertise} — touchez une maîtrise ● pour la passer en ◉${
+      className === 'Roublard' ? ' (outils de voleur compris)' : ''
+    }`;
   } else if (className === 'Barde') {
     expertiseBanner = 'Expertise disponible dès le niveau 3 (Barde)';
   } else if (className === 'Clerc') {
@@ -131,6 +166,10 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
     label: abi.label,
     skills: DND_SKILLS.filter((s) => s.ability === abi.key),
   })).filter((g) => g.skills.length > 0);
+
+  const profDotClass = (prof: number) =>
+    prof === 2 ? 'text-gold-600' : prof === 1 ? 'text-blood-600' : 'text-parchment-300';
+  const profDotGlyph = (prof: number) => (prof === 2 ? '◉' : prof === 1 ? '●' : '○');
 
   return (
     <div className="space-y-4">
@@ -202,16 +241,8 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
                     aria-pressed={prof > 0}
                   >
                     <span className="flex items-center gap-2 min-w-0">
-                      <span
-                        className={`text-xs w-4 shrink-0 ${
-                          prof === 2
-                            ? 'text-gold-600'
-                            : prof === 1
-                              ? 'text-blood-600'
-                              : 'text-parchment-300'
-                        }`}
-                      >
-                        {prof === 2 ? '◉' : prof === 1 ? '●' : '○'}
+                      <span className={`text-xs w-4 shrink-0 ${profDotClass(prof)}`}>
+                        {profDotGlyph(prof)}
                       </span>
                       <span className="text-sm text-ink-700 truncate">{skill.label}</span>
                     </span>
@@ -222,6 +253,92 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
             </div>
           </div>
         ))}
+      </section>
+
+      {/* Tools grouped by category */}
+      <section className="card p-4 sm:p-5 space-y-3">
+        <h2 className="section-title">Outils</h2>
+        {hasAutomaticToolExpertise(character) && (
+          <p className="text-xs text-ink-500 flex items-center gap-2">
+            <span className="text-sm leading-none">⭐</span>
+            <span>Maîtrise des outils (niv 6) : bonus de maîtrise doublé sur tous les outils.</span>
+          </p>
+        )}
+        {TOOL_CATEGORIES.map((cat) => (
+          <div key={cat}>
+            <div className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-1.5">
+              {TOOL_CATEGORY_LABELS_FR[cat]}
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              {DND_TOOLS.filter((t) => t.category === cat).map((tool) => {
+                const prof = toolProficiencyLevel(character, tool.key);
+                return (
+                  <button
+                    type="button"
+                    key={tool.key}
+                    onClick={() => toggleTool(tool.key)}
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-left ${
+                      prof > 0
+                        ? 'bg-blood-50 border-blood-300'
+                        : 'bg-parchment-50 border-parchment-200 hover:border-parchment-300'
+                    }`}
+                    aria-pressed={prof > 0}
+                  >
+                    <span className={`text-xs w-4 shrink-0 ${profDotClass(prof)}`}>
+                      {profDotGlyph(prof)}
+                    </span>
+                    <span className="text-sm text-ink-700 truncate">{tool.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </section>
+
+      {/* Languages */}
+      <section className="card p-4 sm:p-5 space-y-3">
+        <h2 className="section-title">Langues</h2>
+        <div className="flex flex-wrap gap-1.5">
+          {[...DND_LANGUAGES, ...customLanguages].map((lang) => {
+            const known = languages.includes(lang);
+            return (
+              <button
+                type="button"
+                key={lang}
+                onClick={() => toggleLanguage(lang)}
+                className={`px-3 py-1.5 rounded-full border text-sm transition-colors ${
+                  known
+                    ? 'bg-blood-50 border-blood-300 text-ink-700'
+                    : 'bg-parchment-50 border-parchment-200 hover:border-parchment-300 text-ink-500'
+                }`}
+                aria-pressed={known}
+              >
+                {known && <span className="text-blood-600 text-xs mr-1">●</span>}
+                {lang}
+              </button>
+            );
+          })}
+        </div>
+        <form onSubmit={addLanguage} className="flex gap-2">
+          <label htmlFor="new-language" className="sr-only">
+            Nouvelle langue
+          </label>
+          <input
+            id="new-language"
+            value={newLang}
+            onChange={(e) => setNewLang(e.target.value)}
+            placeholder="Autre langue…"
+            maxLength={40}
+            className="flex-1 px-3 py-2 rounded-lg border bg-parchment-50 border-parchment-200 placeholder:text-ink-400 text-sm text-ink-700"
+          />
+          <button
+            type="submit"
+            className="px-3 py-2 rounded-lg border bg-parchment-100 border-parchment-200 hover:border-parchment-300 text-sm font-medium text-ink-600"
+          >
+            Ajouter
+          </button>
+        </form>
       </section>
     </div>
   );

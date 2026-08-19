@@ -156,6 +156,9 @@ export function mapCharacterSummary(row: any): CharacterSummary {
     speed: row.speed ?? 9,
     skillProficiencies: parseJsonArray(row.skill_proficiencies, []),
     skillExpertise: parseJsonArray(row.skill_expertise, []),
+    toolProficiencies: parseJsonArray(row.tool_proficiencies, []),
+    toolExpertise: parseJsonArray(row.tool_expertise, []),
+    languages: parseJsonArray(row.languages, []),
     savingThrowProficiencies: parseJsonArray(row.saving_throw_proficiencies, []),
     weaponProficiencies: row.weapon_proficiencies
       ? parseJsonArray(row.weapon_proficiencies, [])

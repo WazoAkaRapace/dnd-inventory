@@ -280,6 +280,9 @@ export interface CharacterSummary {
   speed: number; // meters
   skillProficiencies: string[]; // skill keys: ["acrobatics","arcanes",...]
   skillExpertise: string[]; // skill keys with doubled proficiency bonus (Roublard/Barde/Clerc Savoir)
+  toolProficiencies: string[]; // tool keys (DND_TOOLS): ["thievesTools","lute",...]
+  toolExpertise: string[]; // tool keys with doubled proficiency (outils de voleur — Roublard)
+  languages: string[]; // display names: ["Commun","Elfe",...] — custom entries allowed
   savingThrowProficiencies: string[]; // ability keys: ["strength","constitution"]
   weaponProficiencies: string[] | null; // tokens 'simple'/'martial' + EN weapon names; null = class default
   fightingStyle: FightingStyle | null; // SRD fighting style (Guerrier/Paladin/Rôdeur)
@@ -389,6 +392,9 @@ export interface PatchCharacterPayload {
   speed?: number;
   skillProficiencies?: string[];
   skillExpertise?: string[];
+  toolProficiencies?: string[];
+  toolExpertise?: string[];
+  languages?: string[];
   savingThrowProficiencies?: string[];
   weaponProficiencies?: string[] | null;
   fightingStyle?: FightingStyle | null;
@@ -582,6 +588,118 @@ export function expertiseSlots(character: {
     default:
       return 0;
   }
+}
+
+// ---------- Tools & languages (SRD 5e) ----------
+
+export type ToolCategory = 'artisan' | 'kit' | 'jeu' | 'instrument' | 'autre';
+
+export interface ToolInfo {
+  key: string;
+  label: string; // French name, aligned with the item catalog
+  category: ToolCategory;
+}
+
+export const TOOL_CATEGORY_LABELS_FR: Record<ToolCategory, string> = {
+  artisan: "Outils d'artisan",
+  kit: 'Kits',
+  jeu: 'Jeux',
+  instrument: 'Instruments de musique',
+  autre: 'Autres',
+};
+
+/** The SRD tool set (39). Labels follow the item catalog's French names
+ *  (Fournitures d'alchimiste, Outils de verrier, Flûte de Pan…). */
+export const DND_TOOLS: ToolInfo[] = [
+  { key: 'alchemistSupplies', label: "Fournitures d'alchimiste", category: 'artisan' },
+  { key: 'brewerSupplies', label: 'Fournitures de brasseur', category: 'artisan' },
+  { key: 'calligrapherSupplies', label: 'Fournitures de calligraphe', category: 'artisan' },
+  { key: 'carpenterTools', label: 'Outils de charpentier', category: 'artisan' },
+  { key: 'cartographerTools', label: 'Outils de cartographe', category: 'artisan' },
+  { key: 'cobblerTools', label: 'Outils de cordonnier', category: 'artisan' },
+  { key: 'cookUtensils', label: 'Ustensiles de cuisinier', category: 'artisan' },
+  { key: 'glassblowerTools', label: 'Outils de verrier', category: 'artisan' },
+  { key: 'jewelerTools', label: 'Outils de joaillier', category: 'artisan' },
+  { key: 'leatherworkerTools', label: 'Outils de tanneur', category: 'artisan' },
+  { key: 'masonTools', label: 'Outils de maçon', category: 'artisan' },
+  { key: 'painterSupplies', label: 'Fournitures de peintre', category: 'artisan' },
+  { key: 'potterTools', label: 'Outils de potier', category: 'artisan' },
+  { key: 'smithTools', label: 'Outils de forgeron', category: 'artisan' },
+  { key: 'tinkerTools', label: 'Outils de bricoleur', category: 'artisan' },
+  { key: 'weaverTools', label: 'Outils de tisserand', category: 'artisan' },
+  { key: 'woodcarverTools', label: 'Outils de sculpteur sur bois', category: 'artisan' },
+  { key: 'disguiseKit', label: 'Kit de déguisement', category: 'kit' },
+  { key: 'forgeryKit', label: 'Kit de faux', category: 'kit' },
+  { key: 'herbalismKit', label: "Kit d'herboristerie", category: 'kit' },
+  { key: 'poisonerKit', label: "Kit d'empoisonneur", category: 'kit' },
+  { key: 'diceSet', label: 'Jeu de dés', category: 'jeu' },
+  { key: 'dragonchessSet', label: 'Échecs dragon', category: 'jeu' },
+  { key: 'playingCardSet', label: 'Jeu de cartes', category: 'jeu' },
+  { key: 'threeDragonAnte', label: "Trois dragons d'ante", category: 'jeu' },
+  { key: 'bagpipes', label: 'Cornemuse', category: 'instrument' },
+  { key: 'drum', label: 'Tambour', category: 'instrument' },
+  { key: 'dulcimer', label: 'Dulcimer', category: 'instrument' },
+  { key: 'flute', label: 'Flûte', category: 'instrument' },
+  { key: 'lute', label: 'Luth', category: 'instrument' },
+  { key: 'lyre', label: 'Lyre', category: 'instrument' },
+  { key: 'horn', label: 'Cor', category: 'instrument' },
+  { key: 'panFlute', label: 'Flûte de Pan', category: 'instrument' },
+  { key: 'shawm', label: 'Chalemie', category: 'instrument' },
+  { key: 'viol', label: 'Viole', category: 'instrument' },
+  { key: 'thievesTools', label: 'Outils de voleur', category: 'autre' },
+  { key: 'navigatorTools', label: 'Instruments de navigation', category: 'autre' },
+  { key: 'vehicleLand', label: 'Véhicule terrestre', category: 'autre' },
+  { key: 'vehicleWater', label: 'Véhicule aquatique', category: 'autre' },
+];
+
+/** Known languages for the chips: the 16 SRD languages + the two class languages
+ *  (Argot des voleurs — Roublard, Druidique — Druide). Stored as display strings;
+ *  custom entries (race/backstory languages) live in the same array. */
+export const DND_LANGUAGES: string[] = [
+  'Commun',
+  'Nain',
+  'Elfe',
+  'Géant',
+  'Gnome',
+  'Gobelin',
+  'Halfelin',
+  'Orque',
+  'Abyssal',
+  'Céleste',
+  'Profond',
+  'Draconique',
+  'Infernal',
+  'Primordial',
+  'Sylvestre',
+  'Commun des profondeurs',
+  'Argot des voleurs',
+  'Druidique',
+];
+
+/** Read a tool's proficiency level: expertise implies proficiency (level 2 wins). */
+export function toolProficiencyLevel(
+  character: Pick<Character, 'toolProficiencies' | 'toolExpertise'>,
+  toolKey: string,
+): ProficiencyLevel {
+  if ((character.toolExpertise ?? []).includes(toolKey)) return 2;
+  if ((character.toolProficiencies ?? []).includes(toolKey)) return 1;
+  return 0;
+}
+
+/** Expertise picks used across the shared SRD pool: skills + outils de voleur (Roublard). */
+export function expertiseUsed(
+  character: Pick<Character, 'skillExpertise' | 'toolExpertise'>,
+): number {
+  return (character.skillExpertise ?? []).length + (character.toolExpertise ?? []).length;
+}
+
+/** Artificier 6+ — Maîtrise des outils: proficiency bonus automatically doubled
+ *  for every tool check. Automatic class feature, nothing to store or pick. */
+export function hasAutomaticToolExpertise(character: {
+  characterClass?: string | null;
+  level?: number;
+}): boolean {
+  return findClass(character.characterClass)?.name === 'Artificier' && (character.level ?? 1) >= 6;
 }
 
 // ---------- Classes (SRD reference: hit dice, saves, spellcasting) ----------

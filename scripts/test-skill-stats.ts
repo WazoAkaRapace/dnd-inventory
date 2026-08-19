@@ -1,15 +1,21 @@
 /**
  * Sanity checks for expertise (double proficiency bonus): skillProficiencyLevel,
- * skillModifier, expertiseSlots, passivePerception, renderFeatureTemplate.
+ * skillModifier, expertiseSlots, passivePerception, renderFeatureTemplate,
+ * plus tools/languages (toolProficiencyLevel, expertiseUsed, DND_TOOLS).
  * Run: npm run test-skill-stats
  */
 import {
   type Character,
+  DND_LANGUAGES,
+  DND_TOOLS,
   expertiseSlots,
+  expertiseUsed,
+  hasAutomaticToolExpertise,
   passivePerception,
   renderFeatureTemplate,
   skillModifier,
   skillProficiencyLevel,
+  toolProficiencyLevel,
 } from '@dnd-inventory/shared';
 
 let failures = 0;
@@ -52,6 +58,9 @@ const mkChar = (over: Partial<Character>): Character => ({
   speed: 9,
   skillProficiencies: [],
   skillExpertise: [],
+  toolProficiencies: [],
+  toolExpertise: [],
+  languages: [],
   savingThrowProficiencies: [],
   weaponProficiencies: null,
   spellSlotsUsed: [0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -208,6 +217,78 @@ check(
   '{{passive_perception}} maîtrise simple (15)',
   renderFeatureTemplate('{{passive_perception}}', proficientOnly),
   '15',
+);
+
+// --- Outils & langues : constantes ---
+check('DND_TOOLS : 39 outils (SRD)', DND_TOOLS.length, 39);
+check(
+  'DND_TOOLS : outils de voleur présent',
+  DND_TOOLS.some((t) => t.key === 'thievesTools' && t.category === 'autre'),
+  true,
+);
+check('DND_TOOLS : clés uniques', new Set(DND_TOOLS.map((t) => t.key)).size, DND_TOOLS.length);
+check('DND_LANGUAGES : 18 langues (16 SRD + 2 de classe)', DND_LANGUAGES.length, 18);
+check(
+  'DND_LANGUAGES : classements de classe présents',
+  DND_LANGUAGES.includes('Argot des voleurs') && DND_LANGUAGES.includes('Druidique'),
+  true,
+);
+
+// --- toolProficiencyLevel : précédence identique aux compétences ---
+check('outil sans maîtrise → 0', toolProficiencyLevel(mkChar({}), 'thievesTools'), 0);
+check(
+  'outil maîtrisé → 1',
+  toolProficiencyLevel(mkChar({ toolProficiencies: ['thievesTools'] }), 'thievesTools'),
+  1,
+);
+check(
+  'outil expertise → 2',
+  toolProficiencyLevel(
+    mkChar({ toolProficiencies: ['thievesTools'], toolExpertise: ['thievesTools'] }),
+    'thievesTools',
+  ),
+  2,
+);
+
+// --- expertiseUsed : le pool SRD mélange compétences + outils de voleur ---
+check(
+  'expertiseUsed : compétences seules',
+  expertiseUsed(mkChar({ skillExpertise: ['stealth', 'perception'] })),
+  2,
+);
+check(
+  'expertiseUsed : compétences + outils de voleur',
+  expertiseUsed(mkChar({ skillExpertise: ['stealth'], toolExpertise: ['thievesTools'] })),
+  2,
+);
+check(
+  'expertiseUsed : Roublard niv 1, 1 compétence + outils de voleur = pool 2/2',
+  expertiseUsed(
+    mkChar({
+      characterClass: 'Roublard',
+      level: 1,
+      skillExpertise: ['stealth'],
+      toolExpertise: ['thievesTools'],
+    }),
+  ) <= expertiseSlots(mkChar({ characterClass: 'Roublard', level: 1 })),
+  true,
+);
+
+// --- Artificier : Maîtrise des outils (niv 6, automatique) ---
+check(
+  'Artificier niv 5 → pas de double bonus auto',
+  hasAutomaticToolExpertise(mkChar({ characterClass: 'Artificier', level: 5 })),
+  false,
+);
+check(
+  'Artificier niv 6 → double bonus auto sur tous les outils',
+  hasAutomaticToolExpertise(mkChar({ characterClass: 'Artificier', level: 6 })),
+  true,
+);
+check(
+  'Roublard niv 20 → pas de double bonus auto',
+  hasAutomaticToolExpertise(mkChar({ characterClass: 'Roublard', level: 20 })),
+  false,
 );
 
 console.log(failures === 0 ? '✅ Tous les tests d’expertise passent' : `❌ ${failures} échec(s)`);
