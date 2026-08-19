@@ -193,6 +193,7 @@ export async function characterRoutes(app: FastifyInstance) {
         'background',
         'speed',
         'skillProficiencies',
+        'skillExpertise',
         'savingThrowProficiencies',
         'weaponProficiencies',
         'fightingStyle',
@@ -238,6 +239,7 @@ export async function characterRoutes(app: FastifyInstance) {
         tempHp: 'temp_hp',
         characterClass: 'character_class',
         skillProficiencies: 'skill_proficiencies',
+        skillExpertise: 'skill_expertise',
         savingThrowProficiencies: 'saving_throw_proficiencies',
         weaponProficiencies: 'weapon_proficiencies',
         fightingStyle: 'fighting_style',
@@ -260,6 +262,7 @@ export async function characterRoutes(app: FastifyInstance) {
       const jsonFields = new Set([
         'conditions',
         'skillProficiencies',
+        'skillExpertise',
         'savingThrowProficiencies',
         'weaponProficiencies',
         'spellSlotsUsed',

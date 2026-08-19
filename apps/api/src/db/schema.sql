@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS characters (
   background          TEXT,
   speed               REAL NOT NULL DEFAULT 9,  -- meters (9m = 30ft, 7.5m = 25ft small races)
   skill_proficiencies         TEXT NOT NULL DEFAULT '[]',  -- JSON array of skill keys
+  skill_expertise             TEXT NOT NULL DEFAULT '[]',  -- JSON array of skill keys with doubled proficiency bonus
   saving_throw_proficiencies  TEXT NOT NULL DEFAULT '[]',  -- JSON array of ability keys
   spell_slots_used            TEXT NOT NULL DEFAULT '[0,0,0,0,0,0,0,0,0]',  -- JSON: used per level 1-9
   -- Description / personality

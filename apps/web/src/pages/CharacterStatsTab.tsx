@@ -26,6 +26,7 @@ import {
   passivePerception,
   proficiencyBonus,
   SACRED_OATHS,
+  skillProficiencyLevel,
   spellSaveDC,
 } from '@dnd-inventory/shared';
 import { useCallback, useEffect, useState } from 'react';
@@ -145,8 +146,8 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
   const profBonus = proficiencyBonus(level);
   const dexMod = abilityModifier(character.dexterity ?? 10);
   const wisMod = abilityModifier(character.wisdom ?? 10);
-  const hasPerception = character.skillProficiencies?.includes('perception') ?? false;
-  const passPerc = passivePerception(wisMod, profBonus, hasPerception);
+  const perceptionLevel = skillProficiencyLevel(character, 'perception');
+  const passPerc = passivePerception(wisMod, profBonus, perceptionLevel);
 
   const castingAbility = classInfo?.spellcastingAbility;
   const isSpellcaster = classInfo && classInfo.spellcasting !== 'none' && castingAbility;

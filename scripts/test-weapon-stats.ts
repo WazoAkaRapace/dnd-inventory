@@ -49,6 +49,7 @@ const mkChar = (over: Partial<Character>): Character => ({
   background: null,
   speed: 9,
   skillProficiencies: [],
+  skillExpertise: [],
   savingThrowProficiencies: [],
   weaponProficiencies: null,
   spellSlotsUsed: [0, 0, 0, 0, 0, 0, 0, 0, 0],

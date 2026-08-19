@@ -10,6 +10,7 @@ import {
   computeAC,
   passivePerception,
   proficiencyBonus,
+  skillProficiencyLevel,
 } from '@dnd-inventory/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -209,8 +210,8 @@ function CharactersTab({
         const wisMod = abilityModifier(c.wisdom ?? 10);
         const level = c.level ?? 1;
         const prof = proficiencyBonus(level);
-        const hasPerception = c.skillProficiencies?.includes('perception') ?? false;
-        const pp = passivePerception(wisMod, prof, hasPerception);
+        const perceptionLevel = skillProficiencyLevel(c, 'perception');
+        const pp = passivePerception(wisMod, prof, perceptionLevel);
         const acResult = inv ? computeAC(entries, dexMod, c.fightingStyle === 'defense', c) : null;
         const effectiveAC = c.armorClassOverride ?? acResult?.ac ?? 10 + dexMod;
         const enc = inv?.encumbrance;

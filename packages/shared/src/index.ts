@@ -279,6 +279,7 @@ export interface CharacterSummary {
   background: string | null;
   speed: number; // meters
   skillProficiencies: string[]; // skill keys: ["acrobatics","arcanes",...]
+  skillExpertise: string[]; // skill keys with doubled proficiency bonus (Roublard/Barde/Clerc Savoir)
   savingThrowProficiencies: string[]; // ability keys: ["strength","constitution"]
   weaponProficiencies: string[] | null; // tokens 'simple'/'martial' + EN weapon names; null = class default
   fightingStyle: FightingStyle | null; // SRD fighting style (Guerrier/Paladin/Rôdeur)
@@ -387,6 +388,7 @@ export interface PatchCharacterPayload {
   background?: string | null;
   speed?: number;
   skillProficiencies?: string[];
+  skillExpertise?: string[];
   savingThrowProficiencies?: string[];
   weaponProficiencies?: string[] | null;
   fightingStyle?: FightingStyle | null;
@@ -541,6 +543,46 @@ export const DND_SKILLS: SkillInfo[] = [
 
 /** Skill proficiency level: 0=none, 1=proficient, 2=expertise (double proficiency) */
 export type ProficiencyLevel = 0 | 1 | 2;
+
+/** Read a skill's proficiency level: expertise implies proficiency (level 2 wins). */
+export function skillProficiencyLevel(
+  character: Pick<Character, 'skillProficiencies' | 'skillExpertise'>,
+  skillKey: SkillKey,
+): ProficiencyLevel {
+  if ((character.skillExpertise ?? []).includes(skillKey)) return 2;
+  if ((character.skillProficiencies ?? []).includes(skillKey)) return 1;
+  return 0;
+}
+
+/** Total skill check modifier: ability modifier + proficiency bonus × level (×2 on expertise). */
+export function skillModifier(character: Character, skillKey: SkillKey): number {
+  const skill = DND_SKILLS.find((s) => s.key === skillKey);
+  if (!skill) return 0;
+  const score = (character[skill.ability as keyof Character] as number) ?? 10;
+  const level = skillProficiencyLevel(character, skillKey);
+  const bonus = proficiencyBonus(character.level ?? 1);
+  return abilityModifier(score) + (level > 0 ? bonus * level : 0);
+}
+
+/** Expertise slots by class/level (SRD): Roublard 2 at level 1 (+2 at 6), Barde 2 at
+ *  level 3 (+2 at 10), Clerc du Domaine du Savoir 2 at level 1 (Bénédictions de la Connaissance). */
+export function expertiseSlots(character: {
+  characterClass?: string | null;
+  level?: number;
+  divineDomain?: string | null;
+}): number {
+  const level = character.level ?? 1;
+  switch (findClass(character.characterClass)?.name) {
+    case 'Roublard':
+      return level >= 6 ? 4 : 2;
+    case 'Barde':
+      return level >= 10 ? 4 : level >= 3 ? 2 : 0;
+    case 'Clerc':
+      return character.divineDomain === 'savoir' ? 2 : 0;
+    default:
+      return 0;
+  }
+}
 
 // ---------- Classes (SRD reference: hit dice, saves, spellcasting) ----------
 
@@ -832,9 +874,13 @@ export function spellSaveDC(castingMod: number, profBonus: number): number {
   return 8 + castingMod + profBonus;
 }
 
-/** Passive perception: 10 + WIS mod + proficiency bonus (if proficient). */
-export function passivePerception(wisMod: number, profBonus: number, proficient: boolean): number {
-  return 10 + wisMod + (proficient ? profBonus : 0);
+/** Passive perception: 10 + WIS mod + proficiency bonus (×2 with expertise). */
+export function passivePerception(
+  wisMod: number,
+  profBonus: number,
+  proficiency: ProficiencyLevel,
+): number {
+  return 10 + wisMod + (proficiency > 0 ? profBonus * proficiency : 0);
 }
 
 // ---------- Armor Class (CA) computation ----------
@@ -2643,7 +2689,7 @@ export function renderFeatureTemplate(text: string, character: Character): strin
       : 0;
   const wisMod = abilityModifier(character.wisdom ?? 10);
   const dexMod = abilityModifier(character.dexterity ?? 10);
-  const hasPerception = (character.skillProficiencies ?? []).includes('perception');
+  const perceptionLevel = skillProficiencyLevel(character, 'perception');
   const saveProfs = new Set(character.savingThrowProficiencies ?? []);
 
   // Build variable map
@@ -2657,7 +2703,7 @@ export function renderFeatureTemplate(text: string, character: Character): strin
     max_hp: String(character.maxHp ?? 1),
     prof: formatModifier(prof),
     initiative: formatModifier(dexMod),
-    passive_perception: String(passivePerception(wisMod, prof, hasPerception)),
+    passive_perception: String(passivePerception(wisMod, prof, perceptionLevel)),
   };
 
   // Spellcasting variables
@@ -2688,9 +2734,7 @@ export function renderFeatureTemplate(text: string, character: Character): strin
 
   // Skill modifiers
   for (const skill of DND_SKILLS) {
-    const score = (character[skill.ability as keyof Character] as number) ?? 10;
-    const proficient = (character.skillProficiencies ?? []).includes(skill.key);
-    vars[`skill:${skill.key}`] = formatModifier(abilityModifier(score) + (proficient ? prof : 0));
+    vars[`skill:${skill.key}`] = formatModifier(skillModifier(character, skill.key));
   }
 
   // Replace all {{variable}} tokens

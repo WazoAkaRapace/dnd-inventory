@@ -63,13 +63,14 @@ npm run screenshots        # Regenerate README's docs/screenshots/*.png (isolate
 - Spells: slot tables (full/half/pact/artificier), cantrips/rituals/upcasting with scaled damage preview, concentration (single instance, CON save DD 10/½ dmg on damage, broken by incapacitating conditions & 0 PV), always-prepared domain/circle/oath spells (cleric `divine_domain`, druid `land_circle` under cercle Terre, paladin `sacred_oath`)
 - Wild shape: CR gates by level (Lune: lvl/3 min 1), fly/swim gates, seen-beast list, 2 uses/short rest, rolled shape HP, elementals for Lune 10, combat-tracker integration
 - Survival: variant encumbrance, food/water deprivation, exhaustion 1–6, death saves, 16 conditions (synced sheet↔tracker with durations), hit dice counter, inspiration
+- Expertise (double proficiency bonus): `skillExpertise` on characters, slots per SRD (`expertiseSlots`: Roublard 2@1/4@6, Barde 2@3/4@10, Clerc Savoir 2@1); Compétences tab rows cycle ○ → ● → ◉ with strict slot gating + reminder banner; passive perception doubles with Perception expertise (enforcement is UI-side — the API stores whatever is PATCHed)
 
 ### API routes (`apps/api/src/routes/`)
 auth, characters (incl. HP/concentration/condition sync side-effects), inventory, items, spells (incl. `/light`), monsters, character-spells, character-features, character-notes, locations, npcs, parties, combat (encounters, combatants, multi-add players, initiative, next-turn with condition expiry), domain-spells, wildshape. Shared helpers in `helpers.ts` (mappers, party checks, condition/HP mirrors). Rate limiting is a global hook in `rateLimit.ts`, not per-route config.
 
 ### Web character sheet (9 tabs, class-aware)
 - Mobile: **floating dock** (Survie · Caract. — hub — Sorts/… adaptive per class: non-casters get Traits in the dock, Sorts in the hub) with sliding pill indicator + expanding hub grid + docked combat status card; desktop ≥lg keeps the top bar + left-edge combat drawer
-- Tabs: Inventaire, Survie (attacks, HP, hit dice, forme sauvage, inspiration/concentration, exhaustion, conditions), Caractéristiques (subclasses: cercle druidique + terrain, domaine divin, serment sacré, style de combat, maîtrise d'armes), Compétences (2-col), Sorts (slot tracker, cast sheet with upcast damage preview + 🌀 concentration flow, ◆ always-prepared rows merged in, swipe-to-reveal oublier), Traits, Description, PNJ, Notes
+- Tabs: Inventaire, Survie (attacks, HP, hit dice, forme sauvage, inspiration/concentration, exhaustion, conditions), Caractéristiques (subclasses: cercle druidique + terrain, domaine divin, serment sacré, style de combat, maîtrise d'armes), Compétences (2-col, ○→●→◉ expertise cycle), Sorts (slot tracker, cast sheet with upcast damage preview + 🌀 concentration flow, ◆ always-prepared rows merged in, swipe-to-reveal oublier), Traits, Description, PNJ, Notes
 - Player combat widget (own sheet only, live initiative prompt), ConcentrationAlert banner, GmDashboard, full CombatPage for the MD
 - Weapon/armor rows show computed chips (🎯 attack breakdown tooltip, ⚔ damage, ✨ magic, ×N extra attacks, ⚠ non qualifié)
 
