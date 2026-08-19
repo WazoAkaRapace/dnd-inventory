@@ -40,28 +40,61 @@ export async function characterRoutes(app: FastifyInstance) {
 
       const body = req.body || ({} as CreateCharacterPayload);
       if (!body.name?.trim()) return reply.code(400).send({ error: 'name is required' });
-      const strength = body.strength ?? 10;
-      if (strength < 1) return reply.code(400).send({ error: 'strength must be ≥ 1' });
+      const ability = (value: number | undefined, fallback: number): number => {
+        const score = value ?? fallback;
+        if (score < 1 || score > 30) return -1;
+        return score;
+      };
+      const abilities = {
+        strength: ability(body.strength, 10),
+        dexterity: ability(body.dexterity, 10),
+        constitution: ability(body.constitution, 10),
+        intelligence: ability(body.intelligence, 10),
+        wisdom: ability(body.wisdom, 10),
+        charisma: ability(body.charisma, 10),
+      };
+      for (const [label, score] of Object.entries(abilities)) {
+        if (score < 0) return reply.code(400).send({ error: `${label} must be between 1 and 30` });
+      }
+      const maxHp = body.maxHp ?? 1;
+      if (maxHp < 1) return reply.code(400).send({ error: 'maxHp must be ≥ 1' });
+      const currentHp = body.currentHp ?? maxHp;
       const capMult = body.capacityMultiplier ?? 1;
+      const skillProficiencies = (body.skillProficiencies ?? []).filter(
+        (s): s is string => typeof s === 'string' && s.trim().length > 0,
+      );
+      const languages = (body.languages ?? []).filter(
+        (l): l is string => typeof l === 'string' && l.trim().length > 0,
+      );
 
       const db = getDb();
       const info = db
         .prepare(`
         INSERT INTO characters
-          (party_id, owner_id, name, strength, capacity_multiplier,
-           character_class, level, race, background, hidden)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (party_id, owner_id, name, strength, dexterity, constitution, intelligence,
+           wisdom, charisma, capacity_multiplier, character_class, level, race, background,
+           skill_proficiencies, languages, max_hp, current_hp, hidden)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
         .run(
           partyId,
           userId,
           body.name.trim(),
-          strength,
+          abilities.strength,
+          abilities.dexterity,
+          abilities.constitution,
+          abilities.intelligence,
+          abilities.wisdom,
+          abilities.charisma,
           capMult,
           body.characterClass ?? null,
           body.level ?? 1,
           body.race ?? null,
           body.background ?? null,
+          JSON.stringify(skillProficiencies),
+          JSON.stringify(languages),
+          maxHp,
+          currentHp,
           body.hidden ? 1 : 0,
         );
       const row = db

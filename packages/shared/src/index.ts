@@ -368,11 +368,21 @@ export interface Character extends CharacterSummary {
 export interface CreateCharacterPayload {
   name: string;
   strength: number;
+  dexterity?: number;
+  constitution?: number;
+  intelligence?: number;
+  wisdom?: number;
+  charisma?: number;
+  /** Full creation flow: HP bookends (SQL default 1 when omitted). */
+  maxHp?: number;
+  currentHp?: number;
   capacityMultiplier?: number;
   characterClass?: string;
   level?: number;
   race?: string;
   background?: string;
+  skillProficiencies?: string[];
+  languages?: string[];
   /** Create as a secret character (hidden from other players). */
   hidden?: boolean;
 }
@@ -850,6 +860,249 @@ export function findClass(name: string | null | undefined): ClassInfo | null {
           .replace(/[\u0300-\u036f]/g, '') === normalized,
     ) ?? null
   );
+}
+
+// ---------- Character creation catalogs (SRD 5.1 FR) ----------
+
+/** Standard ability array (SRD): assign these six scores across the six abilities. */
+export const STANDARD_ARRAY: readonly number[] = [15, 14, 13, 12, 10, 8];
+
+/** Skill choices a class grants at creation (SRD 5.1): pick `count` from
+ *  `skills`, or from all 18 when `anySkill` (Barde). */
+export interface ClassSkillChoice {
+  count: number;
+  skills: SkillKey[];
+  anySkill?: boolean;
+}
+
+export const CLASS_SKILLS: Record<string, ClassSkillChoice> = {
+  Artificier: {
+    count: 2,
+    skills: [
+      'arcanes',
+      'history',
+      'investigation',
+      'medicine',
+      'nature',
+      'perception',
+      'sleightOfHand',
+    ],
+  },
+  Barbare: {
+    count: 2,
+    skills: ['animalHandling', 'athletics', 'intimidation', 'nature', 'perception', 'survival'],
+  },
+  Barde: { count: 3, skills: [], anySkill: true },
+  Clerc: { count: 2, skills: ['history', 'insight', 'medicine', 'persuasion', 'religion'] },
+  Druide: {
+    count: 2,
+    skills: [
+      'arcanes',
+      'animalHandling',
+      'insight',
+      'medicine',
+      'nature',
+      'perception',
+      'religion',
+      'survival',
+    ],
+  },
+  Ensorceleur: {
+    count: 2,
+    skills: ['arcanes', 'history', 'insight', 'intimidation', 'persuasion', 'religion'],
+  },
+  Guerrier: {
+    count: 2,
+    skills: [
+      'acrobatics',
+      'animalHandling',
+      'athletics',
+      'history',
+      'insight',
+      'intimidation',
+      'perception',
+      'survival',
+    ],
+  },
+  Magicien: {
+    count: 2,
+    skills: ['arcanes', 'history', 'insight', 'investigation', 'medicine', 'religion'],
+  },
+  Moine: {
+    count: 2,
+    skills: ['acrobatics', 'athletics', 'history', 'insight', 'religion', 'stealth'],
+  },
+  Occultiste: {
+    count: 2,
+    skills: [
+      'arcanes',
+      'deception',
+      'history',
+      'intimidation',
+      'investigation',
+      'nature',
+      'religion',
+    ],
+  },
+  Paladin: {
+    count: 2,
+    skills: ['athletics', 'insight', 'intimidation', 'medicine', 'persuasion', 'religion'],
+  },
+  Rôdeur: {
+    count: 2,
+    skills: [
+      'animalHandling',
+      'athletics',
+      'insight',
+      'investigation',
+      'nature',
+      'perception',
+      'stealth',
+      'survival',
+    ],
+  },
+  Roublard: {
+    count: 4,
+    skills: [
+      'acrobatics',
+      'athletics',
+      'deception',
+      'insight',
+      'intimidation',
+      'investigation',
+      'perception',
+      'performance',
+      'persuasion',
+      'sleightOfHand',
+      'stealth',
+    ],
+  },
+};
+
+/** Resolve creation skill choices for a class name. Unknown/custom class →
+ *  2 free picks among all 18 (the sheet remains freely editable afterwards). */
+export function classSkillChoices(className: string | null | undefined): ClassSkillChoice {
+  const cls = findClass(className);
+  if (cls && CLASS_SKILLS[cls.name]) return CLASS_SKILLS[cls.name];
+  return { count: 2, skills: [], anySkill: true };
+}
+
+/** One-line flavor + teaching description; traits/languages are cited but
+ *  never mechanically applied (creation is catalog-names-only by design). */
+export interface SubraceInfo {
+  name: string; // full French display name: "Nain des collines", "Haut-elfe"
+  description: string;
+}
+
+export interface RaceInfo {
+  name: string;
+  description: string;
+  subraces: SubraceInfo[];
+}
+
+/** SRD 5.1 races in French (5e-drs naming). */
+export const DND_RACES: RaceInfo[] = [
+  {
+    name: 'Humain',
+    description: 'Adaptables et ambitieux — le peuple le plus répandu de tous les mondes.',
+    subraces: [],
+  },
+  {
+    name: 'Nain',
+    description:
+      'Endurants, mémoire longue, vision dans le noir, résistance au poison ; langue naine.',
+    subraces: [
+      { name: 'Nain des collines', description: 'Avisé et tenace — le nain le plus répandu.' },
+      {
+        name: 'Nain des montagnes',
+        description: 'Fort comme la pierre, grandi dans les armureries.',
+      },
+    ],
+  },
+  {
+    name: 'Elfe',
+    description:
+      'Gracieux et quasi immortels ; transe au lieu de sommeil, vision dans le noir ; langue elfique.',
+    subraces: [
+      { name: 'Haut-elfe', description: 'Érudit — un tour de magie de plus dans le sang.' },
+      { name: 'Elfe des bois', description: 'Rapide et féerique, âme des forêts profondes.' },
+      {
+        name: 'Elfe noir (drow)',
+        description: 'Enfant de l’Outreterre, magie innée des ténèbres.',
+      },
+    ],
+  },
+  {
+    name: 'Halfelin',
+    description: 'Petits, chanceux et intrépides — ils se faufilent partout ; langue halfeline.',
+    subraces: [
+      {
+        name: 'Halfelin pied-léger',
+        description: 'Sociable, insaisissable, l’appel des grands chemins.',
+      },
+      {
+        name: 'Halfelin robuste',
+        description: 'Trapu et résistant, natif des collines venteuses.',
+      },
+    ],
+  },
+  {
+    name: 'Gnome',
+    description: 'Vifs et curieux, astuce légendaire, vision dans le noir ; langue gnome.',
+    subraces: [
+      {
+        name: 'Gnome des forêts',
+        description: 'Discret, ami des animaux, talent pour les illusions.',
+      },
+      {
+        name: 'Gnome des rochers',
+        description: 'Inventeur né — jouets, gadgets et machines d’engrenages.',
+      },
+    ],
+  },
+  {
+    name: 'Demi-elfe',
+    description:
+      'Deux mondes dans le sang : vision dans le noir, héritage féerique, deux langues de plus.',
+    subraces: [],
+  },
+  {
+    name: 'Demi-orc',
+    description: 'Impressionnant, inébranlable, coups sauvages ; langue orc.',
+    subraces: [],
+  },
+  {
+    name: 'Tieffelin',
+    description:
+      'Héritage infernal au premier regard ; résistance au feu, magie des ténèbres ; langue infernale.',
+    subraces: [],
+  },
+];
+
+export interface BackgroundInfo {
+  name: string;
+  description: string;
+}
+
+/** SRD 5.1 backgrounds in French (5e-drs naming). */
+export const DND_BACKGROUNDS: BackgroundInfo[] = [
+  { name: 'Acolyte', description: 'Élevé au temple — abri et soins auprès des fidèles.' },
+  { name: 'Criminel', description: 'Larcins et contacts dans la pègre (variante : espion).' },
+  { name: 'Héros du peuple', description: 'Issu du peuple, tu en es devenu le défenseur.' },
+  { name: 'Noble', description: 'Naissance, titre et rang — la cour te doit des égards.' },
+  { name: 'Sage', description: 'Des années d’étude — tu sais où chercher la réponse.' },
+  { name: 'Soldat', description: 'Guerre, discipline et chaîne de commandement.' },
+  { name: 'Orphelin', description: 'Grandi dans les rues — rapide, débrouillard, seul.' },
+];
+
+/** Average max HP for a character created at a given level (SRD): full hit
+ *  die + CON at level 1, the fixed average (die/2 + 1) + CON per additional
+ *  level, minimum 1 HP per level. */
+export function averageMaxHp(level: number, hitDie: number, constitutionScore: number): number {
+  const conMod = abilityModifier(constitutionScore);
+  const first = Math.max(1, hitDie + conMod);
+  const perLevel = Math.max(1, Math.floor(hitDie / 2) + 1 + conMod);
+  return first + Math.max(0, level - 1) * perLevel;
 }
 
 /**

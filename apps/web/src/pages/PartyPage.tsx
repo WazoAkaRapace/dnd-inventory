@@ -16,18 +16,12 @@
  * finish review, the verdict, and DESIGN.md
  */
 
-import type {
-  CharacterSummary,
-  CreateCharacterPayload,
-  PartyDetail,
-  PartyRole,
-} from '@dnd-inventory/shared';
-import { DND_CLASSES } from '@dnd-inventory/shared';
+import type { CharacterSummary, PartyDetail, PartyRole } from '@dnd-inventory/shared';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../auth';
-import { ErrorMsg, LoadingSpinner, Modal } from '../components/ui';
+import { ErrorMsg, LoadingSpinner } from '../components/ui';
 import { useSyncEvent } from '../sync';
 import { copyText, plural } from '../utils';
 
@@ -221,18 +215,8 @@ export default function PartyPage() {
   const [error, setError] = useState('');
   // 403 from the detail route: the visitor was removed/banned (or never joined).
   const [notMember, setNotMember] = useState(false);
-  const [showAddChar, setShowAddChar] = useState(false);
-  const [createError, setCreateError] = useState('');
   const [inviteCopied, setInviteCopied] = useState(false);
   const [inviteCopyFailed, setInviteCopyFailed] = useState(false);
-
-  // New character form
-  const [charName, setCharName] = useState('');
-  const [charStr, setCharStr] = useState(10);
-  const [charClass, setCharClass] = useState('');
-  const [charLevel, setCharLevel] = useState(1);
-  const [charRace, setCharRace] = useState('');
-  const [charHidden, setCharHidden] = useState(false);
 
   const load = useCallback(
     async (silent = false) => {
@@ -272,11 +256,6 @@ export default function PartyPage() {
     [currentPartyId],
   );
 
-  function openCreate() {
-    setCreateError('');
-    setShowAddChar(true);
-  }
-
   function copyInvite() {
     if (!party) return;
     copyText(party.party.inviteCode).then((ok) => {
@@ -287,36 +266,6 @@ export default function PartyPage() {
         setInviteCopyFailed(false);
       }, 2000);
     });
-  }
-
-  async function createChar(e: React.FormEvent) {
-    e.preventDefault();
-    const payload: CreateCharacterPayload = {
-      name: charName,
-      strength: charStr,
-      characterClass: charClass.trim() || undefined,
-      level: charLevel || undefined,
-      race: charRace.trim() || undefined,
-      hidden: charHidden || undefined,
-    };
-    try {
-      await api.post(`/api/parties/${partyId}/characters`, payload);
-      setShowAddChar(false);
-      setCharName('');
-      setCharStr(10);
-      setCharClass('');
-      setCharLevel(1);
-      setCharRace('');
-      setCharHidden(false);
-      await load(true);
-    } catch (err: any) {
-      const status = err.response?.status;
-      setCreateError(
-        status === 400
-          ? 'Donne un nom au personnage.'
-          : 'Création impossible — vérifie la connexion.',
-      );
-    }
   }
 
   if (loading) return <LoadingSpinner label="Ouverture du groupe…" />;
@@ -381,9 +330,9 @@ export default function PartyPage() {
         {myCharacters.length === 0 ? (
           <div className="border-b border-parchment-200 py-5">
             <p className="text-sm text-ink-500">Tu n'as pas encore de personnage dans ce groupe.</p>
-            <button type="button" className="btn-primary mt-4" onClick={openCreate}>
+            <Link to={`/party/${partyId}/create`} className="btn-primary mt-4">
               ＋ Créer mon personnage
-            </button>
+            </Link>
           </div>
         ) : (
           <ul className="list-none">
@@ -423,9 +372,9 @@ export default function PartyPage() {
         )}
         {myCharacters.length > 0 && (
           <div className="pt-3">
-            <button type="button" className="btn-ghost text-ink-500" onClick={openCreate}>
+            <Link to={`/party/${partyId}/create`} className="btn-ghost text-ink-500">
               ＋ Nouveau personnage
-            </button>
+            </Link>
           </div>
         )}
       </section>
@@ -491,106 +440,6 @@ export default function PartyPage() {
           )}
         </ul>
       </section>
-
-      {/* Add character modal */}
-      <Modal open={showAddChar} onClose={() => setShowAddChar(false)} title="Nouveau personnage">
-        <form onSubmit={createChar} className="space-y-3">
-          <div>
-            <label className="label" htmlFor="new-char-name">
-              Nom *
-            </label>
-            <input
-              id="new-char-name"
-              className="input"
-              value={charName}
-              onChange={(e) => setCharName(e.target.value)}
-              required
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label" htmlFor="new-char-class">
-                Classe
-              </label>
-              <input
-                id="new-char-class"
-                className="input"
-                list="dnd-classes-create"
-                value={charClass}
-                onChange={(e) => setCharClass(e.target.value)}
-                placeholder="Magicien"
-              />
-              <datalist id="dnd-classes-create">
-                {DND_CLASSES.map((c) => (
-                  <option key={c.name} value={c.name} />
-                ))}
-              </datalist>
-            </div>
-            <div>
-              <label className="label" htmlFor="new-char-level">
-                Niveau
-              </label>
-              <input
-                id="new-char-level"
-                type="number"
-                className="input"
-                value={charLevel}
-                min={1}
-                max={20}
-                onChange={(e) => setCharLevel(Number(e.target.value))}
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label" htmlFor="new-char-race">
-                Race
-              </label>
-              <input
-                id="new-char-race"
-                className="input"
-                value={charRace}
-                onChange={(e) => setCharRace(e.target.value)}
-                placeholder="Haut-elfe"
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor="new-char-str">
-                Force
-              </label>
-              <input
-                id="new-char-str"
-                type="number"
-                className="input"
-                value={charStr}
-                min={1}
-                max={30}
-                onChange={(e) => setCharStr(Number(e.target.value))}
-              />
-            </div>
-          </div>
-          {createError && <div className="text-sm text-red-600">{createError}</div>}
-          <div className="flex items-start gap-2.5 rounded-xl border border-parchment-200 p-3">
-            <input
-              id="new-char-hidden"
-              type="checkbox"
-              className="mt-0.5 w-4 h-4 accent-blood-600"
-              checked={charHidden}
-              onChange={(e) => setCharHidden(e.target.checked)}
-            />
-            <label htmlFor="new-char-hidden" className="text-sm font-medium text-ink-700">
-              Personnage secret
-              <span className="mt-0.5 block text-xs font-normal text-ink-400">
-                Prépare-le à l'abri des regards : invisible des autres joueurs et inactif (ni liste,
-                ni combat). Toi et le MD le voyez toujours.
-              </span>
-            </label>
-          </div>
-          <button type="submit" className="btn-primary w-full">
-            Créer
-          </button>
-        </form>
-      </Modal>
     </div>
   );
 }

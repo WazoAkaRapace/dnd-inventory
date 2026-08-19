@@ -5,6 +5,7 @@ import { useAuth } from './auth';
 import CombatWidget from './components/CombatWidget';
 import ConcentrationAlert from './components/ConcentrationAlert';
 import { HeaderProvider, useHeaderState } from './headerContext';
+import CharacterCreatePage from './pages/CharacterCreatePage';
 import CharacterInventoryPage from './pages/CharacterInventoryPage';
 import CombatPage from './pages/CombatPage';
 import GmDashboardPage from './pages/GmDashboardPage';
@@ -55,6 +56,7 @@ function useRouteTitle(pathname: string): { title: string; backTo?: string } | n
     if (sub === 'gm') return { title: '🛡 Table du MD', backTo: partyBase };
     if (sub === 'npcs') return { title: '🎭 PNJ', backTo: partyBase };
     if (sub === 'combat') return { title: '⚔ Combat', backTo: partyBase };
+    if (sub === 'create') return { title: 'Nouveau personnage', backTo: partyBase };
     if (sub.startsWith('character/')) return { title: 'Personnage', backTo: partyBase };
     return { title: 'Groupe', backTo: '/parties' };
   }
@@ -215,6 +217,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <PartyPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/party/:partyId/create"
+            element={
+              <ProtectedRoute>
+                <CharacterCreatePage />
               </ProtectedRoute>
             }
           />
