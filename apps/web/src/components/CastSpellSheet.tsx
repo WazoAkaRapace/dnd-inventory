@@ -1,6 +1,6 @@
 import type { Spell } from '@dnd-inventory/shared';
 import { formatModifier, spellDamageAtLevel, spellSaveDC } from '@dnd-inventory/shared';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Chip } from './ui';
 
@@ -10,6 +10,8 @@ import { Chip } from './ui';
  * conflicts, then consume the slot in one PATCH.
  *
  * Portaled to body — .card's backdrop-filter would break fixed positioning.
+ * Local variant of BottomSheet (which has no desktop-dialog mode): same
+ * Esc-to-close + body scroll-lock contract.
  */
 export default function CastSpellSheet({
   spell,
@@ -51,6 +53,19 @@ export default function CastSpellSheet({
 
   const [chosen, setChosen] = useState<number>(isCantrip ? 0 : (castableLevels[0] ?? -1));
   const [casting, setCasting] = useState(false);
+
+  // Same dialog contract as BottomSheet: Escape closes, body scroll locks.
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', handleKey);
+      document.body.style.overflow = '';
+    };
+  }, [onClose]);
 
   const concConflict = spell.concentration && concentrating;
 

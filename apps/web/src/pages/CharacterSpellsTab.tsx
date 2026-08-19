@@ -24,7 +24,7 @@ import {
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import api from '../api';
 import CastSpellSheet from '../components/CastSpellSheet';
-import { BottomSheet, Chip } from '../components/ui';
+import { BottomSheet, Chip, ErrorMsg } from '../components/ui';
 
 interface Props {
   character: Character;
@@ -64,6 +64,7 @@ const SCHOOL_TEXT: Record<string, string> = {
 export default function CharacterSpellsTab({ character, charId, onSaved, onError }: Props) {
   const [charSpells, setCharSpells] = useState<CharacterSpell[]>([]);
   const [loadingSpells, setLoadingSpells] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [domainSpells, setDomainSpells] = useState<DomainSpell[]>([]);
 
   // Catalog browser
@@ -76,6 +77,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
   const [catalogSpells, setCatalogSpells] = useState<Spell[]>([]);
   const [catalogTotal, setCatalogTotal] = useState(0);
   const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState(false);
   const [catalogOffset, setCatalogOffset] = useState(0);
   const [addingSpellId, setAddingSpellId] = useState<number | null>(null);
 
@@ -157,13 +159,14 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
 
   // Fetch character's known spells
   const fetchCharSpells = useCallback(async () => {
+    setLoadError(false);
     try {
       const res = await api.get(`/api/characters/${charId}/spells`);
       // API returns { spells: CharacterSpell[] } — extract the array
       const data = res.data?.spells ?? res.data ?? [];
       setCharSpells(Array.isArray(data) ? data : []);
     } catch {
-      // Character might not have spells endpoint yet
+      setLoadError(true);
     } finally {
       setLoadingSpells(false);
     }
@@ -210,6 +213,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
   const fetchCatalog = useCallback(
     async (offset = 0) => {
       setCatalogLoading(true);
+      setCatalogError(false);
       try {
         const params: Record<string, string | number> = { limit: PAGE_SIZE, offset };
         if (catalogClass) params.class = catalogClass;
@@ -223,6 +227,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
       } catch {
         setCatalogSpells([]);
         setCatalogTotal(0);
+        setCatalogError(true);
       } finally {
         setCatalogLoading(false);
       }
@@ -410,6 +415,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
     spells: catalogSpells,
     total: catalogTotal,
     loading: catalogLoading,
+    error: catalogError,
     offset: catalogOffset,
     search: catalogSearch,
     level: catalogLevel,
@@ -426,6 +432,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
     onSchool: setCatalogSchool,
     onClass: setCatalogClass,
     onAdd: addSpell,
+    onRetry: () => fetchCatalog(catalogOffset),
     onLoadMore: () => fetchCatalog(catalogOffset + PAGE_SIZE),
   };
 
@@ -448,8 +455,10 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
             </button>
           </div>
           {castingAbility && (
-            <p className="text-xs text-ink-500 tabular-nums">
-              DD {saveDC} · Attaque {attackBonus} · {ABILITY_SHORT_FR[castingAbility]}
+            <p className="text-xs text-ink-500">
+              DD <span className="font-mono font-semibold">{saveDC}</span> · Attaque{' '}
+              <span className="font-mono font-semibold">{attackBonus}</span> ·{' '}
+              {ABILITY_SHORT_FR[castingAbility]}
             </p>
           )}
           <SlotRail
@@ -514,7 +523,18 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
             </div>
           )}
 
-          {loadingSpells ? (
+          {loadError ? (
+            <div className="space-y-2">
+              <ErrorMsg message="Impossible de charger tes sorts. Vérifie la connexion puis réessaie." />
+              <button
+                type="button"
+                onClick={() => fetchCharSpells()}
+                className="btn-ghost text-blood-600 text-sm px-3 py-1.5"
+              >
+                Réessayer
+              </button>
+            </div>
+          ) : loadingSpells ? (
             <div role="status" aria-label="Chargement des sorts" className="space-y-1.5">
               {[0, 1, 2].map((i) => (
                 <SpellRowSkeleton key={i} />
@@ -547,8 +567,11 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                       {group.level === 0
                         ? isCaster && <span className="text-[11px] text-ink-500">à volonté</span>
                         : maxSlots > 0 && (
-                            <span className="text-[11px] tabular-nums text-ink-500">
-                              {remaining} / {maxSlots} emplacements
+                            <span className="text-[11px] text-ink-500">
+                              <span className="font-mono">
+                                {remaining} / {maxSlots}
+                              </span>{' '}
+                              emplacements
                             </span>
                           )}
                     </div>
@@ -825,8 +848,11 @@ function SlotRail({
       </div>
       {open && (
         <div className="flex items-center justify-between gap-2 bg-parchment-100 rounded-xl px-3 py-1.5">
-          <span className="text-xs font-medium text-ink-600 tabular-nums">
-            Niveau {open.level} — {open.max - open.used} / {open.max}
+          <span className="text-xs font-medium text-ink-600">
+            Niveau {open.level} —{' '}
+            <span className="font-mono">
+              {open.max - open.used} / {open.max}
+            </span>
           </span>
           <span className="flex items-center gap-1.5">
             <button
@@ -1049,6 +1075,7 @@ function SpellCatalog({
   spells,
   total,
   loading,
+  error,
   offset,
   search,
   level,
@@ -1065,11 +1092,13 @@ function SpellCatalog({
   onSchool,
   onClass,
   onAdd,
+  onRetry,
   onLoadMore,
 }: {
   spells: Spell[];
   total: number;
   loading: boolean;
+  error: boolean;
   offset: number;
   search: string;
   level: string;
@@ -1086,6 +1115,7 @@ function SpellCatalog({
   onSchool: (v: string) => void;
   onClass: (v: string) => void;
   onAdd: (id: number) => void;
+  onRetry: () => void;
   onLoadMore: () => void;
 }) {
   const [expandedSpellId, setExpandedSpellId] = useState<number | null>(null);
@@ -1145,7 +1175,18 @@ function SpellCatalog({
       </div>
 
       {/* Results */}
-      {loading ? (
+      {error ? (
+        <div className="space-y-2 py-2">
+          <ErrorMsg message="Impossible de charger le grimoire. Vérifie la connexion puis réessaie." />
+          <button
+            type="button"
+            onClick={onRetry}
+            className="btn-ghost text-blood-600 text-sm px-3 py-1.5"
+          >
+            Réessayer
+          </button>
+        </div>
+      ) : loading ? (
         <div role="status" aria-label="Chargement du grimoire" className="space-y-1.5">
           {[0, 1, 2].map((i) => (
             <SpellRowSkeleton key={i} />
