@@ -251,7 +251,7 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
             setEditMode((v) => !v);
             setExpandedSkill(null);
           }}
-          className={`shrink-0 text-sm px-3 py-1.5 ${editMode ? 'btn-primary' : 'btn-secondary'}`}
+          className={`shrink-0 text-sm px-3 py-2 ${editMode ? 'btn-primary' : 'btn-secondary'}`}
         >
           {editMode ? '✓ Terminer' : '✎ Modifier'}
         </button>
@@ -362,7 +362,7 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
                           aria-controls={`skill-detail-${skill.key}`}
                           className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border transition-colors text-left ${
                             prof > 0
-                              ? 'bg-blood-50 border-blood-300'
+                              ? 'bg-blood-50 border-blood-300 hover:border-blood-400'
                               : 'bg-parchment-50 border-parchment-200 hover:border-parchment-300'
                           }`}
                         >
@@ -481,7 +481,7 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
                 })}
               </div>
             ) : (
-              <p className="text-sm text-ink-400">
+              <p className="text-sm text-ink-500">
                 Aucune maîtrise d'outil — ✎ Modifier pour en choisir.
               </p>
             )}
@@ -546,7 +546,7 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-ink-400">Aucune langue — ✎ Modifier pour en ajouter.</p>
+              <p className="text-sm text-ink-500">Aucune langue — ✎ Modifier pour en ajouter.</p>
             )}
           </section>
 
