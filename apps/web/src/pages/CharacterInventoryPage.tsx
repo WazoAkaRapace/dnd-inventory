@@ -2889,11 +2889,11 @@ function SurvivalPanel({
                   </strong>{' '}
                   · {wildShapeDurationHours(character.level ?? 2)} h max
                 </p>
-                <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                <div className="flex items-center justify-center gap-1 flex-wrap">
                   <button
                     type="button"
                     onClick={() => stepShapeHp(-5)}
-                    className="w-11 h-11 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 font-semibold flex items-center justify-center transition-colors"
+                    className="w-11 h-11 max-[379px]:hidden rounded-lg bg-red-100 hover:bg-red-200 text-red-700 font-semibold flex items-center justify-center transition-colors"
                     aria-label="Blesser la forme de 5"
                   >
                     −5
@@ -2904,11 +2904,12 @@ function SurvivalPanel({
                     className="w-11 h-11 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 font-semibold flex items-center justify-center transition-colors"
                     aria-label="Blesser la forme de 1"
                   >
-                    −1
+                    <span className="max-[379px]:hidden">−1</span>
+                    <span className="hidden max-[379px]:inline">−</span>
                   </button>
                   <input
                     type="number"
-                    className="w-16 text-center text-lg font-bold bg-white border border-green-200 rounded-lg py-1.5 focus:outline-none focus:border-green-500 text-green-900"
+                    className="w-16 text-center text-lg font-bold font-mono bg-white border border-green-200 rounded-lg py-1 focus:outline-none focus:border-green-500 text-green-900"
                     value={shapeHpDraft ?? String(shapeHp)}
                     onChange={(e) => setShapeHpDraft(e.target.value)}
                     onBlur={commitShapeHp}
@@ -2923,17 +2924,20 @@ function SurvivalPanel({
                     className="w-11 h-11 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 font-semibold flex items-center justify-center transition-colors"
                     aria-label="Soigner la forme de 1"
                   >
-                    +1
+                    <span className="max-[379px]:hidden">+1</span>
+                    <span className="hidden max-[379px]:inline">+</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => stepShapeHp(5)}
-                    className="w-11 h-11 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 font-semibold flex items-center justify-center transition-colors"
+                    className="w-11 h-11 max-[379px]:hidden rounded-lg bg-green-100 hover:bg-green-200 text-green-700 font-semibold flex items-center justify-center transition-colors"
                     aria-label="Soigner la forme de 5"
                   >
                     +5
                   </button>
-                  <span className="text-sm font-semibold text-green-700">/ {shapeMax}</span>
+                  <span className="text-sm font-semibold font-mono text-green-700">
+                    / {shapeMax}
+                  </span>
                 </div>
                 <HpBar
                   current={shapeHp}
@@ -2965,8 +2969,10 @@ function SurvivalPanel({
             onBreak={() => patchCharacter({ concentrating: false }, 'Erreur de mise à jour')}
           />
         )}
-        {/* Death saves live with the HP they belong to — at 0 PV this card is the emergency panel */}
-        {character.currentHp <= 0 && (
+        {/* Death saves live with the HP they belong to — the panel opens only
+          when BOTH pools are empty: temp HP remaining means the hit hasn't
+          put the character down yet. */}
+        {character.currentHp <= 0 && (character.tempHp ?? 0) <= 0 && (
           <DeathSaveTracker
             character={character}
             charId={charId}
@@ -2975,8 +2981,9 @@ function SurvivalPanel({
             onError={onError}
           />
         )}
-        {/* Concentration breaks on damage — its toggle sits one row from the HP steppers */}
-        <div className="flex items-center gap-2 flex-wrap">
+        {/* Concentration breaks on damage — its toggle sits one row from the HP steppers.
+            Glyph slot has a fixed width so toggling (✧→✨, ◌→🌀) never shifts the layout. */}
+        <div className="flex items-center gap-2 max-[379px]:gap-1 flex-wrap">
           <button
             type="button"
             onClick={async () => {
@@ -2990,7 +2997,7 @@ function SurvivalPanel({
                 onError('Erreur');
               }
             }}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 max-[379px]:px-1 max-[379px]:gap-1 rounded-lg text-sm max-[379px]:text-xs font-medium transition-colors border ${
               character.inspiration
                 ? 'bg-gold-400/20 text-gold-500 border-gold-400'
                 : 'bg-parchment-100 text-ink-400 border-parchment-300 hover:border-gold-400'
@@ -2998,7 +3005,9 @@ function SurvivalPanel({
             aria-pressed={character.inspiration}
             title="L'inspiration permet de relancer un d20 et de garder le meilleur résultat"
           >
-            <span className="text-base">{character.inspiration ? '✨' : '✧'}</span>
+            <span className="inline-block w-5 text-center shrink-0 text-base max-[379px]:text-sm">
+              {character.inspiration ? '✨' : '✧'}
+            </span>
             Inspiration
           </button>
           <button
@@ -3006,7 +3015,7 @@ function SurvivalPanel({
             onClick={() =>
               patchCharacter({ concentrating: !character.concentrating }, 'Erreur de mise à jour')
             }
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 max-[379px]:px-1 max-[379px]:gap-1 rounded-lg text-sm max-[379px]:text-xs font-medium transition-colors border ${
               character.concentrating
                 ? 'bg-indigo-100 text-indigo-700 border-indigo-400'
                 : 'bg-parchment-100 text-ink-400 border-parchment-300 hover:border-indigo-400'
@@ -3014,7 +3023,9 @@ function SurvivalPanel({
             aria-pressed={character.concentrating}
             title="Tu concentres un sort. Si tu subis des dégâts : jet de sauvegarde de Constitution DD 10 ou ½ dégâts (le plus élevé) pour le maintenir."
           >
-            <span className="text-base">{character.concentrating ? '🌀' : '◌'}</span>
+            <span className="inline-block w-5 text-center shrink-0 text-base max-[379px]:text-sm">
+              {character.concentrating ? '🌀' : '◌'}
+            </span>
             Concentration
           </button>
         </div>
@@ -3982,7 +3993,7 @@ function DeathSaveTracker({
         {isDead && <span className="text-xs font-bold text-red-600">MORT</span>}
         {isStable && <span className="text-xs font-bold text-green-600">STABLE</span>}
       </div>
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
         {/* Successes — tap a circle to toggle that position */}
         <div className="flex items-center gap-2">
           <span className="text-xs text-green-600 font-medium w-12">Succès</span>
@@ -4167,12 +4178,14 @@ function HpTracker({
     <div className="space-y-3">
       {/* Damage / heal — one line reads the full HP statement: −5 −1 [current] / [max] +1 +5.
         The max is a quiet underlined input (still editable) so current/max stay together.
-        Damage buttons eat PV temp first. */}
+        Damage buttons eat PV temp first. Measured values are mono (DESIGN.md);
+        under 380px the ±5 buttons fold away (−/+ only) to keep the single line
+        at full 44px targets. */}
       <div className="flex items-center justify-center gap-1 flex-wrap">
         <button
           type="button"
           onClick={() => damage(5)}
-          className="w-11 h-11 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 font-semibold flex items-center justify-center transition-colors"
+          className="w-11 h-11 max-[379px]:hidden rounded-lg bg-red-100 hover:bg-red-200 text-red-700 font-semibold flex items-center justify-center transition-colors"
           aria-label="Blesser de 5"
         >
           −5
@@ -4183,11 +4196,12 @@ function HpTracker({
           className="w-11 h-11 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 font-semibold flex items-center justify-center transition-colors"
           aria-label="Blesser de 1"
         >
-          −1
+          <span className="max-[379px]:hidden">−1</span>
+          <span className="hidden max-[379px]:inline">−</span>
         </button>
         <input
           type="number"
-          className={`w-16 text-center text-lg font-bold bg-white border border-parchment-300 rounded-lg py-1 focus:outline-none focus:border-blood-500 ${hpColor}`}
+          className={`w-16 text-center text-lg font-bold font-mono bg-white border border-parchment-300 rounded-lg py-1 focus:outline-none focus:border-blood-500 ${hpColor}`}
           value={currentHp}
           onChange={(e) => setCurrentHp(e.target.value === '' ? '' : Number(e.target.value) || 0)}
           onBlur={() => commit('currentHp', currentHp, setCurrentHp)}
@@ -4196,7 +4210,7 @@ function HpTracker({
         <span className="text-ink-400 font-semibold">/</span>
         <input
           type="number"
-          className="w-12 text-center text-base font-semibold text-ink-500 bg-transparent border-b border-dashed border-parchment-400 py-0 focus:outline-none focus:border-blood-500 focus:bg-white"
+          className="w-12 text-center text-base font-semibold font-mono text-ink-500 bg-transparent border-b border-dashed border-parchment-400 py-0 focus:outline-none focus:border-blood-500 focus:bg-white"
           value={maxHp}
           onChange={(e) => setMaxHp(e.target.value === '' ? '' : Number(e.target.value) || 0)}
           onBlur={() => commit('maxHp', maxHp, setMaxHp)}
@@ -4208,12 +4222,13 @@ function HpTracker({
           className="w-11 h-11 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 font-semibold flex items-center justify-center transition-colors"
           aria-label="Soigner de 1"
         >
-          +1
+          <span className="max-[379px]:hidden">+1</span>
+          <span className="hidden max-[379px]:inline">+</span>
         </button>
         <button
           type="button"
           onClick={() => heal(5)}
-          className="w-11 h-11 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 font-semibold flex items-center justify-center transition-colors"
+          className="w-11 h-11 max-[379px]:hidden rounded-lg bg-green-100 hover:bg-green-200 text-green-700 font-semibold flex items-center justify-center transition-colors"
           aria-label="Soigner de 5"
         >
           +5
@@ -4226,7 +4241,7 @@ function HpTracker({
         <span className="text-xs text-ink-500 font-medium">PV temp</span>
         <input
           type="number"
-          className={`w-14 text-center text-sm font-medium bg-white border border-parchment-300 rounded-lg py-1 focus:outline-none focus:border-blood-500 ${tempNum > 0 ? 'text-blue-700' : 'text-ink-400'}`}
+          className={`w-14 text-center text-sm font-medium font-mono bg-white border border-parchment-300 rounded-lg py-1 focus:outline-none focus:border-blood-500 ${tempNum > 0 ? 'text-blue-700' : 'text-ink-400'}`}
           value={tempHp}
           min={0}
           onChange={(e) =>

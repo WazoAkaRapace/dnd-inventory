@@ -409,9 +409,11 @@ export async function characterRoutes(app: FastifyInstance) {
           };
         }
         // At 0 HP the character is unconscious → concentration ends automatically.
+        // Temp HP remaining means the hit hasn't put them down — concentration holds.
         if (
           concentratingAfter &&
           body.currentHp <= 0 &&
+          (body.tempHp ?? char.temp_hp ?? 0) <= 0 &&
           !sets.some((s) => s.startsWith('concentrating'))
         ) {
           sets.push('concentrating = 0'); // literal — no ? placeholder, no val needed
@@ -456,9 +458,12 @@ export async function characterRoutes(app: FastifyInstance) {
           if (body.currentHp !== undefined) {
             setsC.push('hit_points = ?');
             valsC.push(Math.max(0, body.currentHp));
-            // Mirror the defeated state the tracker derives from HP
+            // Mirror the defeated state the tracker derives from HP — temp HP
+            // remaining keeps the character up (same rule as the death saves).
             setsC.push('defeated = ?');
-            valsC.push(body.currentHp <= 0 ? 1 : 0);
+            valsC.push(
+              body.currentHp <= 0 && (body.tempHp ?? char.temp_hp ?? 0) <= 0 ? 1 : 0,
+            );
           }
           if (body.maxHp !== undefined) {
             setsC.push('max_hit_points = ?');

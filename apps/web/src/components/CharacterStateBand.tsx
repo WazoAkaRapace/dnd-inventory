@@ -370,7 +370,7 @@ export default function CharacterStateBand({
                   🐺 {character.currentHp}
                 </Chip>
               )}
-              {character.currentHp <= 0 && (
+              {character.currentHp <= 0 && (character.tempHp ?? 0) <= 0 && (
                 <Chip tone="red" title="0 PV — jets de sauvegarde contre la mort (onglet Survie)">
                   💀 À terre
                 </Chip>
