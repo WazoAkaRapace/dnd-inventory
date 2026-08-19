@@ -461,9 +461,7 @@ export async function characterRoutes(app: FastifyInstance) {
             // Mirror the defeated state the tracker derives from HP — temp HP
             // remaining keeps the character up (same rule as the death saves).
             setsC.push('defeated = ?');
-            valsC.push(
-              body.currentHp <= 0 && (body.tempHp ?? char.temp_hp ?? 0) <= 0 ? 1 : 0,
-            );
+            valsC.push(body.currentHp <= 0 && (body.tempHp ?? char.temp_hp ?? 0) <= 0 ? 1 : 0);
           }
           if (body.maxHp !== undefined) {
             setsC.push('max_hit_points = ?');

@@ -4180,84 +4180,90 @@ function HpTracker({
         The max is a quiet underlined input (still editable) so current/max stay together.
         Damage buttons eat PV temp first. Measured values are mono (DESIGN.md);
         under 380px the ±5 buttons fold away (−/+ only) to keep the single line
-        at full 44px targets. */}
-      <div className="flex items-center justify-center gap-1 flex-wrap">
-        <button
-          type="button"
-          onClick={() => damage(5)}
-          className="w-11 h-11 max-[379px]:hidden rounded-lg bg-red-100 hover:bg-red-200 text-red-700 font-semibold flex items-center justify-center transition-colors"
-          aria-label="Blesser de 5"
-        >
-          −5
-        </button>
-        <button
-          type="button"
-          onClick={() => damage(1)}
-          className="w-11 h-11 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 font-semibold flex items-center justify-center transition-colors"
-          aria-label="Blesser de 1"
-        >
-          <span className="max-[379px]:hidden">−1</span>
-          <span className="hidden max-[379px]:inline">−</span>
-        </button>
-        <input
-          type="number"
-          className={`w-16 text-center text-lg font-bold font-mono bg-white border border-parchment-300 rounded-lg py-1 focus:outline-none focus:border-blood-500 ${hpColor}`}
-          value={currentHp}
-          onChange={(e) => setCurrentHp(e.target.value === '' ? '' : Number(e.target.value) || 0)}
-          onBlur={() => commit('currentHp', currentHp, setCurrentHp)}
-          aria-label="Points de vie actuels"
-        />
-        <span className="text-ink-400 font-semibold">/</span>
-        <input
-          type="number"
-          className="w-12 text-center text-base font-semibold font-mono text-ink-500 bg-transparent border-b border-dashed border-parchment-400 py-0 focus:outline-none focus:border-blood-500 focus:bg-white"
-          value={maxHp}
-          onChange={(e) => setMaxHp(e.target.value === '' ? '' : Number(e.target.value) || 0)}
-          onBlur={() => commit('maxHp', maxHp, setMaxHp)}
-          aria-label="Points de vie maximum"
-        />
-        <button
-          type="button"
-          onClick={() => heal(1)}
-          className="w-11 h-11 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 font-semibold flex items-center justify-center transition-colors"
-          aria-label="Soigner de 1"
-        >
-          <span className="max-[379px]:hidden">+1</span>
-          <span className="hidden max-[379px]:inline">+</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => heal(5)}
-          className="w-11 h-11 max-[379px]:hidden rounded-lg bg-green-100 hover:bg-green-200 text-green-700 font-semibold flex items-center justify-center transition-colors"
-          aria-label="Soigner de 5"
-        >
-          +5
-        </button>
-      </div>
+        at full 44px targets. On lg the PV temp group rides to the right of the
+        statement (filet between); on mobile it wraps to its own row below. */}
+      <div className="flex flex-wrap items-center justify-center gap-y-3 lg:flex-nowrap lg:gap-x-6">
+        <div className="flex items-center justify-center gap-1">
+          <button
+            type="button"
+            onClick={() => damage(5)}
+            className="w-11 h-11 max-[379px]:hidden rounded-lg bg-red-100 hover:bg-red-200 text-red-700 font-semibold flex items-center justify-center transition-colors"
+            aria-label="Blesser de 5"
+          >
+            −5
+          </button>
+          <button
+            type="button"
+            onClick={() => damage(1)}
+            className="w-11 h-11 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 font-semibold flex items-center justify-center transition-colors"
+            aria-label="Blesser de 1"
+          >
+            <span className="max-[379px]:hidden">−1</span>
+            <span className="hidden max-[379px]:inline">−</span>
+          </button>
+          <input
+            type="number"
+            className={`w-16 text-center text-lg font-bold font-mono bg-white border border-parchment-300 rounded-lg py-1 focus:outline-none focus:border-blood-500 ${hpColor}`}
+            value={currentHp}
+            onChange={(e) => setCurrentHp(e.target.value === '' ? '' : Number(e.target.value) || 0)}
+            onBlur={() => commit('currentHp', currentHp, setCurrentHp)}
+            aria-label="Points de vie actuels"
+          />
+          <span className="text-ink-400 font-semibold">/</span>
+          <input
+            type="number"
+            className="w-12 text-center text-base font-semibold font-mono text-ink-500 bg-transparent border-b border-dashed border-parchment-400 py-0 focus:outline-none focus:border-blood-500 focus:bg-white"
+            value={maxHp}
+            onChange={(e) => setMaxHp(e.target.value === '' ? '' : Number(e.target.value) || 0)}
+            onBlur={() => commit('maxHp', maxHp, setMaxHp)}
+            aria-label="Points de vie maximum"
+          />
+          <button
+            type="button"
+            onClick={() => heal(1)}
+            className="w-11 h-11 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 font-semibold flex items-center justify-center transition-colors"
+            aria-label="Soigner de 1"
+          >
+            <span className="max-[379px]:hidden">+1</span>
+            <span className="hidden max-[379px]:inline">+</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => heal(5)}
+            className="w-11 h-11 max-[379px]:hidden rounded-lg bg-green-100 hover:bg-green-200 text-green-700 font-semibold flex items-center justify-center transition-colors"
+            aria-label="Soigner de 5"
+          >
+            +5
+          </button>
+        </div>
 
-      {/* Temp HP — gains only; damage to it happens through the Blesser buttons,
-        which absorb temp first (no minus here). */}
-      <div className="flex items-center justify-center gap-1.5 flex-wrap">
-        <span className="text-xs text-ink-500 font-medium">PV temp</span>
-        <input
-          type="number"
-          className={`w-14 text-center text-sm font-medium font-mono bg-white border border-parchment-300 rounded-lg py-1 focus:outline-none focus:border-blood-500 ${tempNum > 0 ? 'text-blue-700' : 'text-ink-400'}`}
-          value={tempHp}
-          min={0}
-          onChange={(e) =>
-            setTempHp(e.target.value === '' ? '' : Math.max(0, Number(e.target.value) || 0))
-          }
-          onBlur={() => commit('tempHp', tempHp, setTempHp)}
-          aria-label="Points de vie temporaires"
-        />
-        <button
-          type="button"
-          onClick={() => stepTemp(1)}
-          className="w-10 h-10 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-medium flex items-center justify-center transition-colors"
-          aria-label="Ajouter 1 PV temp"
-        >
-          +
-        </button>
+        {/* Filet between the statement and the temp group — desktop only */}
+        <span className="hidden lg:block w-px h-8 bg-parchment-300" aria-hidden="true" />
+
+        {/* Temp HP — gains only; damage to it happens through the Blesser buttons,
+          which absorb temp first (no minus here). */}
+        <div className="flex items-center justify-center gap-1.5">
+          <span className="text-xs text-ink-500 font-medium">PV temp</span>
+          <input
+            type="number"
+            className={`w-14 text-center text-sm font-medium font-mono bg-white border border-parchment-300 rounded-lg py-1 focus:outline-none focus:border-blood-500 ${tempNum > 0 ? 'text-blue-700' : 'text-ink-400'}`}
+            value={tempHp}
+            min={0}
+            onChange={(e) =>
+              setTempHp(e.target.value === '' ? '' : Math.max(0, Number(e.target.value) || 0))
+            }
+            onBlur={() => commit('tempHp', tempHp, setTempHp)}
+            aria-label="Points de vie temporaires"
+          />
+          <button
+            type="button"
+            onClick={() => stepTemp(1)}
+            className="w-10 h-10 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-medium flex items-center justify-center transition-colors"
+            aria-label="Ajouter 1 PV temp"
+          >
+            +
+          </button>
+        </div>
       </div>
 
       {/* HP bar — full width, temp HP drawn as a blue overshoot segment */}
