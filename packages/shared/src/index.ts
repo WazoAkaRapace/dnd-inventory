@@ -663,7 +663,7 @@ export const DND_LANGUAGES: string[] = [
   'Gnome',
   'Gobelin',
   'Halfelin',
-  'Orque',
+  'Orc',
   'Abyssal',
   'Céleste',
   'Profond',
