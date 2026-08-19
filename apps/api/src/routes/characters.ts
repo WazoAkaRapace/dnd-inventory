@@ -387,12 +387,18 @@ export async function characterRoutes(app: FastifyInstance) {
       }
 
       // --- Concentration: a CON save (DC 10 or half damage, highest) is
-      // required when HP drops while concentrating on a spell.
+      // required whenever the character TAKES damage while concentrating —
+      // PHB p.203. Damage absorbed by temporary HP still counts: when the
+      // Survie hero sends currentHp + tempHp in one payload, the damage taken
+      // is the real loss PLUS the temp absorbed.
       let concentrationCheck: ConcentrationCheck | null = null;
       if (body.currentHp !== undefined) {
         const concentratingAfter =
           body.concentrating !== undefined ? !!body.concentrating : !!char.concentrating;
-        const damage = (char.current_hp ?? 0) - body.currentHp;
+        const realDamage = Math.max(0, (char.current_hp ?? 0) - body.currentHp);
+        const tempAbsorbed =
+          body.tempHp !== undefined ? Math.max(0, (char.temp_hp ?? 0) - body.tempHp) : 0;
+        const damage = realDamage + tempAbsorbed;
         if (concentratingAfter && damage > 0 && body.currentHp > 0) {
           concentrationCheck = {
             characterId: char.id,

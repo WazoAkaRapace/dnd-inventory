@@ -133,6 +133,15 @@ input[type="number"] {
   @apply font-medium rounded-xl px-3 py-2 transition-colors hover:bg-parchment-100;
 }
 
+/* Rest actions — tinted members of the button system (indigo = court, violet = long) */
+.btn-rest-short {
+  @apply flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium bg-indigo-50 text-indigo-800 border border-indigo-200 transition-all hover:border-indigo-400 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.btn-rest-long {
+  @apply flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-medium bg-purple-50 text-purple-800 border border-purple-200 transition-all hover:border-purple-400 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
 .input {
   @apply w-full bg-white border border-parchment-300 rounded-xl px-3 py-2.5 text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-blood-500/30 focus:border-blood-500;
 }

@@ -16,6 +16,7 @@ import type {
 import {
   CATEGORY_LABELS_FR,
   COIN_LABELS_FR,
+  CONCENTRATION_BREAKING_CONDITIONS_FR,
   computeUnarmedStats,
   computeWeaponStats,
   DND_CONDITIONS_FR,
@@ -34,12 +35,12 @@ import {
   wildShapeMaxCR,
 } from '@dnd-inventory/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Link, useParams } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../auth';
 import CharacterStateBand from '../components/CharacterStateBand';
 import ConcentrationAlert from '../components/ConcentrationAlert';
+import { CONDITION_ICONS } from '../components/ConditionsEditor';
 import MonsterStatBlock from '../components/MonsterStatBlock';
 import TurnSlash, { combatVibrate, useTurnSlash } from '../components/TurnSlash';
 import { useSync, useSyncEvent } from '../sync';
@@ -1051,7 +1052,7 @@ export default function CharacterInventoryPage() {
           <SurvivalPanel
             character={character}
             charId={Number(charId)}
-            entries={entries}
+            entries={data.entries}
             canEdit={canEdit}
             markLocalMutation={markLocalMutation}
             onSaved={refreshInventory}
@@ -2533,6 +2534,26 @@ function exhaustionColor(level: number): string {
   return 'text-red-600';
 }
 
+/** One-line SRD reminders shown in the condition picker — the UI teaches the rule. */
+const CONDITION_HINTS_FR: Record<string, string> = {
+  Aveuglé: 'Échec aux jets exigeant la vue ; attaqué avec avantage, tes attaques avec désavantage.',
+  Assourdi: 'Échec aux jets exigeant l’ouïe ; sorts à composante verbale impossibles.',
+  Charmé: 'Impossible d’attaquer le charmeur ; avantage social contre toi.',
+  Effrayé: 'Désavantage en voyant la source ; impossible de s’en approcher.',
+  Empoisonné: 'Désavantage sur les jets d’attaque et de caractéristique.',
+  'En feu': '5d10 dégâts de feu au début de chaque tour ; une action pour s’éteindre.',
+  Entravé: 'Vitesse 0 ; désavantage FOR/DEX, attaqué avec avantage.',
+  Étourdi: 'Incapable d’agir ; échec aux jets de FOR/DEX, attaqué avec avantage.',
+  Inconscient: 'Incapable d’agir, à terre, sans défense ; échec aux jets de FOR/DEX.',
+  Invisible: 'Attaques contre toi avec désavantage, tes attaques avec avantage.',
+  Agrippé: 'Vitesse 0 ; prend fin si le grappleur est incapacité ou écarté.',
+  'À terre': 'Désavantage aux attaques ; se relever coûte la moitié de la vitesse.',
+  Paralysé: 'Incapable de bouger ; touché automatiquement en mêlée, sans défense.',
+  Pétrifié: 'Transformé en pierre : incapacité, résistance à tous les dégâts.',
+  Possédé: 'Une entité contrôle tes actions.',
+  Neutralisé: 'Vitesse 0, muet et incapable d’agir.',
+};
+
 interface SurvivalPanelProps {
   character: Character;
   charId: number;
@@ -2557,6 +2578,7 @@ function SurvivalPanel({
 }: SurvivalPanelProps) {
   const [exhaustion, setExhaustion] = useState(character.exhaustion);
   const [conditions, setConditions] = useState<string[]>(character.conditions);
+  const [conditionPickerOpen, setConditionPickerOpen] = useState(false);
   const [foodDays, setFoodDays] = useState(character.foodDays);
   const [waterDays, setWaterDays] = useState(character.waterDays);
   const [concCheck, setConcCheck] = useState<ConcentrationCheck | null>(null);
@@ -2822,14 +2844,501 @@ function SurvivalPanel({
   };
 
   return (
-    <section className="card p-4 sm:p-5 space-y-4">
-      <h2 className="section-title flex items-center gap-2">
-        <span aria-hidden="true">🩸</span> Survie
-      </h2>
+    <>
+      {/* ---------- 1. Vitalité — PV, mort, inspiration/concentration ---------- */}
+      <section className="card p-4 sm:p-5 space-y-3">
+        <h2 className="section-title">❤️ Vitalité</h2>
+        {/* While shaped, the hero tracks the beast's HP (routed server-side to wild_shape_hp) */}
+        {character.wildShapeSlug ? (
+          (() => {
+            const shapeHp = character.wildShapeHp ?? 0;
+            const shapeMax = character.wildShapeMaxHp ?? 1;
+            const commitShapeHp = async () => {
+              if (shapeHpDraft === null) return;
+              // Same ceiling as the regular HP tracker: typed values obey the max.
+              const n = Math.min(Math.max(0, Math.round(Number(shapeHpDraft) || 0)), shapeMax);
+              setShapeHpDraft(null);
+              if (n === shapeHp) return;
+              markLocalMutation();
+              try {
+                await api.patch(`/api/characters/${charId}`, { currentHp: n });
+                await onSaved();
+              } catch {
+                onError('Erreur');
+              }
+            };
+            // Shaped steppers patch immediately — shape HP never triggers a concentration check.
+            const stepShapeHp = async (delta: number) => {
+              const n = Math.max(0, shapeHp + delta);
+              if (n === shapeHp) return;
+              markLocalMutation();
+              try {
+                await api.patch(`/api/characters/${charId}`, { currentHp: n });
+                await onSaved();
+              } catch {
+                onError('Erreur');
+              }
+            };
+            return (
+              <div className="space-y-3">
+                <p className="text-xs text-green-800 text-center">
+                  🐾{' '}
+                  <strong className="text-green-900">
+                    {shapeForms.find((f) => f.slug === character.wildShapeSlug)?.nameFr ??
+                      character.wildShapeSlug}
+                  </strong>{' '}
+                  · {wildShapeDurationHours(character.level ?? 2)} h max
+                </p>
+                <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => stepShapeHp(-5)}
+                    className="w-11 h-11 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 font-semibold flex items-center justify-center transition-colors"
+                    aria-label="Blesser la forme de 5"
+                  >
+                    −5
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => stepShapeHp(-1)}
+                    className="w-11 h-11 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 font-semibold flex items-center justify-center transition-colors"
+                    aria-label="Blesser la forme de 1"
+                  >
+                    −1
+                  </button>
+                  <input
+                    type="number"
+                    className="w-16 text-center text-lg font-bold bg-white border border-green-200 rounded-lg py-1.5 focus:outline-none focus:border-green-500 text-green-900"
+                    value={shapeHpDraft ?? String(shapeHp)}
+                    onChange={(e) => setShapeHpDraft(e.target.value)}
+                    onBlur={commitShapeHp}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                    }}
+                    aria-label="Points de vie de la forme"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => stepShapeHp(1)}
+                    className="w-11 h-11 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 font-semibold flex items-center justify-center transition-colors"
+                    aria-label="Soigner la forme de 1"
+                  >
+                    +1
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => stepShapeHp(5)}
+                    className="w-11 h-11 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 font-semibold flex items-center justify-center transition-colors"
+                    aria-label="Soigner la forme de 5"
+                  >
+                    +5
+                  </button>
+                  <span className="text-sm font-semibold text-green-700">/ {shapeMax}</span>
+                </div>
+                <HpBar
+                  current={shapeHp}
+                  max={shapeMax}
+                  size="sm"
+                  trackClassName="bg-green-100 border border-green-200"
+                />
+                <p className="text-[10px] text-green-700 italic text-center">
+                  À 0 PV : retour automatique à la forme normale, les dégâts excédentaires
+                  s'appliquent.
+                </p>
+              </div>
+            );
+          })()
+        ) : (
+          <HpTracker
+            character={character}
+            charId={charId}
+            markLocalMutation={markLocalMutation}
+            onSaved={onSaved}
+            onError={onError}
+            onConcentrationCheck={setConcCheck}
+          />
+        )}
+        {concCheck && (
+          <ConcentrationAlert
+            check={concCheck}
+            onDone={() => setConcCheck(null)}
+            onBreak={() => patchCharacter({ concentrating: false }, 'Erreur de mise à jour')}
+          />
+        )}
+        {/* Death saves live with the HP they belong to — at 0 PV this card is the emergency panel */}
+        {character.currentHp <= 0 && (
+          <DeathSaveTracker
+            character={character}
+            charId={charId}
+            markLocalMutation={markLocalMutation}
+            onSaved={onSaved}
+            onError={onError}
+          />
+        )}
+        {/* Concentration breaks on damage — its toggle sits one row from the HP steppers */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={async () => {
+              markLocalMutation();
+              try {
+                await api.patch(`/api/characters/${charId}`, {
+                  inspiration: !character.inspiration,
+                });
+                await onSaved();
+              } catch {
+                onError('Erreur');
+              }
+            }}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${
+              character.inspiration
+                ? 'bg-gold-400/20 text-gold-500 border-gold-400'
+                : 'bg-parchment-100 text-ink-400 border-parchment-300 hover:border-gold-400'
+            }`}
+            aria-pressed={character.inspiration}
+            title="L'inspiration permet de relancer un d20 et de garder le meilleur résultat"
+          >
+            <span className="text-base">{character.inspiration ? '✨' : '✧'}</span>
+            Inspiration
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              patchCharacter({ concentrating: !character.concentrating }, 'Erreur de mise à jour')
+            }
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${
+              character.concentrating
+                ? 'bg-indigo-100 text-indigo-700 border-indigo-400'
+                : 'bg-parchment-100 text-ink-400 border-parchment-300 hover:border-indigo-400'
+            }`}
+            aria-pressed={character.concentrating}
+            title="Tu concentres un sort. Si tu subis des dégâts : jet de sauvegarde de Constitution DD 10 ou ½ dégâts (le plus élevé) pour le maintenir."
+          >
+            <span className="text-base">{character.concentrating ? '🌀' : '◌'}</span>
+            Concentration
+          </button>
+        </div>
+      </section>
 
-      {/* Attack options — equipped weapons with computed attack & damage */}
-      <div>
-        <span className="text-sm font-medium text-ink-700 block mb-1.5">⚔ Attaques</span>
+      {/* ---------- 2. États — conditions + épuisement ---------- */}
+      <section className="card p-4 sm:p-5 space-y-4">
+        <h2 className="section-title">🎭 États</h2>
+        <div>
+          <span className="text-sm font-medium text-ink-700 block mb-1.5">Conditions</span>
+          <div className="flex flex-wrap items-center gap-2">
+            {conditions.length === 0 && (
+              <span className="text-xs text-ink-400 italic">Aucun état actif</span>
+            )}
+            {conditions.map((cond) => (
+              <span
+                key={cond}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blood-50 text-blood-800 text-xs font-medium border border-blood-200"
+              >
+                {cond}
+                <button
+                  type="button"
+                  onClick={() => removeCondition(cond)}
+                  className="text-blood-500 hover:text-blood-700 font-semibold"
+                  aria-label={`Retirer l'état ${cond}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            <button
+              type="button"
+              onClick={() => setConditionPickerOpen(true)}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border border-parchment-300 bg-parchment-100 text-ink-500 hover:border-blood-300 hover:text-blood-700 transition-colors"
+              aria-haspopup="dialog"
+            >
+              + Ajouter un état…
+            </button>
+          </div>
+        </div>
+        <div>
+          <div className="flex items-baseline justify-between mb-1.5">
+            <span className="text-sm font-medium text-ink-700">Épuisement</span>
+            <span className={`text-xs font-semibold ${exhaustionColor(exhaustion)}`}>
+              Niveau {exhaustion}/6
+            </span>
+          </div>
+          {/* biome-ignore lint/a11y/useSemanticElements: fieldset would add its own border/margin styling and break the compact pips row. */}
+          <div className="flex items-center gap-1" role="group" aria-label="Niveau d'épuisement">
+            {[0, 1, 2, 3, 4, 5, 6].map((level) => {
+              const active = level <= exhaustion && level > 0;
+              return (
+                <button
+                  key={level}
+                  type="button"
+                  onClick={() => setExhaustionLevel(level)}
+                  className={`text-2xl leading-none transition-colors ${exhaustionColor(level)} ${
+                    active ? 'opacity-100' : 'opacity-30 hover:opacity-60'
+                  }`}
+                  aria-pressed={level === exhaustion}
+                  aria-label={`Niveau d'épuisement ${level}`}
+                  title={`Niveau ${level}${level > 0 ? ` — ${EXHAUSTION_EFFECTS_FR[level]}` : ' — Aucun effet'}`}
+                >
+                  {active ? '◆' : '◇'}
+                </button>
+              );
+            })}
+          </div>
+          {exhaustion > 0 && (
+            <p className="text-xs text-ink-500 mt-1">{EXHAUSTION_EFFECTS_FR[exhaustion]}</p>
+          )}
+        </div>
+      </section>
+
+      {/* ---------- 3. Ressources de classe — traits du catalogue avec compteur ---------- */}
+      {resourceFeatures.length > 0 && (
+        <section className="card p-4 sm:p-5 space-y-3">
+          <h2 className="section-title">⚡ Ressources de classe</h2>
+          <div className="space-y-1.5">
+            {resourceFeatures.map((feature) => {
+              const def = findClassFeature(feature.catalogId ?? '');
+              const max = feature.counterMax ?? 0;
+              const current = feature.counterCurrent ?? max;
+              const isPool = def?.resource?.unit === 'PV';
+              const resetShort =
+                def?.resource?.reset === 'short' ||
+                (def?.resource?.shortFromLevel !== undefined &&
+                  (character.level ?? 1) >= def.resource.shortFromLevel);
+              return (
+                <div
+                  key={feature.id}
+                  className="flex items-center justify-between gap-2 bg-parchment-50 rounded-lg px-3 py-2 border border-parchment-200"
+                >
+                  <span className="text-sm font-medium text-ink-800 truncate flex items-center gap-1.5">
+                    {isPool ? '❤️' : '⚡'} {feature.title}
+                  </span>
+                  <span className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => stepResource(feature, current - 1)}
+                      disabled={current <= 0}
+                      className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center"
+                      aria-label={`Dépenser ${feature.title}`}
+                    >
+                      −
+                    </button>
+                    <span className="text-sm font-bold tabular-nums text-ink-800 min-w-10 text-center">
+                      {current}
+                      <span className="text-ink-400 font-normal">
+                        {' '}
+                        / {max}
+                        {isPool ? ' PV' : ''}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => stepResource(feature, current + 1)}
+                      disabled={current >= max}
+                      className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center"
+                      aria-label={`Récupérer ${feature.title}`}
+                      title={resetShort ? 'Repos court ou long' : 'Repos long'}
+                    >
+                      +
+                    </button>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* ---------- 4. Repos — dés de vie et boutons réunis (l'économie de récupération) ---------- */}
+      <section className="card p-4 sm:p-5 space-y-3">
+        <h2 className="section-title">🎲 Repos</h2>
+        {(() => {
+          const classInfo = findClass(character.characterClass);
+          const die = classInfo?.hitDie ?? 8;
+          const total = character.level ?? 1;
+          const used = character.hitDiceUsed ?? 0;
+          const remaining = Math.max(0, total - used);
+          const step = async (delta: number) => {
+            markLocalMutation();
+            try {
+              await api.patch(`/api/characters/${charId}`, {
+                hitDiceUsed: Math.min(total, Math.max(0, used + delta)),
+              });
+              await onSaved();
+            } catch {
+              onError('Erreur de mise à jour');
+            }
+          };
+          return (
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="text-sm font-medium text-ink-700 flex items-center gap-1.5">
+                🎲 Dés de vie
+                <span className="text-xs font-normal text-ink-400">d{die}</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => step(1)}
+                  disabled={remaining <= 0}
+                  className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center"
+                  aria-label="Dépenser un dé de vie"
+                  title="Dépenser un dé de vie (repos court)"
+                >
+                  −
+                </button>
+                <span
+                  className={`text-sm font-bold tabular-nums ${remaining === 0 ? 'text-red-500' : 'text-ink-800'}`}
+                >
+                  {remaining}
+                </span>
+                <span className="text-xs text-ink-400">/ {total}</span>
+                <button
+                  type="button"
+                  onClick={() => step(-1)}
+                  disabled={used <= 0}
+                  className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center"
+                  aria-label="Récupérer un dé de vie"
+                  title="Récupérer un dé (repos long : niveau/2 dés, min 1)"
+                >
+                  +
+                </button>
+              </span>
+            </div>
+          );
+        })()}
+        {canEdit && (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setRestHitDice(0);
+                setRestHealed('');
+                setRestSheet('short');
+              }}
+              className="btn-rest-short"
+              title="Emplacements de pacte, forme sauvage, ressources « repos court » ; dés de vie lancés par le joueur"
+            >
+              ⛺ Repos court
+            </button>
+            <button
+              type="button"
+              onClick={() => setRestSheet('long')}
+              className="btn-rest-long"
+              title="PV au maximum, tous les emplacements, la moitié du niveau en dés de vie (min 1), épuisement −1, toutes les ressources"
+            >
+              🌙 Repos long
+            </button>
+          </div>
+        )}
+      </section>
+
+      {/* ---------- 5. Forme sauvage (Druide ≥ 2) ---------- */}
+      {findClass(character.characterClass)?.name === 'Druide' &&
+        (character.level ?? 1) >= 2 &&
+        (() => {
+          const shaped = !!character.wildShapeSlug;
+          return (
+            <section className="card p-4 sm:p-5 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="section-title">🐾 Forme sauvage</h2>
+                {/* biome-ignore lint/a11y/useSemanticElements: fieldset would add its own border/margin styling and break the compact pips row. */}
+                <span
+                  className="flex items-center gap-0.5"
+                  role="group"
+                  aria-label="Utilisations de forme sauvage"
+                >
+                  {[1, 2].map((n) => (
+                    <button
+                      type="button"
+                      key={n}
+                      onClick={async () => {
+                        if ((character.wildShapeUses ?? 2) === n) return;
+                        markLocalMutation();
+                        try {
+                          await api.patch(`/api/characters/${charId}`, { wildShapeUses: n });
+                          await onSaved();
+                        } catch {
+                          onError('Erreur de mise à jour');
+                        }
+                      }}
+                      className={`text-base leading-none px-0.5 transition-opacity ${(character.wildShapeUses ?? 2) >= n ? 'opacity-100' : 'opacity-25 hover:opacity-60'}`}
+                      aria-pressed={(character.wildShapeUses ?? 2) >= n}
+                      aria-label={`${n} utilisation${n > 1 ? 's' : ''} de forme sauvage`}
+                      title={`Régler à ${n} utilisation${n > 1 ? 's' : ''} (récupérées après un repos court ou long)`}
+                    >
+                      🐾
+                    </button>
+                  ))}
+                </span>
+              </div>
+              {shaped ? (
+                <>
+                  <div className="text-xs text-ink-600 flex items-center gap-1.5 flex-wrap">
+                    <span>
+                      Forme actuelle :{' '}
+                      <strong className="text-ink-900">
+                        {shapeForms.find((f) => f.slug === character.wildShapeSlug)?.nameFr ??
+                          character.wildShapeSlug}
+                      </strong>{' '}
+                      · {wildShapeDurationHours(character.level ?? 2)} h max
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShapeStatBlock(character.wildShapeSlug)}
+                      className="w-7 h-7 rounded-lg bg-parchment-100 hover:bg-gold-100 text-ink-500 hover:text-gold-600 border border-parchment-200 text-sm flex items-center justify-center transition-colors"
+                      aria-label="Voir le bloc de stats de la forme"
+                      title="Bloc de stats de la forme actuelle"
+                    >
+                      📜
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={revertShape}
+                    className="btn-secondary text-xs w-full py-1.5"
+                  >
+                    ↩ Revenir à la forme normale (action bonus)
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-ink-600">
+                    Bêtes jusqu'à DD {(() => {
+                      const cr = wildShapeMaxCR(character.level ?? 2, character.druidCircle);
+                      return cr === 0.25 ? '1/4' : cr === 0.5 ? '1/2' : cr;
+                    })()}
+                    {character.druidCircle !== 'lune' &&
+                      (character.level ?? 2) < 4 &&
+                      ' · pas de nage'}
+                    {character.druidCircle !== 'lune' &&
+                      (character.level ?? 2) < 8 &&
+                      ' · pas de vol'}
+                    {(character.level ?? 2) >= 4 && character.druidCircle !== 'lune' && ' · nage'}
+                    {(character.level ?? 2) >= 8 && character.druidCircle !== 'lune' && ' · vol'} —
+                    PV lancés aux dés de la forme.
+                  </p>
+                  {character.druidCircle === 'lune' && (
+                    <p className="text-[10px] text-ink-500">
+                      🌙 Lune : transformation et retour en action bonus
+                      {(character.level ?? 2) >= 10 ? ' · formes élémentaires disponibles' : ''}
+                      {(character.level ?? 2) >= 6 ? ' · attaques de bête magiques' : ''}.
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={openShapePicker}
+                    disabled={(character.wildShapeUses ?? 2) <= 0}
+                    className="btn-primary text-xs w-full py-1.5 disabled:opacity-40"
+                  >
+                    🐾 Prendre une forme
+                  </button>
+                </>
+              )}
+            </section>
+          );
+        })()}
+
+      {/* ---------- 6. Attaques — options équipées, furtive, sans arme ---------- */}
+      <section className="card p-4 sm:p-5 space-y-3">
+        <h2 className="section-title">⚔ Attaques</h2>
         {(() => {
           const equippedWeapons = entries.filter((e) => e.equipped && e.item.category === 'weapon');
           if (equippedWeapons.length === 0) return null;
@@ -2873,7 +3382,7 @@ function SurvivalPanel({
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
                       <Chip
-                        tone={stats.proficient ? 'red' : 'amber'}
+                        tone={stats.proficient ? 'blood' : 'amber'}
                         title={`Attaque : ${breakdown}`}
                       >
                         🎯 {formatModifier(stats.attackBonus)}
@@ -2946,7 +3455,7 @@ function SurvivalPanel({
                   e.item.properties?.includes('ammunition')),
             );
             return (
-              <div className="bg-parchment-100 rounded-lg px-3 py-2 border border-parchment-200 space-y-1">
+              <div className="bg-parchment-50 rounded-lg px-3 py-2 border border-parchment-200 space-y-1">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-medium text-ink-800 truncate">
                     ☠ Attaque furtive
@@ -2969,254 +3478,6 @@ function SurvivalPanel({
               </div>
             );
           })()}
-        {findClass(character.characterClass)?.name === 'Druide' &&
-          (character.level ?? 1) >= 2 &&
-          (() => {
-            const shaped = !!character.wildShapeSlug;
-            return (
-              <div className="rounded-xl border border-green-300 bg-green-50 p-3 space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-green-900 flex items-center gap-1.5">
-                    🐾 Forme sauvage
-                  </span>
-                  {/* biome-ignore lint/a11y/useSemanticElements: fieldset would add its own border/margin styling and break the compact pips row. */}
-                  <span
-                    className="flex items-center gap-0.5"
-                    role="group"
-                    aria-label="Utilisations de forme sauvage"
-                  >
-                    {[1, 2].map((n) => (
-                      <button
-                        type="button"
-                        key={n}
-                        onClick={async () => {
-                          if ((character.wildShapeUses ?? 2) === n) return;
-                          markLocalMutation();
-                          try {
-                            await api.patch(`/api/characters/${charId}`, { wildShapeUses: n });
-                            await onSaved();
-                          } catch {
-                            onError('Erreur de mise à jour');
-                          }
-                        }}
-                        className={`text-base leading-none px-0.5 transition-opacity ${(character.wildShapeUses ?? 2) >= n ? 'opacity-100' : 'opacity-25 hover:opacity-60'}`}
-                        aria-pressed={(character.wildShapeUses ?? 2) >= n}
-                        aria-label={`${n} utilisation${n > 1 ? 's' : ''} de forme sauvage`}
-                        title={`Régler à ${n} utilisation${n > 1 ? 's' : ''} (récupérées après un repos court ou long)`}
-                      >
-                        🐾
-                      </button>
-                    ))}
-                  </span>
-                </div>
-                {shaped ? (
-                  <>
-                    <div className="text-xs text-green-800 flex items-center gap-1.5 flex-wrap">
-                      <span>
-                        Forme actuelle :{' '}
-                        <strong>
-                          {shapeForms.find((f) => f.slug === character.wildShapeSlug)?.nameFr ??
-                            character.wildShapeSlug}
-                        </strong>{' '}
-                        · {wildShapeDurationHours(character.level ?? 2)} h max
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setShapeStatBlock(character.wildShapeSlug)}
-                        className="w-7 h-7 rounded-lg bg-white/70 hover:bg-white text-ink-600 border border-green-200 text-sm flex items-center justify-center transition-colors"
-                        aria-label="Voir le bloc de stats de la forme"
-                        title="Bloc de stats de la forme actuelle"
-                      >
-                        📜
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={revertShape}
-                      className="btn-secondary text-xs w-full py-1.5"
-                    >
-                      ↩ Revenir à la forme normale (action bonus)
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-xs text-green-800">
-                      Bêtes jusqu'à DD {(() => {
-                        const cr = wildShapeMaxCR(character.level ?? 2, character.druidCircle);
-                        return cr === 0.25 ? '1/4' : cr === 0.5 ? '1/2' : cr;
-                      })()}
-                      {character.druidCircle !== 'lune' &&
-                        (character.level ?? 2) < 4 &&
-                        ' · pas de nage'}
-                      {character.druidCircle !== 'lune' &&
-                        (character.level ?? 2) < 8 &&
-                        ' · pas de vol'}
-                      {(character.level ?? 2) >= 4 && character.druidCircle !== 'lune' && ' · nage'}
-                      {(character.level ?? 2) >= 8 && character.druidCircle !== 'lune' && ' · vol'}{' '}
-                      — PV lancés aux dés de la forme.
-                    </p>
-                    {character.druidCircle === 'lune' && (
-                      <p className="text-[10px] text-green-700">
-                        🌙 Lune : transformation et retour en action bonus
-                        {(character.level ?? 2) >= 10 ? ' · formes élémentaires disponibles' : ''}
-                        {(character.level ?? 2) >= 6 ? ' · attaques de bête magiques' : ''}.
-                      </p>
-                    )}
-                    <button
-                      type="button"
-                      onClick={openShapePicker}
-                      disabled={(character.wildShapeUses ?? 2) <= 0}
-                      className="btn-primary text-xs w-full py-1.5 disabled:opacity-40"
-                    >
-                      🐾 Prendre une forme
-                    </button>
-                  </>
-                )}
-              </div>
-            );
-          })()}
-
-        {/* Beast picker sheet (portal) */}
-        {shapePickerOpen &&
-          createPortal(
-            <div
-              className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
-              onClick={() => setShapePickerOpen(false)}
-            >
-              <div
-                className="card w-full sm:max-w-md rounded-b-none sm:rounded-2xl p-4 sheet-enter bg-white max-h-[80vh] flex flex-col"
-                onClick={(e) => e.stopPropagation()}
-                role="dialog"
-                aria-modal="true"
-                aria-label="Choisir une forme"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="section-title">🐾 Choisir une forme</h3>
-                  <button
-                    type="button"
-                    onClick={() => setShapePickerOpen(false)}
-                    className="text-ink-400 hover:text-ink-700 text-lg leading-none px-1"
-                    aria-label="Fermer"
-                  >
-                    ✕
-                  </button>
-                </div>
-                <div className="flex gap-2 mb-2">
-                  <input
-                    type="text"
-                    className="input flex-1"
-                    placeholder="Rechercher une bête…"
-                    value={shapeSearch}
-                    onChange={(e) => setShapeSearch(e.target.value)}
-                    autoFocus
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShapeSeenOnly((v) => !v)}
-                    className={`shrink-0 px-3 rounded-lg border text-xs font-semibold transition-colors ${
-                      shapeSeenOnly
-                        ? 'bg-green-100 text-green-800 border-green-300'
-                        : 'bg-parchment-100 text-ink-500 border-parchment-300'
-                    }`}
-                    aria-pressed={shapeSeenOnly}
-                    title="Filtrer sur les bêtes déjà vues (SRD)"
-                  >
-                    👁 Vues
-                  </button>
-                </div>
-                <div className="flex-1 overflow-y-auto space-y-1.5 -mx-1 px-1">
-                  {shapeForms
-                    .filter(
-                      (f) =>
-                        (!shapeSeenOnly || f.seen) &&
-                        (!shapeSearch.trim() ||
-                          (f.nameFr ?? f.name).toLowerCase().includes(shapeSearch.toLowerCase())),
-                    )
-                    .map((f) => (
-                      <div
-                        key={f.slug}
-                        className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-parchment-200 ${f.seen ? 'bg-parchment-50' : 'bg-parchment-50/40'} transition-colors`}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => f.seen && takeShape(f.slug)}
-                          disabled={!f.seen}
-                          className={`min-w-0 flex-1 text-left ${f.seen ? 'hover:opacity-80' : 'cursor-not-allowed'}`}
-                          title={
-                            f.seen
-                              ? 'Prendre cette forme'
-                              : 'Bête non vue — marquez-la 👁 pour pouvoir vous transformer'
-                          }
-                        >
-                          <span
-                            className={`text-sm font-medium block truncate ${f.seen ? 'text-ink-800' : 'text-ink-400'}`}
-                          >
-                            {f.nameFr ?? f.name}
-                          </span>
-                          <span className="text-[10px] text-ink-400">
-                            DD{' '}
-                            {f.challengeRating === 0.125
-                              ? '1/8'
-                              : f.challengeRating === 0.25
-                                ? '1/4'
-                                : f.challengeRating === 0.5
-                                  ? '1/2'
-                                  : f.challengeRating}
-                            {f.size ? ` · ${f.size}` : ''}
-                            {f.fly ? ' · 🦅 vol' : ''}
-                            {f.swim ? ' · 🏊 nage' : ''}
-                            {!f.seen && ' · non vue'}
-                          </span>
-                        </button>
-                        <span className="text-xs text-ink-500 shrink-0 text-right">
-                          ❤ {f.hitPoints ?? '—'}
-                          <br />🛡 {f.armorClass ?? '—'}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setShapeStatBlock(f.slug)}
-                          className="shrink-0 w-8 h-8 rounded-lg bg-parchment-100 hover:bg-gold-100 text-ink-500 hover:text-gold-600 border border-parchment-200 text-sm flex items-center justify-center transition-colors"
-                          aria-label={`Voir le bloc de stats de ${f.nameFr ?? f.name}`}
-                          title="Bloc de stats"
-                        >
-                          📜
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => toggleShapeSeen(f.slug, !!f.seen)}
-                          className={`shrink-0 w-8 h-8 rounded-lg text-base flex items-center justify-center transition-colors ${
-                            f.seen
-                              ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                              : 'bg-parchment-200 text-ink-400 hover:bg-parchment-300'
-                          }`}
-                          aria-label={
-                            f.seen
-                              ? `Marquer ${f.nameFr ?? f.name} comme non vue`
-                              : `Marquer ${f.nameFr ?? f.name} comme vue`
-                          }
-                          aria-pressed={f.seen}
-                          title={f.seen ? 'Déjà vue — cliquer pour retirer' : 'Marquer comme vue'}
-                        >
-                          {f.seen ? '👁' : '⊘'}
-                        </button>
-                      </div>
-                    ))}
-                  {shapeForms.length === 0 && (
-                    <p className="text-sm text-ink-400 italic text-center py-4">
-                      Aucune forme disponible à ce niveau.
-                    </p>
-                  )}
-                  {shapeForms.length > 0 && shapeForms.every((f) => !f.seen) && shapeSeenOnly && (
-                    <p className="text-xs text-ink-400 italic text-center py-3">
-                      Aucune bête marquée comme vue — désactivez « Vues » et marquez-en avec 👁
-                      (formes déjà rencontrées par votre druide).
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>,
-            document.body,
-          )}
         <MonsterStatBlock
           open={!!shapeStatBlock}
           slug={shapeStatBlock}
@@ -3227,7 +3488,7 @@ function SurvivalPanel({
           const u = computeUnarmedStats(character);
           const abilityLabel = u.ability === 'dexterity' ? 'DEX' : 'FOR';
           return (
-            <div className="bg-parchment-100 rounded-lg px-3 py-2 border border-parchment-200 space-y-1">
+            <div className="bg-parchment-50 rounded-lg px-3 py-2 border border-parchment-200 space-y-1">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-medium text-ink-800 truncate">
                   ✊ Frappe sans arme
@@ -3240,7 +3501,7 @@ function SurvivalPanel({
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 <Chip
-                  tone="red"
+                  tone="blood"
                   title={`Attaque : d20 ${formatModifier(u.attackBonus - proficiencyBonus(character.level ?? 1))} (${abilityLabel}) + ${proficiencyBonus(character.level ?? 1)} (maîtrise)`}
                 >
                   🎯 {formatModifier(u.attackBonus)}
@@ -3260,393 +3521,11 @@ function SurvivalPanel({
             </div>
           );
         })()}
-      </div>
+      </section>
 
-      <div className="space-y-4">
-        {/* Exhaustion tracker */}
-        {/* HP tracker — while shaped it shows the beast's bar (routed server-side to wild_shape_hp) */}
-        {character.wildShapeSlug ? (
-          (() => {
-            const shapeHp = character.wildShapeHp ?? 0;
-            const shapeMax = character.wildShapeMaxHp ?? 1;
-            const commitShapeHp = async () => {
-              if (shapeHpDraft === null) return;
-              // Same ceiling as the regular HP tracker: typed values obey the max.
-              const n = Math.min(Math.max(0, Math.round(Number(shapeHpDraft) || 0)), shapeMax);
-              setShapeHpDraft(null);
-              if (n === shapeHp) return;
-              markLocalMutation();
-              try {
-                await api.patch(`/api/characters/${charId}`, { currentHp: n });
-                await onSaved();
-              } catch {
-                onError('Erreur');
-              }
-            };
-            return (
-              <div className="rounded-xl border border-green-300 bg-green-50 p-3 space-y-2">
-                <div className="text-xs font-semibold text-green-900">❤ PV — forme animale</div>
-                <HpBar
-                  current={shapeHp}
-                  max={shapeMax}
-                  size="sm"
-                  trackClassName="bg-green-100 border border-green-200"
-                />
-                <div className="flex items-center justify-between gap-2">
-                  <span className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      className="w-14 text-center text-sm font-bold bg-white border border-green-200 rounded-md py-1 focus:outline-none focus:border-green-500 text-green-900"
-                      value={shapeHpDraft ?? String(shapeHp)}
-                      onChange={(e) => setShapeHpDraft(e.target.value)}
-                      onBlur={commitShapeHp}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                      }}
-                      aria-label="Points de vie de la forme"
-                    />
-                    <span className="text-xs text-green-700">/ {shapeMax}</span>
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const n = Math.max(0, shapeHp - 1);
-                        markLocalMutation();
-                        try {
-                          await api.patch(`/api/characters/${charId}`, { currentHp: n });
-                          await onSaved();
-                        } catch {
-                          onError('Erreur');
-                        }
-                      }}
-                      className="w-7 h-7 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 text-sm font-medium flex items-center justify-center"
-                      aria-label="Blesser la forme"
-                    >
-                      −
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const n = shapeHp + 1;
-                        markLocalMutation();
-                        try {
-                          await api.patch(`/api/characters/${charId}`, { currentHp: n });
-                          await onSaved();
-                        } catch {
-                          onError('Erreur');
-                        }
-                      }}
-                      className="w-7 h-7 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 text-sm font-medium flex items-center justify-center"
-                      aria-label="Soigner la forme"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-                <p className="text-[10px] text-green-700 italic">
-                  À 0 PV : retour automatique à la forme normale, les dégâts excédentaires
-                  s'appliquent.
-                </p>
-              </div>
-            );
-          })()
-        ) : (
-          <HpTracker
-            character={character}
-            charId={charId}
-            markLocalMutation={markLocalMutation}
-            onSaved={onSaved}
-            onError={onError}
-            onConcentrationCheck={setConcCheck}
-          />
-        )}
-        {concCheck && (
-          <ConcentrationAlert
-            check={concCheck}
-            onDone={() => setConcCheck(null)}
-            onBreak={() => patchCharacter({ concentrating: false }, 'Erreur de mise à jour')}
-          />
-        )}
-
-        {/* Ressources de classe — traits du catalogue avec compteur (rage, ki, canalisation…) */}
-        {resourceFeatures.length > 0 && (
-          <div>
-            <span className="text-sm font-medium text-ink-700 block mb-1.5">
-              ⚡ Ressources de classe
-            </span>
-            <div className="space-y-1.5">
-              {resourceFeatures.map((feature) => {
-                const def = findClassFeature(feature.catalogId ?? '');
-                const max = feature.counterMax ?? 0;
-                const current = feature.counterCurrent ?? max;
-                const isPool = def?.resource?.unit === 'PV';
-                const resetShort =
-                  def?.resource?.reset === 'short' ||
-                  (def?.resource?.shortFromLevel !== undefined &&
-                    (character.level ?? 1) >= def.resource.shortFromLevel);
-                return (
-                  <div
-                    key={feature.id}
-                    className="flex items-center justify-between gap-2 bg-parchment-50 rounded-lg px-3 py-2 border border-parchment-200"
-                  >
-                    <span className="text-sm font-medium text-ink-800 truncate flex items-center gap-1.5">
-                      {isPool ? '❤️' : '⚡'} {feature.title}
-                    </span>
-                    <span className="flex items-center gap-1 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => stepResource(feature, current - 1)}
-                        disabled={current <= 0}
-                        className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center"
-                        aria-label={`Dépenser ${feature.title}`}
-                      >
-                        −
-                      </button>
-                      <span className="text-sm font-bold tabular-nums text-ink-800 min-w-10 text-center">
-                        {current}
-                        <span className="text-ink-400 font-normal">
-                          {' '}
-                          / {max}
-                          {isPool ? ' PV' : ''}
-                        </span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => stepResource(feature, current + 1)}
-                        disabled={current >= max}
-                        className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center"
-                        aria-label={`Récupérer ${feature.title}`}
-                        title={resetShort ? 'Repos court ou long' : 'Repos long'}
-                      >
-                        +
-                      </button>
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Hit dice — spent on a short rest to heal */}
-        {(() => {
-          const classInfo = findClass(character.characterClass);
-          const die = classInfo?.hitDie ?? 8;
-          const total = character.level ?? 1;
-          const used = character.hitDiceUsed ?? 0;
-          const remaining = Math.max(0, total - used);
-          const step = async (delta: number) => {
-            markLocalMutation();
-            try {
-              await api.patch(`/api/characters/${charId}`, {
-                hitDiceUsed: Math.min(total, Math.max(0, used + delta)),
-              });
-              await onSaved();
-            } catch {
-              onError('Erreur de mise à jour');
-            }
-          };
-          return (
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <span className="text-sm font-medium text-ink-700 flex items-center gap-1.5">
-                🎲 Dés de vie
-                <span className="text-xs font-normal text-ink-400">d{die}</span>
-              </span>
-              <span className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => step(-1)}
-                  disabled={used <= 0}
-                  className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center"
-                  aria-label="Récupérer un dé de vie"
-                  title="Récupérer un dé (repos long : niveau/2 dés, min 1)"
-                >
-                  +
-                </button>
-                <span
-                  className={`text-sm font-bold tabular-nums ${remaining === 0 ? 'text-red-500' : 'text-ink-800'}`}
-                >
-                  {remaining}
-                </span>
-                <span className="text-xs text-ink-400">/ {total}</span>
-                <button
-                  type="button"
-                  onClick={() => step(1)}
-                  disabled={remaining <= 0}
-                  className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center"
-                  aria-label="Dépenser un dé de vie"
-                  title="Dépenser un dé de vie (repos court)"
-                >
-                  −
-                </button>
-              </span>
-            </div>
-          );
-        })()}
-
-        {/* Repos court / long — restauration SRD (emplacements de pacte, forme sauvage, dés de vie, épuisement, ressources) */}
-        {canEdit && (
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setRestHitDice(0);
-                setRestHealed('');
-                setRestSheet('short');
-              }}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-indigo-50 text-indigo-800 border border-indigo-200 hover:border-indigo-400 transition-colors"
-              title="Emplacements de pacte, forme sauvage, ressources « repos court » ; dés de vie lancés par le joueur"
-            >
-              ⛺ Repos court
-            </button>
-            <button
-              type="button"
-              onClick={() => setRestSheet('long')}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-purple-50 text-purple-800 border border-purple-200 hover:border-purple-400 transition-colors"
-              title="PV au maximum, tous les emplacements, la moitié du niveau en dés de vie (min 1), épuisement −1, toutes les ressources"
-            >
-              🌙 Repos long
-            </button>
-          </div>
-        )}
-
-        {/* Inspiration + Concentration toggles */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={async () => {
-              markLocalMutation();
-              try {
-                await api.patch(`/api/characters/${charId}`, {
-                  inspiration: !character.inspiration,
-                });
-                await onSaved();
-              } catch {
-                onError('Erreur');
-              }
-            }}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${
-              character.inspiration
-                ? 'bg-gold-400/20 text-gold-500 border-gold-400'
-                : 'bg-parchment-100 text-ink-400 border-parchment-300 hover:border-gold-400'
-            }`}
-            aria-pressed={character.inspiration}
-            title="L'inspiration permet de relancer un d20 et de garder le meilleur résultat"
-          >
-            <span className="text-base">{character.inspiration ? '✨' : '✧'}</span>
-            Inspiration
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              patchCharacter({ concentrating: !character.concentrating }, 'Erreur de mise à jour')
-            }
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border ${
-              character.concentrating
-                ? 'bg-indigo-100 text-indigo-700 border-indigo-400'
-                : 'bg-parchment-100 text-ink-400 border-parchment-300 hover:border-indigo-400'
-            }`}
-            aria-pressed={character.concentrating}
-            title="Tu concentres un sort. Si tu subis des dégâts : jet de sauvegarde de Constitution DD 10 ou ½ dégâts (le plus élevé) pour le maintenir."
-          >
-            <span className="text-base">{character.concentrating ? '🌀' : '◌'}</span>
-            Concentration
-          </button>
-        </div>
-
-        {/* Death saves — only shown at 0 HP */}
-        {character.currentHp <= 0 && (
-          <DeathSaveTracker
-            character={character}
-            charId={charId}
-            markLocalMutation={markLocalMutation}
-            onSaved={onSaved}
-            onError={onError}
-          />
-        )}
-
-        {/* Exhaustion */}
-        <div>
-          <div className="flex items-baseline justify-between mb-1.5">
-            <span className="text-sm font-medium text-ink-700">Épuisement</span>
-            <span className={`text-xs font-semibold ${exhaustionColor(exhaustion)}`}>
-              Niveau {exhaustion}/6
-            </span>
-          </div>
-          {/* biome-ignore lint/a11y/useSemanticElements: fieldset would add its own border/margin styling and break the compact pips row. */}
-          <div className="flex items-center gap-1" role="group" aria-label="Niveau d'épuisement">
-            {[0, 1, 2, 3, 4, 5, 6].map((level) => {
-              const active = level <= exhaustion && level > 0;
-              return (
-                <button
-                  key={level}
-                  type="button"
-                  onClick={() => setExhaustionLevel(level)}
-                  className={`text-2xl leading-none transition-colors ${exhaustionColor(exhaustion)} ${
-                    active ? 'opacity-100' : 'opacity-30 hover:opacity-60'
-                  }`}
-                  aria-pressed={level === exhaustion}
-                  aria-label={`Niveau d'épuisement ${level}`}
-                  title={`Niveau ${level}${level > 0 ? ` — ${EXHAUSTION_EFFECTS_FR[level]}` : ' — Aucun effet'}`}
-                >
-                  {active ? '◆' : '◇'}
-                </button>
-              );
-            })}
-          </div>
-          {exhaustion > 0 && (
-            <p className="text-xs text-ink-500 mt-1">{EXHAUSTION_EFFECTS_FR[exhaustion]}</p>
-          )}
-        </div>
-
-        {/* Conditions */}
-        <div>
-          <span className="text-sm font-medium text-ink-700 block mb-1.5">États</span>
-          <div className="flex flex-wrap items-center gap-2">
-            {conditions.length === 0 && (
-              <span className="text-xs text-ink-400 italic">Aucun état actif</span>
-            )}
-            {conditions.map((cond) => (
-              <span
-                key={cond}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blood-50 text-blood-800 text-xs font-medium border border-blood-200"
-              >
-                {cond}
-                <button
-                  type="button"
-                  onClick={() => removeCondition(cond)}
-                  className="text-blood-500 hover:text-blood-700 font-semibold"
-                  aria-label={`Retirer l'état ${cond}`}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-            <label className="inline-flex items-center">
-              <span className="sr-only">Ajouter un état</span>
-              <select
-                className="input py-1 text-xs w-auto"
-                value=""
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v) addCondition(v);
-                  e.target.value = '';
-                }}
-                aria-label="Ajouter un état"
-              >
-                <option value="">+ Ajouter un état…</option>
-                {DND_CONDITIONS_FR.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        </div>
-
-        {/* Deprivation + consume from inventory */}
+      {/* ---------- 7. Nourriture & eau ---------- */}
+      <section className="card p-4 sm:p-5 space-y-3">
+        <h2 className="section-title">🍖 Nourriture & eau</h2>
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
             <DeprivationBox
@@ -3692,7 +3571,7 @@ function SurvivalPanel({
             )}
           </div>
         </div>
-      </div>
+      </section>
 
       {/* --- Sheet repos court : dépense de dés de vie + résumé --- */}
       <BottomSheet
@@ -3879,7 +3758,180 @@ function SurvivalPanel({
           )}
         </div>
       </BottomSheet>
-    </section>
+
+      {/* --- Ajouter un état — picker 1 tap avec rappel de règle --- */}
+      <BottomSheet
+        open={conditionPickerOpen}
+        onClose={() => setConditionPickerOpen(false)}
+        title="🎭 Ajouter un état"
+        mobileOnly={false}
+        size="md"
+      >
+        <div className="space-y-1.5">
+          {DND_CONDITIONS_FR.map((cond) => {
+            const active = conditions.includes(cond);
+            const breaksConcentration = CONCENTRATION_BREAKING_CONDITIONS_FR.includes(cond);
+            return (
+              <button
+                type="button"
+                key={cond}
+                disabled={active}
+                onClick={() => {
+                  addCondition(cond);
+                  setConditionPickerOpen(false);
+                }}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors bg-parchment-50 border-parchment-200 ${
+                  active ? 'opacity-60 cursor-not-allowed' : 'hover:border-blood-300'
+                }`}
+              >
+                <span className="text-lg shrink-0" aria-hidden="true">
+                  {CONDITION_ICONS[cond] ?? '❓'}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium text-ink-800">
+                    {cond}
+                    {active && <span className="text-ink-400 font-normal"> · déjà actif</span>}
+                  </span>
+                  <span className="block text-xs text-ink-500">{CONDITION_HINTS_FR[cond]}</span>
+                </span>
+                {breaksConcentration && (
+                  <span
+                    className="text-sm shrink-0 text-indigo-600"
+                    title="Interrompt la concentration"
+                  >
+                    🌀
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </BottomSheet>
+
+      {/* --- Choisir une forme — bestiaire du druide (BottomSheet partagé : Échap + scroll-lock) --- */}
+      <BottomSheet
+        open={shapePickerOpen}
+        onClose={() => setShapePickerOpen(false)}
+        title="🐾 Choisir une forme"
+        mobileOnly={false}
+        size="md"
+      >
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              className="input flex-1"
+              placeholder="Rechercher une bête…"
+              value={shapeSearch}
+              onChange={(e) => setShapeSearch(e.target.value)}
+              autoFocus
+            />
+            <button
+              type="button"
+              onClick={() => setShapeSeenOnly((v) => !v)}
+              className={`shrink-0 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+                shapeSeenOnly
+                  ? 'bg-green-100 text-green-800 border-green-300'
+                  : 'bg-parchment-100 text-ink-500 border-parchment-300'
+              }`}
+              aria-pressed={shapeSeenOnly}
+              title="Filtrer sur les bêtes déjà vues (SRD)"
+            >
+              👁 Vues
+            </button>
+          </div>
+          <div className="space-y-1.5">
+            {shapeForms
+              .filter(
+                (f) =>
+                  (!shapeSeenOnly || f.seen) &&
+                  (!shapeSearch.trim() ||
+                    (f.nameFr ?? f.name).toLowerCase().includes(shapeSearch.toLowerCase())),
+              )
+              .map((f) => (
+                <div
+                  key={f.slug}
+                  className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-parchment-200 ${f.seen ? 'bg-parchment-50' : 'bg-parchment-50/40'} transition-colors`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => f.seen && takeShape(f.slug)}
+                    disabled={!f.seen}
+                    className={`min-w-0 flex-1 text-left ${f.seen ? 'hover:opacity-80' : 'cursor-not-allowed'}`}
+                    title={
+                      f.seen
+                        ? 'Prendre cette forme'
+                        : 'Bête non vue — marquez-la 👁 pour pouvoir vous transformer'
+                    }
+                  >
+                    <span
+                      className={`text-sm font-medium block truncate ${f.seen ? 'text-ink-800' : 'text-ink-400'}`}
+                    >
+                      {f.nameFr ?? f.name}
+                    </span>
+                    <span className="text-[10px] text-ink-400">
+                      DD{' '}
+                      {f.challengeRating === 0.125
+                        ? '1/8'
+                        : f.challengeRating === 0.25
+                          ? '1/4'
+                          : f.challengeRating === 0.5
+                            ? '1/2'
+                            : f.challengeRating}
+                      {f.size ? ` · ${f.size}` : ''}
+                      {f.fly ? ' · 🦅 vol' : ''}
+                      {f.swim ? ' · 🏊 nage' : ''}
+                      {!f.seen && ' · non vue'}
+                    </span>
+                  </button>
+                  <span className="text-xs text-ink-500 shrink-0 text-right">
+                    ❤ {f.hitPoints ?? '—'}
+                    <br />🛡 {f.armorClass ?? '—'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShapeStatBlock(f.slug)}
+                    className="shrink-0 w-8 h-8 rounded-lg bg-parchment-100 hover:bg-gold-100 text-ink-500 hover:text-gold-600 border border-parchment-200 text-sm flex items-center justify-center transition-colors"
+                    aria-label={`Voir le bloc de stats de ${f.nameFr ?? f.name}`}
+                    title="Bloc de stats"
+                  >
+                    📜
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleShapeSeen(f.slug, !!f.seen)}
+                    className={`shrink-0 w-8 h-8 rounded-lg text-base flex items-center justify-center transition-colors ${
+                      f.seen
+                        ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                        : 'bg-parchment-200 text-ink-400 hover:bg-parchment-300'
+                    }`}
+                    aria-label={
+                      f.seen
+                        ? `Marquer ${f.nameFr ?? f.name} comme non vue`
+                        : `Marquer ${f.nameFr ?? f.name} comme vue`
+                    }
+                    aria-pressed={f.seen}
+                    title={f.seen ? 'Déjà vue — cliquer pour retirer' : 'Marquer comme vue'}
+                  >
+                    {f.seen ? '👁' : '⊘'}
+                  </button>
+                </div>
+              ))}
+            {shapeForms.length === 0 && (
+              <p className="text-sm text-ink-400 italic text-center py-4">
+                Aucune forme disponible à ce niveau.
+              </p>
+            )}
+            {shapeForms.length > 0 && shapeForms.every((f) => !f.seen) && shapeSeenOnly && (
+              <p className="text-xs text-ink-400 italic text-center py-3">
+                Aucune bête marquée comme vue — désactivez « Vues » et marquez-en avec 👁 (formes
+                déjà rencontrées par votre druide).
+              </p>
+            )}
+          </div>
+        </div>
+      </BottomSheet>
+    </>
   );
 }
 
@@ -4086,79 +4138,95 @@ function HpTracker({
           ? 'text-orange-500'
           : 'text-green-600';
 
-  return (
-    <div className="flex items-center gap-3 flex-wrap">
-      <span className="text-sm font-medium text-ink-700">❤️ PV</span>
+  // Steppers share the state band's grammar: −5/−1 edit +1/+5 with 44px targets.
+  // Damage absorbs temp HP first (SRD); only the remainder hits current HP.
+  // Both fields ride the same debounced PATCH so a click burst coalesces into
+  // one request — and one concentration check, which the server rolls against
+  // the TOTAL damage taken (PHB p.203: absorbed by temp HP or not, it counts).
+  const damage = (amount: number) => {
+    const absorbed = Math.min(tempNum, amount);
+    const nextTemp = tempNum - absorbed;
+    const nextCur = Math.max(0, curNum - (amount - absorbed));
+    setCurrentHp(nextCur);
+    setTempHp(nextTemp);
+    schedulePatch('currentHp', nextCur);
+    schedulePatch('tempHp', nextTemp);
+  };
+  const heal = (amount: number) => {
+    const n = Math.min(maxNum, curNum + amount);
+    setCurrentHp(n);
+    schedulePatch('currentHp', n);
+  };
+  const stepTemp = (delta: number) => {
+    const n = Math.max(0, tempNum + delta);
+    setTempHp(n);
+    schedulePatch('tempHp', n);
+  };
 
-      {/* Current HP */}
-      <div className="flex items-center gap-1">
+  return (
+    <div className="space-y-3">
+      {/* Damage / heal — one line reads the full HP statement: −5 −1 [current] / [max] +1 +5.
+        The max is a quiet underlined input (still editable) so current/max stay together.
+        Damage buttons eat PV temp first. */}
+      <div className="flex items-center justify-center gap-1 flex-wrap">
         <button
           type="button"
-          onClick={() => {
-            const n = Math.max(0, curNum - 1);
-            setCurrentHp(n);
-            schedulePatch('currentHp', n);
-          }}
-          className="w-7 h-7 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 text-sm font-medium flex items-center justify-center"
-          aria-label="Blesser"
+          onClick={() => damage(5)}
+          className="w-11 h-11 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 font-semibold flex items-center justify-center transition-colors"
+          aria-label="Blesser de 5"
         >
-          −
+          −5
+        </button>
+        <button
+          type="button"
+          onClick={() => damage(1)}
+          className="w-11 h-11 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 font-semibold flex items-center justify-center transition-colors"
+          aria-label="Blesser de 1"
+        >
+          −1
         </button>
         <input
           type="number"
-          className={`w-14 text-center text-sm font-bold bg-white border border-parchment-300 rounded-md py-1 focus:outline-none focus:border-blood-500 ${hpColor}`}
+          className={`w-16 text-center text-lg font-bold bg-white border border-parchment-300 rounded-lg py-1 focus:outline-none focus:border-blood-500 ${hpColor}`}
           value={currentHp}
           onChange={(e) => setCurrentHp(e.target.value === '' ? '' : Number(e.target.value) || 0)}
           onBlur={() => commit('currentHp', currentHp, setCurrentHp)}
           aria-label="Points de vie actuels"
         />
-        <button
-          type="button"
-          onClick={() => {
-            const n = Math.min(maxNum, curNum + 1);
-            setCurrentHp(n);
-            schedulePatch('currentHp', n);
-          }}
-          className="w-7 h-7 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 text-sm font-medium flex items-center justify-center"
-          aria-label="Soigner"
-        >
-          +
-        </button>
-      </div>
-      <span className="text-ink-400 text-sm">/</span>
-
-      {/* Max HP */}
-      <label className="flex items-center gap-1">
-        <span className="text-xs text-ink-400">max</span>
+        <span className="text-ink-400 font-semibold">/</span>
         <input
           type="number"
-          className="w-14 text-center text-sm font-semibold bg-white border border-parchment-300 rounded-md py-1 focus:outline-none focus:border-blood-500"
+          className="w-12 text-center text-base font-semibold text-ink-500 bg-transparent border-b border-dashed border-parchment-400 py-0 focus:outline-none focus:border-blood-500 focus:bg-white"
           value={maxHp}
           onChange={(e) => setMaxHp(e.target.value === '' ? '' : Number(e.target.value) || 0)}
           onBlur={() => commit('maxHp', maxHp, setMaxHp)}
           aria-label="Points de vie maximum"
         />
-      </label>
-
-      {/* Temp HP — editable with add/remove */}
-      <label className="flex items-center gap-1">
-        <span className="text-xs text-ink-400">PV temp</span>
         <button
           type="button"
-          onClick={() => {
-            const n = Math.max(0, tempNum - 1);
-            setTempHp(n);
-            schedulePatch('tempHp', n);
-          }}
-          disabled={tempNum <= 0}
-          className="w-6 h-6 rounded bg-blue-100 hover:bg-blue-200 disabled:opacity-30 text-blue-700 text-xs flex items-center justify-center"
-          aria-label="Retirer 1 PV temp"
+          onClick={() => heal(1)}
+          className="w-11 h-11 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 font-semibold flex items-center justify-center transition-colors"
+          aria-label="Soigner de 1"
         >
-          −
+          +1
         </button>
+        <button
+          type="button"
+          onClick={() => heal(5)}
+          className="w-11 h-11 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 font-semibold flex items-center justify-center transition-colors"
+          aria-label="Soigner de 5"
+        >
+          +5
+        </button>
+      </div>
+
+      {/* Temp HP — gains only; damage to it happens through the Blesser buttons,
+        which absorb temp first (no minus here). */}
+      <div className="flex items-center justify-center gap-1.5 flex-wrap">
+        <span className="text-xs text-ink-500 font-medium">PV temp</span>
         <input
           type="number"
-          className={`w-12 text-center text-sm font-medium bg-white border border-parchment-300 rounded-md py-1 focus:outline-none focus:border-blood-500 ${tempNum > 0 ? 'text-blue-700' : 'text-ink-400'}`}
+          className={`w-14 text-center text-sm font-medium bg-white border border-parchment-300 rounded-lg py-1 focus:outline-none focus:border-blood-500 ${tempNum > 0 ? 'text-blue-700' : 'text-ink-400'}`}
           value={tempHp}
           min={0}
           onChange={(e) =>
@@ -4169,25 +4237,16 @@ function HpTracker({
         />
         <button
           type="button"
-          onClick={() => {
-            const n = tempNum + 1;
-            setTempHp(n);
-            schedulePatch('tempHp', n);
-          }}
-          className="w-6 h-6 rounded bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs flex items-center justify-center"
+          onClick={() => stepTemp(1)}
+          className="w-10 h-10 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-medium flex items-center justify-center transition-colors"
           aria-label="Ajouter 1 PV temp"
         >
           +
         </button>
-      </label>
-      {tempNum > 0 && (
-        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">
-          +{tempNum}
-        </span>
-      )}
+      </div>
 
-      {/* HP bar */}
-      <HpBar current={curNum} max={maxNum} className="flex-1 min-w-[80px]" />
+      {/* HP bar — full width, temp HP drawn as a blue overshoot segment */}
+      <HpBar current={curNum} max={maxNum} temp={tempNum} size="sm" />
     </div>
   );
 }

@@ -756,14 +756,23 @@ export async function combatRoutes(app: FastifyInstance) {
 
       // --- Concentration: if the GM damaged a player who is concentrating on
       // a spell, that player must roll a CON save (DC 10 or half damage).
+      // SRD: temp HP absorbs damage first — only the real loss threatens the spell.
       let concentration: ConcentrationCheck | undefined;
       if (body.hitPoints !== undefined && combatant.type === 'player' && combatant.character_id) {
         const ch = db
-          .prepare('SELECT id, name, owner_id, concentrating FROM characters WHERE id = ?')
+          .prepare(
+            'SELECT id, name, owner_id, concentrating, temp_hp, wild_shape_slug FROM characters WHERE id = ?',
+          )
           .get(combatant.character_id) as any;
         if (ch?.concentrating) {
           const damage = (combatant.hit_points ?? 0) - Math.max(0, body.hitPoints);
-          if (damage > 0 && body.hitPoints > 0) {
+          // While shaped, damage routes to the shape's bar — temp HP stays out of it.
+          const tempHp = ch.wild_shape_slug ? 0 : (ch.temp_hp ?? 0);
+          const absorbed = damage > 0 ? Math.min(tempHp, damage) : 0;
+          const realHp = Math.max(0, body.hitPoints) + absorbed;
+          // PHB p.203: the damage TAKEN threatens concentration — absorbed by
+          // temp HP or not, the save rolls against the full hit (DD 10 or ½ dégâts).
+          if (damage > 0 && realHp > 0) {
             concentration = {
               characterId: ch.id,
               characterName: ch.name,
@@ -771,7 +780,7 @@ export async function combatRoutes(app: FastifyInstance) {
               dc: Math.max(10, Math.floor(damage / 2)),
               ownerId: ch.owner_id,
             };
-          } else if (body.hitPoints <= 0) {
+          } else if (realHp <= 0) {
             // Unconscious → concentration ends automatically on the sheet too.
             db.prepare('UPDATE characters SET concentrating = 0 WHERE id = ?').run(ch.id);
             bus.emitChange({
@@ -785,8 +794,6 @@ export async function combatRoutes(app: FastifyInstance) {
         }
       }
 
-      const row = db.prepare('SELECT * FROM combatants WHERE id = ?').get(combatant.id);
-
       // --- HP sync: the tracker is the player's sheet HP — mirror PV/PV max
       // changes back to the character so both views stay identical.
       // While the character is in Wild Shape, damage routes to the shape's
@@ -798,7 +805,7 @@ export async function combatRoutes(app: FastifyInstance) {
       ) {
         const ch = db
           .prepare(
-            'SELECT id, name, current_hp, max_hp, wild_shape_slug, wild_shape_max_hp FROM characters WHERE id = ?',
+            'SELECT id, name, current_hp, max_hp, temp_hp, wild_shape_slug, wild_shape_max_hp FROM characters WHERE id = ?',
           )
           .get(combatant.character_id) as any;
 
@@ -833,8 +840,25 @@ export async function combatRoutes(app: FastifyInstance) {
           const setsC: string[] = [];
           const valsC: any[] = [];
           if (body.hitPoints !== undefined) {
+            let newHp = Math.max(0, body.hitPoints);
+            // SRD: damage eats temp HP first. The tracker doesn't display temp,
+            // so the server absorbs it here and settles the tracker's row on
+            // the real HP (a fully absorbed hit leaves the row unchanged).
+            const damage = (combatant.hit_points ?? 0) - newHp;
+            const tempHp = ch?.temp_hp ?? 0;
+            if (damage > 0 && tempHp > 0) {
+              const absorbed = Math.min(tempHp, damage);
+              newHp += absorbed;
+              setsC.push('temp_hp = ?');
+              valsC.push(tempHp - absorbed);
+              db.prepare('UPDATE combatants SET hit_points = ?, defeated = ? WHERE id = ?').run(
+                newHp,
+                newHp <= 0 ? 1 : 0,
+                combatant.id,
+              );
+            }
             setsC.push('current_hp = ?');
-            valsC.push(Math.max(0, body.hitPoints));
+            valsC.push(newHp);
           }
           if (body.maxHitPoints !== undefined) {
             setsC.push('max_hp = ?');
@@ -853,6 +877,10 @@ export async function combatRoutes(app: FastifyInstance) {
           }
         }
       }
+
+      // Re-read AFTER the HP mirror — temp absorption may have settled the
+      // combatant's row on a different value than the GM sent.
+      const row = db.prepare('SELECT * FROM combatants WHERE id = ?').get(combatant.id);
 
       // --- Condition sync: tracker condition changes mirror to the sheet
       // (names only — durations stay a combat-tracker detail).

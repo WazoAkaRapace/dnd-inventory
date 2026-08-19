@@ -85,8 +85,11 @@ export default function CharacterStateBand({
   const [hpDraft, setHpDraft] = useState<string | null>(null);
   // Rapid stepper clicks coalesce into ONE patch so the concentration check
   // sees the total damage (DD = max(10, ½ dégâts totaux)), not per-click bits.
+  // Damage eats temp HP first — the queued patch may carry both fields.
   const [hpPending, setHpPending] = useState<number | null>(null);
+  const [tempPending, setTempPending] = useState<number | null>(null);
   const hpPendingRef = useRef<number | null>(null);
+  const tempPendingRef = useRef<number | null>(null);
   const hpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Pinned twin: when the static band scrolls out from under the app header,
@@ -137,6 +140,8 @@ export default function CharacterStateBand({
   const hpMax = shaped ? (character.wildShapeMaxHp ?? 1) : character.maxHp;
   /** Optimistic display value — the queued edit wins until the server catches up. */
   const displayHp = hpPending ?? hpNow;
+  /** Same optimism for temp HP (queued absorption during damage bursts). */
+  const displayTemp = shaped ? 0 : (tempPending ?? character.tempHp ?? 0);
 
   const conditions = character.conditions ?? [];
   const exhaustion = character.exhaustion ?? 0;
@@ -161,15 +166,19 @@ export default function CharacterStateBand({
 
   // While shaped the server routes currentHp to the shape's bar — one endpoint,
   // two truths. Typed values obey the max (same ceiling as the Survie tracker).
-  const patchHp = async (n: number) => {
+  // `temp` rides the same request when damage spilled past the temp HP.
+  const patchHp = async (n: number, temp?: number) => {
     setHpDraft(null);
     const clamped = Math.max(0, Math.min(hpMax, Math.round(n)));
-    if (clamped === hpNow) {
+    if (clamped === hpNow && temp === undefined) {
       setHpPending(null);
+      setTempPending(null);
       return;
     }
     try {
-      const res = await api.patch(`/api/characters/${character.id}`, { currentHp: clamped });
+      const payload =
+        temp === undefined ? { currentHp: clamped } : { currentHp: clamped, tempHp: temp };
+      const res = await api.patch(`/api/characters/${character.id}`, payload);
       if (res?.data?.concentrationBroken) {
         onNotice(
           `🌀 Concentration rompue : ${res.data.concentrationBroken} — le sort en cours est interrompu`,
@@ -180,6 +189,7 @@ export default function CharacterStateBand({
       onError('Erreur de mise à jour');
     } finally {
       setHpPending(null);
+      setTempPending(null);
     }
   };
 
@@ -193,20 +203,36 @@ export default function CharacterStateBand({
       hpTimerRef.current = null;
     }
     const target = hpPendingRef.current;
+    const temp = tempPendingRef.current;
     hpPendingRef.current = null;
+    tempPendingRef.current = null;
     if (target === null) return;
-    void patchHp(target);
+    void patchHp(target, temp ?? undefined);
   };
 
-  const queueHp = (target: number) => {
+  const queueHp = (target: number, temp?: number) => {
     const clamped = Math.max(0, Math.min(hpMax, Math.round(target)));
     hpPendingRef.current = clamped;
     setHpPending(clamped);
+    if (temp !== undefined) {
+      tempPendingRef.current = Math.max(0, Math.round(temp));
+      setTempPending(tempPendingRef.current);
+    }
     if (hpTimerRef.current) clearTimeout(hpTimerRef.current);
     hpTimerRef.current = setTimeout(() => {
       hpTimerRef.current = null;
       flushHp();
     }, HP_DEBOUNCE_MS);
+  };
+
+  // Damage from the band eats temp HP first (SRD), mirroring the Survie tab's
+  // hero: the absorbed part rides the same queued patch as the real loss.
+  const damageHp = (amount: number) => {
+    const temp = shaped ? 0 : (character.tempHp ?? 0);
+    // During a click burst, keep absorbing from the already-queued temp value.
+    const tempNow = hpTimerRef.current ? (tempPendingRef.current ?? temp) : temp;
+    const absorbed = Math.min(tempNow, amount);
+    queueHp((hpPending ?? hpNow) - (amount - absorbed), tempNow - absorbed);
   };
 
   // Explicit commit (typed value) sends immediately, carrying any queued total.
@@ -230,8 +256,10 @@ export default function CharacterStateBand({
     () => () => {
       if (hpTimerRef.current) clearTimeout(hpTimerRef.current);
       const target = hpPendingRef.current;
+      const temp = tempPendingRef.current;
       hpPendingRef.current = null;
-      if (target !== null) void patchHpRef.current(target);
+      tempPendingRef.current = null;
+      if (target !== null) void patchHpRef.current(target, temp ?? undefined);
     },
     [],
   );
@@ -324,14 +352,14 @@ export default function CharacterStateBand({
                 title={
                   shaped
                     ? `PV de la forme animale — PV réels : ${character.currentHp}/${character.maxHp}`
-                    : `Points de vie : ${displayHp}/${hpMax}${character.tempHp > 0 ? ` (+${character.tempHp} temporaires)` : ''}`
+                    : `Points de vie : ${displayHp}/${hpMax}${displayTemp > 0 ? ` (+${displayTemp} temporaires)` : ''}`
                 }
               >
-                <HpBar current={displayHp} max={hpMax} size="sm" showText />
+                <HpBar current={displayHp} max={hpMax} temp={displayTemp} size="sm" showText />
               </span>
-              {character.tempHp > 0 && (
+              {displayTemp > 0 && (
                 <Chip tone="blue" title="PV temporaires">
-                  +{character.tempHp}
+                  +{displayTemp}
                 </Chip>
               )}
               {shaped && (
@@ -469,7 +497,7 @@ export default function CharacterStateBand({
                   </label>
                   <button
                     type="button"
-                    onClick={() => queueHp(displayHp - 5)}
+                    onClick={() => damageHp(5)}
                     className="w-11 h-11 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 font-semibold flex items-center justify-center transition-colors"
                     aria-label="Blesser de 5"
                   >
@@ -477,7 +505,7 @@ export default function CharacterStateBand({
                   </button>
                   <button
                     type="button"
-                    onClick={() => queueHp(displayHp - 1)}
+                    onClick={() => damageHp(1)}
                     className="w-11 h-11 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 font-semibold flex items-center justify-center transition-colors"
                     aria-label="Blesser de 1"
                   >
@@ -548,7 +576,13 @@ export default function CharacterStateBand({
                       className="w-24 sm:w-28 shrink-0"
                       title={`Points de vie : ${displayHp}/${hpMax}`}
                     >
-                      <HpBar current={displayHp} max={hpMax} size="xs" showText />
+                      <HpBar
+                        current={displayHp}
+                        max={hpMax}
+                        temp={displayTemp}
+                        size="xs"
+                        showText
+                      />
                     </span>
                     <span className="font-mono text-sm font-semibold text-ink-800 bg-parchment-100 border border-parchment-200 rounded-md px-2 py-1">
                       🛡 {effectiveAC}

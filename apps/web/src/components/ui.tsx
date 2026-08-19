@@ -39,6 +39,7 @@ export function WeightBadge({ weightKg }: { weightKg: number | null }) {
 export function HpBar({
   current,
   max,
+  temp = 0,
   size = 'xs',
   showText = false,
   trackClassName = 'bg-parchment-200',
@@ -46,12 +47,18 @@ export function HpBar({
 }: {
   current: number;
   max: number;
+  /** Temporary HP — drawn as a blue segment beyond current, capped by the track. */
+  temp?: number;
   size?: 'xs' | 'sm' | 'md';
   showText?: boolean;
   trackClassName?: string;
   className?: string;
 }) {
   const pct = Math.max(0, Math.min(100, max > 0 ? (current / max) * 100 : 0));
+  // Temp segment extends past the fill; when the bar is full (or nearly), it
+  // caps the END of the fill instead — full HP + a temp buffer stays visible.
+  const tempPct = temp > 0 ? Math.max(0, Math.min(100, max > 0 ? (temp / max) * 100 : 0)) : 0;
+  const tempLeft = tempPct > 0 ? Math.min(pct, 100 - tempPct) : 0;
   const tier =
     current <= 0
       ? 'bg-red-700'
@@ -68,9 +75,15 @@ export function HpBar({
       aria-valuenow={current}
       aria-valuemin={0}
       aria-valuemax={max}
-      aria-valuetext={`${current}/${max} PV`}
+      aria-valuetext={`${current}/${max} PV${temp > 0 ? ` (+${temp} temporaires)` : ''}`}
     >
       <div className={`h-full ${tier} transition-all`} style={{ width: `${pct}%` }} />
+      {tempPct > 0 && (
+        <div
+          className="absolute top-0 h-full bg-blue-500 transition-all"
+          style={{ left: `${tempLeft}%`, width: `${tempPct}%` }}
+        />
+      )}
       {showText && (
         <span className="absolute inset-0 flex items-center justify-center text-xs font-mono font-semibold">
           {current}/{max}

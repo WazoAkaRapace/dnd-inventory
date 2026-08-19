@@ -185,7 +185,8 @@ function ConcentrationWatcher() {
   useSyncEvent(
     (event) => {
       const c = event.concentration;
-      if (c && user && c.ownerId === user.id) setCheck(c);
+      // Own damage is already surfaced by the Survie tab's HTTP response — skip the echo.
+      if (c && user && c.ownerId === user.id && event.actorUserId !== user.id) setCheck(c);
     },
     [user?.id],
   );

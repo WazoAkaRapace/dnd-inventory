@@ -16,7 +16,7 @@ interface Props {
   combatantName: string;
 }
 
-const CONDITION_ICONS: Record<string, string> = {
+export const CONDITION_ICONS: Record<string, string> = {
   Aveuglé: '🙈',
   Assourdi: '🔇',
   Charmé: '💕',
