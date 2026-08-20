@@ -1,0 +1,1 @@
+ALTER TABLE `characters` ADD `armor_proficiencies` text;

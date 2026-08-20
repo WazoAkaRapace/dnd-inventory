@@ -16,11 +16,13 @@ import {
   auraOfProtectionBonus,
   auraRadiusMeters,
   type Character,
+  classArmorProficiencies,
   classWeaponProficiencies,
   DND_ABILITIES,
   DND_LANGUAGES,
   DND_SKILLS,
   DND_TOOLS,
+  effectiveArmorProficiencies,
   effectiveWeaponProficiencies,
   expertiseSlots,
   expertiseUsed,
@@ -417,6 +419,9 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
           {/* Weapon mastery — read mode shows mastered chips, editing follows the tab's ✎ lock */}
           <WeaponMasteryCard character={character} editMode={editMode} patch={patchSheet} />
 
+          {/* Armor mastery — same read/edit pattern as weapons */}
+          <ArmorMasteryCard character={character} editMode={editMode} patch={patchSheet} />
+
           {/* Tools — read mode shows only what is mastered */}
           <section className="card p-4 sm:p-5 space-y-3">
             <h2 className="section-title">Outils</h2>
@@ -712,6 +717,118 @@ function WeaponMasteryCard({
                 classDefault.martial && 'armes de guerre',
                 classDefault.specific.length > 0 &&
                   `${classDefault.specific.length} arme(s) spécifique(s)`,
+              ]
+                .filter(Boolean)
+                .join(' + ') || 'aucune maîtrise'
+            }.`}
+      </p>
+    </section>
+  );
+}
+
+/** Armor mastery: read mode lists trained armor families + shields (chips);
+ *  edit mode toggles light/medium/heavy/shields. null = class default (SRD). */
+const ARMOR_TOKEN_LABELS_FR: Record<'light' | 'medium' | 'heavy' | 'shields', string> = {
+  light: 'Armures légères',
+  medium: 'Armures intermédiaires',
+  heavy: 'Armures lourdes',
+  shields: 'Boucliers',
+};
+
+function ArmorMasteryCard({
+  character,
+  editMode,
+  patch,
+}: {
+  character: Character;
+  editMode: boolean;
+  patch: (payload: PatchCharacterPayload) => Promise<void>;
+}) {
+  const effective = effectiveArmorProficiencies(character);
+  const isCustom = character.armorProficiencies != null;
+  const classDefault = classArmorProficiencies(character.characterClass);
+  const tokens = ['light', 'medium', 'heavy', 'shields'] as const;
+
+  const toggle = (token: (typeof tokens)[number]) => {
+    // Materialize the effective list (class defaults when untouched), then flip
+    patch({
+      armorProficiencies: tokens.filter((t) => (t === token ? !effective[t] : effective[t])),
+    });
+  };
+
+  const trainedFr = tokens.filter((t) => effective[t]).map((t) => ARMOR_TOKEN_LABELS_FR[t]);
+
+  const chip = (active: boolean) =>
+    `flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+      active
+        ? 'bg-blood-600 text-white border-blood-700'
+        : 'bg-parchment-50 text-ink-600 border-parchment-200 hover:border-blood-400'
+    }`;
+
+  return (
+    <section className="card p-4 sm:p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="section-title">Maîtrise d'armures</h2>
+        {editMode && isCustom && (
+          <button
+            type="button"
+            onClick={() => patch({ armorProficiencies: null })}
+            className="text-xs text-blood-600 hover:underline"
+            title="Revenir aux maîtrises par défaut de la classe"
+          >
+            ↺ Selon la classe
+          </button>
+        )}
+      </div>
+      {editMode ? (
+        <div className="grid grid-cols-2 gap-2">
+          {tokens.map((token) => (
+            <button
+              type="button"
+              key={token}
+              onClick={() => toggle(token)}
+              className={chip(effective[token])}
+              aria-pressed={effective[token]}
+            >
+              <span aria-hidden="true">
+                {token === 'light'
+                  ? '🪶'
+                  : token === 'medium'
+                    ? '🧥'
+                    : token === 'heavy'
+                      ? '⚓'
+                      : '🛡️'}
+              </span>{' '}
+              {ARMOR_TOKEN_LABELS_FR[token]}
+            </button>
+          ))}
+        </div>
+      ) : trainedFr.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {trainedFr.map((fr) => (
+            <span
+              key={fr}
+              className="px-3 py-1.5 rounded-full border text-sm text-ink-700 bg-blood-50 border-blood-300"
+            >
+              <span className="text-blood-600 text-xs mr-1">●</span>
+              {fr}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-ink-500">
+          Aucune maîtrise d'armure — ✎ Modifier pour en choisir.
+        </p>
+      )}
+      <p className="text-xs text-ink-400">
+        {isCustom
+          ? 'Maîtrises personnalisées.'
+          : `Selon la classe ${character.characterClass ?? '—'} : ${
+              [
+                classDefault.light && 'armures légères',
+                classDefault.medium && 'armures intermédiaires',
+                classDefault.heavy && 'armures lourdes',
+                classDefault.shields && 'boucliers',
               ]
                 .filter(Boolean)
                 .join(' + ') || 'aucune maîtrise'

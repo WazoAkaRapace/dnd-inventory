@@ -297,6 +297,7 @@ export interface CharacterSummary {
   languages: string[]; // display names: ["Commun","Elfe",...] — custom entries allowed
   savingThrowProficiencies: string[]; // ability keys: ["strength","constitution"]
   weaponProficiencies: string[] | null; // tokens 'simple'/'martial' + EN weapon names; null = class default
+  armorProficiencies: string[] | null; // tokens 'light'/'medium'/'heavy'/'shields'; null = class default
   fightingStyle: FightingStyle | null; // SRD fighting style (Guerrier/Paladin/Rôdeur)
   spellSlotsUsed: number[]; // 9 entries, used per spell level 1-9
   // Description / personality
@@ -423,6 +424,7 @@ export interface PatchCharacterPayload {
   languages?: string[];
   savingThrowProficiencies?: string[];
   weaponProficiencies?: string[] | null;
+  armorProficiencies?: string[] | null;
   fightingStyle?: FightingStyle | null;
   spellSlotsUsed?: number[];
   // Description / personality
@@ -1928,6 +1930,117 @@ export function isProficientWithWeapon(
 function isSimpleWeaponName(nameEn: string): boolean {
   const w = MUNDANE_WEAPONS.find((m) => m.nameEn === nameEn);
   return w ? w.simple : false;
+}
+
+// ---------- Armor proficiency (maîtrise d'armures, SRD) ----------
+
+/** Armor training profile for a class (SRD). */
+export interface ArmorProficiencySet {
+  light: boolean;
+  medium: boolean;
+  heavy: boolean;
+  shields: boolean;
+}
+
+export const CLASS_ARMOR_PROFICIENCIES: Record<string, ArmorProficiencySet> = {
+  Artificier: { light: true, medium: true, heavy: false, shields: true },
+  Barbare: { light: true, medium: true, heavy: false, shields: true },
+  Barde: { light: true, medium: false, heavy: false, shields: false },
+  Clerc: { light: true, medium: true, heavy: false, shields: true },
+  Druide: { light: true, medium: true, heavy: false, shields: true },
+  Ensorceleur: { light: false, medium: false, heavy: false, shields: false },
+  Guerrier: { light: true, medium: true, heavy: true, shields: true },
+  Magicien: { light: false, medium: false, heavy: false, shields: false },
+  Moine: { light: true, medium: false, heavy: false, shields: false },
+  Occultiste: { light: true, medium: false, heavy: false, shields: false },
+  Paladin: { light: true, medium: true, heavy: true, shields: true },
+  Rôdeur: { light: true, medium: true, heavy: false, shields: true },
+  Roublard: { light: true, medium: false, heavy: false, shields: false },
+};
+
+/** Class default armor proficiencies (SRD). Unknown class → nothing. */
+export function classArmorProficiencies(className: string | null | undefined): ArmorProficiencySet {
+  const cls = findClass(className);
+  if (!cls) return { light: false, medium: false, heavy: false, shields: false };
+  return (
+    CLASS_ARMOR_PROFICIENCIES[cls.name] ?? {
+      light: false,
+      medium: false,
+      heavy: false,
+      shields: false,
+    }
+  );
+}
+
+/**
+ * Effective armor proficiencies for a character: the explicit token list
+ * (armorProficiencies: 'light'/'medium'/'heavy'/'shields') when set,
+ * otherwise the class default.
+ */
+export function effectiveArmorProficiencies(character: {
+  characterClass?: string | null;
+  armorProficiencies?: string[] | null;
+}): ArmorProficiencySet {
+  if (character.armorProficiencies != null) {
+    const tokens = character.armorProficiencies;
+    return {
+      light: tokens.includes('light'),
+      medium: tokens.includes('medium'),
+      heavy: tokens.includes('heavy'),
+      shields: tokens.includes('shields'),
+    };
+  }
+  return classArmorProficiencies(character.characterClass);
+}
+
+/**
+ * Is the character trained with this armor? (Magic armor follows its base;
+ * family armor — "+1 armure (légère)" — follows its header family. Shields
+ * follow the 'shields' token. Unresolvable items count as trained: the raw
+ * non-proficiency downsides are disadvantage + blocked spellcasting, which
+ * the sheet only surfaces as a hint, never blocks.)
+ */
+export function isProficientWithArmor(
+  item: Pick<Item, 'category' | 'name' | 'nameFr' | 'acBase' | 'strMin' | 'description'>,
+  character: { characterClass?: string | null; armorProficiencies?: string[] | null },
+): boolean {
+  if (item.category !== 'armor') return false;
+  const prof = effectiveArmorProficiencies(character);
+
+  const nameLower = `${item.name ?? ''} ${item.nameFr ?? ''}`.toLowerCase();
+  const magic = resolveMagicArmorBase(item);
+  if (magic.shield || nameLower.includes('bouclier') || nameLower.includes('shield')) {
+    return prof.shields;
+  }
+
+  let acBase = item.acBase;
+  let base: MundaneArmor | null = null;
+  if (acBase === null || acBase === 0) {
+    if (!magic.base) {
+      // Family armor: the description header names the family (légère/…)
+      const header = item.description?.match(/^Armure \(([^)]+)\)/i)?.[1]?.toLowerCase() ?? '';
+      if (header.includes('légère') || header.includes('legere')) return prof.light;
+      if (header.includes('intermédiaire') || header.includes('intermediaire')) return prof.medium;
+      if (header.includes('lourde')) return prof.heavy;
+      return true; // unknowable base — don't warn
+    }
+    base = magic.base;
+    acBase = magic.base.acBase;
+  } else {
+    base = findMundaneArmorByName(item.name, item.nameFr);
+  }
+
+  const armorType =
+    base && base.armorType !== 'shield'
+      ? base.armorType
+      : item.strMin !== null && item.strMin >= 13
+        ? 'heavy'
+        : acBase !== null && acBase >= 13 && acBase <= 15
+          ? 'medium'
+          : 'light';
+  if (armorType === 'light') return prof.light;
+  if (armorType === 'medium') return prof.medium;
+  return prof.heavy;
 }
 
 /** Find a mundane weapon by exact English or French name. */

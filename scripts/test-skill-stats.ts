@@ -8,9 +8,11 @@ import {
   type Character,
   DND_LANGUAGES,
   DND_TOOLS,
+  effectiveArmorProficiencies,
   expertiseSlots,
   expertiseUsed,
   hasAutomaticToolExpertise,
+  isProficientWithArmor,
   passivePerception,
   renderFeatureTemplate,
   skillModifier,
@@ -63,6 +65,7 @@ const mkChar = (over: Partial<Character>): Character => ({
   languages: [],
   savingThrowProficiencies: [],
   weaponProficiencies: null,
+  armorProficiencies: null,
   spellSlotsUsed: [0, 0, 0, 0, 0, 0, 0, 0, 0],
   alignment: null,
   sex: null,
@@ -288,6 +291,110 @@ check(
 check(
   'Roublard niv 20 → pas de double bonus auto',
   hasAutomaticToolExpertise(mkChar({ characterClass: 'Roublard', level: 20 })),
+  false,
+);
+
+// --- Maîtrise d'armures : défauts de classe + surcharge explicite ---
+check(
+  'Guerrier → toutes armures + boucliers',
+  effectiveArmorProficiencies(mkChar({ characterClass: 'Guerrier' })),
+  { light: true, medium: true, heavy: true, shields: true },
+);
+check(
+  'Magicien → aucune entraînement',
+  effectiveArmorProficiencies(mkChar({ characterClass: 'Magicien' })),
+  { light: false, medium: false, heavy: false, shields: false },
+);
+check(
+  'Roublard → légères seulement',
+  effectiveArmorProficiencies(mkChar({ characterClass: 'Roublard' })),
+  { light: true, medium: false, heavy: false, shields: false },
+);
+check(
+  'Druide → légères + intermédiaires + boucliers (pas de lourdes)',
+  effectiveArmorProficiencies(mkChar({ characterClass: 'Druide' })),
+  { light: true, medium: true, heavy: false, shields: true },
+);
+check(
+  'Surcharge explicite → tokens priment sur la classe',
+  effectiveArmorProficiencies(
+    mkChar({ characterClass: 'Guerrier', armorProficiencies: ['heavy'] }),
+  ),
+  { light: false, medium: false, heavy: true, shields: false },
+);
+check(
+  'isProficientWithArmor : harnois non maîtrisé pour un Roublard',
+  isProficientWithArmor(
+    {
+      category: 'armor',
+      name: 'Plate Armor',
+      nameFr: 'Harnois',
+      acBase: 18,
+      strMin: 15,
+      description: null,
+    },
+    mkChar({ characterClass: 'Roublard' }),
+  ),
+  false,
+);
+check(
+  'isProficientWithArmor : cuir clouté maîtrisé pour un Roublard',
+  isProficientWithArmor(
+    {
+      category: 'armor',
+      name: 'Studded Leather Armor',
+      nameFr: 'Cuir clouté',
+      acBase: 12,
+      strMin: 0,
+      description: null,
+    },
+    mkChar({ characterClass: 'Roublard' }),
+  ),
+  true,
+);
+check(
+  'isProficientWithArmor : bouclier suit le token shields (Barde)',
+  isProficientWithArmor(
+    {
+      category: 'armor',
+      name: 'Shield',
+      nameFr: 'Bouclier',
+      acBase: 2,
+      strMin: 0,
+      description: null,
+    },
+    mkChar({ characterClass: 'Barde' }),
+  ),
+  false,
+);
+check(
+  'isProficientWithArmor : armure magique suit sa base (Cuir +1, Roublard)',
+  isProficientWithArmor(
+    {
+      category: 'armor',
+      name: 'Armor, +1 Leather',
+      nameFr: 'Armure +1 (cuir)',
+      acBase: null,
+      strMin: null,
+      description: 'Armure (cuir)',
+    },
+    mkChar({ characterClass: 'Roublard' }),
+  ),
+  true,
+);
+check(
+  'isProficientWithArmor : armure de famille suit son en-tête (lourde, Roublard)',
+  isProficientWithArmor(
+    {
+      category: 'armor',
+      name: 'Armor, +1',
+      nameFr: 'Armure +1',
+      acBase: null,
+      strMin: null,
+      description: 'Armure (lourde)',
+    },
+    mkChar({ characterClass: 'Roublard' }),
+  ),
   false,
 );
 

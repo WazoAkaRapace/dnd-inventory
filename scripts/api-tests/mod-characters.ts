@@ -115,6 +115,7 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
       languages: ['commun', 'voleurs'],
       savingThrowProficiencies: ['dex'],
       weaponProficiencies: null,
+      armorProficiencies: ['light', 'shields'],
       fightingStyle: 'archerie',
       spellSlotsUsed: [1, 0, 0, 0, 0, 0, 0, 0, 0],
       alignment: 'Neutre',
@@ -135,11 +136,30 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
   eq(row.level, 5, 'level persisted');
   eq(JSON.parse(row.skill_proficiencies).length, 2, 'JSON array persisted');
   eq(row.weapon_proficiencies, null, 'weaponProficiencies null = class default');
+  eq(JSON.parse(row.armor_proficiencies).length, 2, 'armorProficiencies JSON persisted');
+  eq(
+    JSON.stringify(r.data.character.armorProficiencies),
+    '["light","shields"]',
+    'response maps armorProficiencies back',
+  );
   eq(row.inspiration, 1, 'boolean coerced to int');
   eq(row.concentrating, 1, 'concentrating coerced');
   eq(JSON.parse(row.wild_shape_seen_json)[0], 'loup', 'wildShapeSeen mapped to json column');
   eq(row.subclass, 'voleur', 'subclass column');
   eq(r.data.character.inspiration, true, 'response maps boolean back');
+
+  // armorProficiencies: null → back to class default (literal NULL, like weapons)
+  r = await api(base, 'PATCH', `/api/characters/${zed.id}`, {
+    token: fx.player.token,
+    body: { armorProficiencies: null },
+  });
+  eq(r.status, 200, 'armor proficiency reset patch ok');
+  eq(
+    srv.query('SELECT armor_proficiencies FROM characters WHERE id = ?', zed.id)
+      .armor_proficiencies,
+    null,
+    'armorProficiencies null = class default',
+  );
 
   // GM (non-owner) can patch — no hidden key
   r = await api(base, 'PATCH', `/api/characters/${zed.id}`, {

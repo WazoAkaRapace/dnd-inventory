@@ -166,6 +166,7 @@ export const characters = sqliteTable(
     // --- Columns historically added via COLUMN_MIGRATIONS (ALTER TABLE) ---
     concentrating: integer('concentrating').notNull().default(0),
     weaponProficiencies: text('weapon_proficiencies'),
+    armorProficiencies: text('armor_proficiencies'),
     fightingStyle: text('fighting_style'),
     wildShapeSlug: text('wild_shape_slug'),
     wildShapeHp: integer('wild_shape_hp'),

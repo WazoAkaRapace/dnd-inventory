@@ -164,6 +164,9 @@ export function mapCharacterSummary(row: any): CharacterSummary {
     weaponProficiencies: row.weapon_proficiencies
       ? parseJsonArray(row.weapon_proficiencies, [])
       : null,
+    armorProficiencies: row.armor_proficiencies
+      ? parseJsonArray(row.armor_proficiencies, [])
+      : null,
     fightingStyle: row.fighting_style ?? null,
     spellSlotsUsed: parseJsonArray(row.spell_slots_used, [0, 0, 0, 0, 0, 0, 0, 0, 0]),
     // Description / personality

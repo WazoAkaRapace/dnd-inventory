@@ -232,6 +232,7 @@ export async function characterRoutes(app: FastifyInstance) {
         'languages',
         'savingThrowProficiencies',
         'weaponProficiencies',
+        'armorProficiencies',
         'fightingStyle',
         'spellSlotsUsed',
         // Description / personality
@@ -281,6 +282,7 @@ export async function characterRoutes(app: FastifyInstance) {
         toolExpertise: 'tool_expertise',
         savingThrowProficiencies: 'saving_throw_proficiencies',
         weaponProficiencies: 'weapon_proficiencies',
+        armorProficiencies: 'armor_proficiencies',
         fightingStyle: 'fighting_style',
         spellSlotsUsed: 'spell_slots_used',
         portraitUrl: 'portrait_url',
@@ -307,15 +309,18 @@ export async function characterRoutes(app: FastifyInstance) {
         'languages',
         'savingThrowProficiencies',
         'weaponProficiencies',
+        'armorProficiencies',
         'spellSlotsUsed',
         'wildShapeSeen',
       ]);
       for (const key of allowed) {
         if (body[key] !== undefined) {
           const col = fieldMap[key as string] || key;
-          if (key === 'weaponProficiencies' && body[key] === null) {
+          const nullResetsClassDefault =
+            key === 'weaponProficiencies' || key === 'armorProficiencies';
+          if (nullResetsClassDefault && body[key] === null) {
             // null = back to class default
-            sets.push('weapon_proficiencies = NULL'); // literal — no ? placeholder
+            sets.push(`${col} = NULL`); // literal — no ? placeholder
             continue;
           }
           sets.push(`${col} = ?`);

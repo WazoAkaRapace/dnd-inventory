@@ -84,6 +84,7 @@ const mkChar = (over: Partial<Character>): Character =>
     languages: [],
     savingThrowProficiencies: [],
     weaponProficiencies: null,
+    armorProficiencies: null,
     fightingStyle: null,
     spellSlotsUsed: [0, 0, 0, 0, 0, 0, 0, 0, 0],
     alignment: null,

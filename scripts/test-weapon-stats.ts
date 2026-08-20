@@ -55,6 +55,7 @@ const mkChar = (over: Partial<Character>): Character => ({
   languages: [],
   savingThrowProficiencies: [],
   weaponProficiencies: null,
+  armorProficiencies: null,
   spellSlotsUsed: [0, 0, 0, 0, 0, 0, 0, 0, 0],
   alignment: null,
   sex: null,

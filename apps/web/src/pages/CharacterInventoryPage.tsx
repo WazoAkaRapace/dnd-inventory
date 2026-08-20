@@ -25,6 +25,7 @@ import {
   findClass,
   findClassFeature,
   formatModifier,
+  isProficientWithArmor,
   maxSpellSlots,
   proficiencyBonus,
   RARITY_LABELS_FR,
@@ -1864,6 +1865,13 @@ function InventoryRow({
                         );
                       })()}
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-500">
+                      {item.category === 'armor' &&
+                        entry.equipped &&
+                        !isProficientWithArmor(item, character) && (
+                          <span className="font-semibold text-amber-600">
+                            ⚠ armure non maîtrisée
+                          </span>
+                        )}
                       {item.acBase !== null && <span>🛡 CA : {item.acBase}</span>}
                       {item.acBase === null &&
                         item.category === 'armor' &&
