@@ -3,7 +3,7 @@
  * All weights in the DB are KILOGRAMS.
  */
 
-import { mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Database as DB } from 'better-sqlite3';
@@ -48,10 +48,36 @@ export function getDb(): DB {
       .toLowerCase();
   });
 
+  // Test instrumentation: with DB_SQL_TRACE=<file>, record every prepared
+  // statement + its callsite. scripts/api-tests/coverage.ts turns the trace
+  // into a per-query-site coverage gate (npm run test-api). No-op otherwise.
+  const tracePath = process.env.DB_SQL_TRACE;
+  if (tracePath) {
+    const origPrepare = dbInstance.prepare.bind(dbInstance);
+    (dbInstance as any).prepare = (sql: string) => {
+      const stack = (new Error().stack ?? '').split('\n');
+      // First frame inside app code but outside src/db/ (the wrapper itself,
+      // migrateColumns and seed attribute to their caller — fine, they are
+      // outside the gate's scope anyway).
+      const frame = stack.find((l) => /apps[\\/]api[\\/]src[\\/](?!db[\\/])/.test(l)) ?? '';
+      const callsite = (frame.match(/src[\\/].+?:\d+:\d+/) ?? ['unknown'])[0].replace(/\\/g, '/');
+      appendFileSync(tracePath, `${callsite}\u0001${sql.replace(/\s+/g, ' ').trim()}\n`);
+      return origPrepare(sql);
+    };
+  }
+
   return dbInstance;
 }
 
 /**
+ * ⚠️ FROZEN BASELINE — do not add entries here anymore.
+ *
+ * schema.sql + this list create the baseline schema on every database
+ * (existing and fresh) and keep running on boot, but the schema source of
+ * truth for NEW changes is src/db/schema.ts: edit it, run `npm run
+ * db:generate` (drizzle-kit), commit the generated apps/api/drizzle/00NN
+ * migration — server boot applies it automatically (db/drizzle.ts).
+ *
  * Columns that were added to existing tables AFTER their initial creation.
  * `CREATE TABLE IF NOT EXISTS` is a no-op on existing tables, so schema.sql
  * alone cannot add these to an older database. We introspect with PRAGMA

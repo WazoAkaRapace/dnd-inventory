@@ -7,6 +7,7 @@ import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import websocket from '@fastify/websocket';
 import Fastify from 'fastify';
+import { runDrizzleMigrations } from './db/drizzle.ts';
 import { migrate } from './db/index.ts';
 import { seedItems, seedMonsters, seedSpells } from './db/seed.ts';
 import { errorRateLimit } from './rateLimit.ts';
@@ -136,6 +137,7 @@ async function buildServer() {
 async function start() {
   // Auto-migrate + seed on boot (idempotent)
   migrate();
+  runDrizzleMigrations();
   try {
     seedItems();
   } catch (err) {
