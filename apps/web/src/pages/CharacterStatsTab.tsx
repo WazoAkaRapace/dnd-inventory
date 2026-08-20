@@ -319,10 +319,6 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
         )}
       </section>
 
-      <p className="text-xs text-ink-500 text-center">
-        Identité & sous-classes : onglet Description · Maîtrise d'armes : onglet Compétences
-      </p>
-
       {/* Portage sheet — multiplier editor + metric rule help */}
       <BottomSheet
         open={portageOpen}
