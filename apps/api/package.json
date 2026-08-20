@@ -9,7 +9,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "migrate": "tsx src/db/migrate.ts",
-    "seed": "tsx src/db/seed.ts"
+    "seed": "tsx src/db/seed.ts",
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
     "@dnd-inventory/shared": "*",
@@ -18,12 +19,14 @@
     "@fastify/websocket": "^11.3.0",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^13.0.3",
+    "drizzle-orm": "^0.45.2",
     "fastify": "^5.1.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^26.2.0",
+    "drizzle-kit": "^0.31.10",
     "tsx": "^4.19.2",
     "typescript": "^7.0.2"
   }

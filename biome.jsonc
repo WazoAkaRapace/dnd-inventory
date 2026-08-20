@@ -13,6 +13,9 @@
       "!data",
       "!package-lock.json",
       "!gui-test-screenshots",
+      // drizzle-kit's generated migration SQL + meta snapshots must never be
+      // reformatted — the migrator hashes their exact content.
+      "!apps/api/drizzle",
       // Mimosa security-hook session state — tool output, not source.
       "!**/.mimosa"
     ]

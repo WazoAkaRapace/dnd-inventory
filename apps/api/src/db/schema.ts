@@ -1,0 +1,514 @@
+/**
+ * Drizzle schema — source of truth for FUTURE schema changes.
+ *
+ * It mirrors the legacy-complete state (schema.sql + every COLUMN_MIGRATIONS
+ * entry). Those legacy files are FROZEN: they still run on boot to create the
+ * baseline, but never grow again. From now on:
+ *
+ *   1. edit this file
+ *   2. npm run db:generate   (drizzle-kit generate → apps/api/drizzle/00NN_*.sql)
+ *   3. commit schema.ts + the generated migration file
+ *
+ * Server boot applies pending migrations automatically (db/drizzle.ts).
+ * The `drizzle/0000_*.sql` baseline is intentionally a no-op: the legacy
+ * migrate() already creates the full schema on every DB, so 0000 only pins
+ * the snapshot the diff chain starts from.
+ *
+ * Known unrepresentable details (kept correct by the frozen legacy path):
+ * - `users.username` has `COLLATE NOCASE` (Drizzle has no column-collation API).
+ *   If a future migration ever rebuilds the users table, re-add it by hand in SQL.
+ * - JSON-in-TEXT columns are declared plain `text()`; switch individual columns
+ *   to `text({ mode: 'json' })` only when their query sites migrate to Drizzle.
+ */
+
+import { sql } from 'drizzle-orm';
+import {
+  check,
+  index,
+  integer,
+  primaryKey,
+  real,
+  sqliteTable,
+  text,
+  unique,
+} from 'drizzle-orm/sqlite-core';
+
+export const users = sqliteTable('users', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  username: text('username').notNull().unique('users_username_unique'),
+  passwordHash: text('password_hash').notNull(),
+  displayName: text('display_name').notNull(),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+});
+
+export const parties = sqliteTable(
+  'parties',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    name: text('name').notNull(),
+    gmUserId: integer('gm_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    inviteCode: text('invite_code').notNull().unique('parties_invite_code_unique'),
+    encumbranceMode: text('encumbrance_mode').notNull().default('variant'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (_t) => [
+    check(
+      'parties_encumbrance_mode_check',
+      sql`encumbrance_mode IN ('variant','standard','slots')`,
+    ),
+  ],
+);
+
+export const partyMembers = sqliteTable(
+  'party_members',
+  {
+    partyId: integer('party_id')
+      .notNull()
+      .references(() => parties.id, { onDelete: 'cascade' }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role').notNull().default('player'),
+    joinedAt: text('joined_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => [
+    primaryKey({ columns: [t.partyId, t.userId] }),
+    check('party_members_role_check', sql`role IN ('gm','player')`),
+  ],
+);
+
+/** GM bans: the door is locked against the invite code for these users. */
+export const partyBans = sqliteTable(
+  'party_bans',
+  {
+    partyId: integer('party_id')
+      .notNull()
+      .references(() => parties.id, { onDelete: 'cascade' }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    bannedAt: text('banned_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => [
+    primaryKey({ columns: [t.partyId, t.userId] }),
+    index('idx_party_bans_user').on(t.userId),
+  ],
+);
+
+export const characters = sqliteTable(
+  'characters',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    partyId: integer('party_id')
+      .notNull()
+      .references(() => parties.id, { onDelete: 'cascade' }),
+    ownerId: integer('owner_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    strength: integer('strength').notNull().default(10),
+    capacityMultiplier: real('capacity_multiplier').notNull().default(1.0),
+    exhaustion: integer('exhaustion').notNull().default(0),
+    conditions: text('conditions').notNull().default('[]'),
+    foodDays: integer('food_days').notNull().default(0),
+    waterDays: integer('water_days').notNull().default(0),
+    maxHp: integer('max_hp').notNull().default(1),
+    currentHp: integer('current_hp').notNull().default(1),
+    tempHp: integer('temp_hp').notNull().default(0),
+    // --- Character sheet: ability scores, class/race/level, skills, spells ---
+    level: integer('level').notNull().default(1),
+    dexterity: integer('dexterity').notNull().default(10),
+    constitution: integer('constitution').notNull().default(10),
+    intelligence: integer('intelligence').notNull().default(10),
+    wisdom: integer('wisdom').notNull().default(10),
+    charisma: integer('charisma').notNull().default(10),
+    characterClass: text('character_class'),
+    race: text('race'),
+    background: text('background'),
+    speed: real('speed').notNull().default(9), // meters (9 m = 30 ft)
+    skillProficiencies: text('skill_proficiencies').notNull().default('[]'),
+    skillExpertise: text('skill_expertise').notNull().default('[]'),
+    toolProficiencies: text('tool_proficiencies').notNull().default('[]'),
+    toolExpertise: text('tool_expertise').notNull().default('[]'),
+    languages: text('languages').notNull().default('[]'),
+    savingThrowProficiencies: text('saving_throw_proficiencies').notNull().default('[]'),
+    spellSlotsUsed: text('spell_slots_used').notNull().default('[0,0,0,0,0,0,0,0,0]'),
+    // --- Description / personality ---
+    alignment: text('alignment'),
+    sex: text('sex'),
+    height: text('height'),
+    weight: text('weight'),
+    age: text('age'),
+    skin: text('skin'),
+    eyes: text('eyes'),
+    hair: text('hair'),
+    portraitUrl: text('portrait_url'),
+    personalityTraits: text('personality_traits'),
+    ideals: text('ideals'),
+    bonds: text('bonds'),
+    flaws: text('flaws'),
+    appearance: text('appearance'),
+    armorClassOverride: integer('armor_class_override'),
+    deathSaveSuccesses: integer('death_save_successes').notNull().default(0),
+    deathSaveFailures: integer('death_save_failures').notNull().default(0),
+    inspiration: integer('inspiration').notNull().default(0),
+    // Secret character prep: invisible to other players, inactive in combat
+    hidden: integer('hidden').notNull().default(0),
+    notes: text('notes'),
+    copper: integer('copper').notNull().default(0),
+    silver: integer('silver').notNull().default(0),
+    electrum: integer('electrum').notNull().default(0),
+    gold: integer('gold').notNull().default(0),
+    platinum: integer('platinum').notNull().default(0),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    // --- Columns historically added via COLUMN_MIGRATIONS (ALTER TABLE) ---
+    concentrating: integer('concentrating').notNull().default(0),
+    weaponProficiencies: text('weapon_proficiencies'),
+    fightingStyle: text('fighting_style'),
+    wildShapeSlug: text('wild_shape_slug'),
+    wildShapeHp: integer('wild_shape_hp'),
+    wildShapeMaxHp: integer('wild_shape_max_hp'),
+    wildShapeUses: integer('wild_shape_uses').notNull().default(2),
+    hitDiceUsed: integer('hit_dice_used').notNull().default(0),
+    wildShapeSeenJson: text('wild_shape_seen_json').notNull().default('[]'),
+    druidCircle: text('druid_circle'),
+    divineDomain: text('divine_domain'),
+    landCircle: text('land_circle'),
+    sacredOath: text('sacred_oath'),
+    // Subclass key (CLASS_SUBCLASSES) for classes without a dedicated column
+    subclass: text('subclass'),
+  },
+  (_t) => [
+    check('characters_strength_check', sql`strength >= 1`),
+    check('characters_capacity_multiplier_check', sql`capacity_multiplier > 0`),
+    check('characters_exhaustion_check', sql`exhaustion >= 0 AND exhaustion <= 6`),
+    check('characters_max_hp_check', sql`max_hp >= 1`),
+    check('characters_level_check', sql`level >= 1 AND level <= 20`),
+  ],
+);
+
+export const items = sqliteTable(
+  'items',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    source: text('source').notNull().default('srd'),
+    partyId: integer('party_id').references(() => parties.id, { onDelete: 'cascade' }), // NULL = global/SRD
+    category: text('category').notNull(),
+    srdIndex: text('srd_index'), // original SRD index for dedup
+    name: text('name').notNull(),
+    nameFr: text('name_fr'),
+    rarity: text('rarity').notNull().default('none'),
+    weightKg: real('weight_kg'), // KILOGRAMS; NULL if unknown
+    costQty: integer('cost_qty'),
+    costUnit: text('cost_unit'),
+    description: text('description'),
+    damageDice: text('damage_dice'),
+    damageType: text('damage_type'),
+    acBase: integer('ac_base'),
+    strMin: integer('str_min'),
+    stealthDisadvantage: integer('stealth_disadvantage').notNull().default(0),
+    propertiesJson: text('properties_json').notNull().default('[]'),
+    survivalTags: text('survival_tags').notNull().default('[]'),
+    aliases: text('aliases'),
+    imagePath: text('image_path'),
+  },
+  (t) => [
+    check('items_source_check', sql`source IN ('srd','custom')`),
+    unique('items_srd_index_unique').on(t.srdIndex),
+    index('idx_items_category').on(t.category),
+    index('idx_items_party').on(t.partyId),
+    index('idx_items_name').on(t.name),
+  ],
+);
+
+export const storageLocations = sqliteTable(
+  'storage_locations',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    characterId: integer('character_id')
+      .notNull()
+      .references(() => characters.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    type: text('type').notNull().default('carried'),
+    strength: integer('strength').default(10), // for mounts: their Strength score
+    multiplier: real('multiplier').notNull().default(1.0), // Beast of Burden = 2, cart = 5
+    capacityKg: real('capacity_kg'), // fixed capacity for containers (Bag of Holding = 227)
+    ownWeightKg: real('own_weight_kg').notNull().default(0),
+    itemId: integer('item_id').references(() => items.id, { onDelete: 'set null' }),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => [
+    index('idx_storage_locations_character').on(t.characterId),
+    check('storage_locations_type_check', sql`type IN ('carried','mount','container')`),
+  ],
+);
+
+export const inventory = sqliteTable(
+  'inventory',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    characterId: integer('character_id')
+      .notNull()
+      .references(() => characters.id, { onDelete: 'cascade' }),
+    itemId: integer('item_id')
+      .notNull()
+      .references(() => items.id, { onDelete: 'cascade' }),
+    quantity: integer('quantity').notNull().default(1),
+    equipped: integer('equipped').notNull().default(0),
+    notes: text('notes'),
+    storageLocationId: integer('storage_location_id').references(() => storageLocations.id, {
+      onDelete: 'set null',
+    }),
+    addedAt: text('added_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => [
+    unique('inventory_character_item_location_unique').on(
+      t.characterId,
+      t.itemId,
+      t.storageLocationId,
+    ),
+    index('idx_inventory_character').on(t.characterId),
+    index('idx_inventory_location').on(t.storageLocationId),
+    check('inventory_quantity_check', sql`quantity >= 0`),
+  ],
+);
+
+export const transactions = sqliteTable(
+  'transactions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    partyId: integer('party_id')
+      .notNull()
+      .references(() => parties.id, { onDelete: 'cascade' }),
+    characterId: integer('character_id').references(() => characters.id, { onDelete: 'set null' }),
+    itemId: integer('item_id').references(() => items.id, { onDelete: 'set null' }),
+    itemName: text('item_name').notNull(), // snapshot in case item is deleted
+    deltaQty: integer('delta_qty').notNull(),
+    reason: text('reason').notNull().default('adjust'),
+    actorUserId: integer('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
+    at: text('at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => [index('idx_transactions_party').on(t.partyId)],
+);
+
+export const npcs = sqliteTable(
+  'npcs',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    partyId: integer('party_id')
+      .notNull()
+      .references(() => parties.id, { onDelete: 'cascade' }),
+    createdBy: integer('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    role: text('role'),
+    location: text('location'),
+    faction: text('faction'),
+    disposition: text('disposition').notNull().default('neutral'),
+    status: text('status').notNull().default('alive'),
+    description: text('description'),
+    secret: text('secret'),
+    isShared: integer('is_shared').notNull().default(1),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => [
+    index('idx_npcs_party').on(t.partyId),
+    index('idx_npcs_shared').on(t.partyId, t.isShared),
+  ],
+);
+
+// ---------- SRD Spell catalog (reference data, seeded) ----------
+
+export const spells = sqliteTable(
+  'spells',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    srdIndex: text('srd_index').notNull().unique('spells_srd_index_unique'),
+    name: text('name').notNull(),
+    nameFr: text('name_fr'),
+    level: integer('level').notNull(),
+    school: text('school').notNull(),
+    castingTime: text('casting_time'),
+    rangeText: text('range_text'),
+    components: text('components').notNull().default('[]'),
+    material: text('material'),
+    duration: text('duration'),
+    concentration: integer('concentration').notNull().default(0),
+    ritual: integer('ritual').notNull().default(0),
+    description: text('description'),
+    descriptionFr: text('description_fr'),
+    higherLevel: text('higher_level'),
+    higherLevelFr: text('higher_level_fr'),
+    attackType: text('attack_type'),
+    damageJson: text('damage_json'),
+    dcJson: text('dc_json'),
+    classesJson: text('classes_json').notNull().default('[]'),
+    sortOrder: integer('sort_order').default(0),
+  },
+  (t) => [
+    index('idx_spells_level').on(t.level),
+    index('idx_spells_name').on(t.name),
+    index('idx_spells_name_fr').on(t.nameFr),
+  ],
+);
+
+// ---------- Character ↔ Spell (known/prepared spells) ----------
+
+export const characterSpells = sqliteTable(
+  'character_spells',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    characterId: integer('character_id')
+      .notNull()
+      .references(() => characters.id, { onDelete: 'cascade' }),
+    spellId: integer('spell_id')
+      .notNull()
+      .references(() => spells.id, { onDelete: 'cascade' }),
+    prepared: integer('prepared').notNull().default(0),
+    sortOrder: integer('sort_order').notNull().default(0),
+    addedAt: text('added_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => [
+    unique('character_spells_character_spell_unique').on(t.characterId, t.spellId),
+    index('idx_character_spells_char').on(t.characterId),
+    index('idx_character_spells_spell').on(t.spellId),
+  ],
+);
+
+// ---------- Character features (free-form traits, class/racial/background/feat) ----------
+
+export const characterFeatures = sqliteTable(
+  'character_features',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    characterId: integer('character_id')
+      .notNull()
+      .references(() => characters.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    category: text('category').notNull().default('custom'),
+    description: text('description'), // template text with {{variables}}
+    counterMax: integer('counter_max'), // null/0 = no counter; positive = max charges
+    counterCurrent: integer('counter_current'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    // Link to the SRD feature catalog (classFeatures.ts) — powers rest resets
+    catalogId: text('catalog_id'),
+    // Manual rest recharge for non-catalog traits: 'short' | 'long' | NULL
+    resetType: text('reset_type'),
+  },
+  (t) => [index('idx_character_features_char').on(t.characterId)],
+);
+
+// ---------- Character notes (free-form with simple formatting) ----------
+
+export const characterNotes = sqliteTable(
+  'character_notes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    characterId: integer('character_id')
+      .notNull()
+      .references(() => characters.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    content: text('content'), // Markdown-like plain text
+    sortOrder: integer('sort_order').notNull().default(0),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => [index('idx_character_notes_char').on(t.characterId)],
+);
+
+// ---------- SRD Monster catalog (reference data, seeded from 5e-drs.fr) ----------
+
+export const monsters = sqliteTable(
+  'monsters',
+  {
+    slug: text('slug').primaryKey(),
+    nameFr: text('name_fr').notNull(),
+    type: text('type'),
+    subtype: text('subtype'),
+    size: text('size'),
+    alignment: text('alignment'),
+    armorClass: integer('armor_class'),
+    armorDesc: text('armor_desc'),
+    hitPoints: integer('hit_points'),
+    hitDice: text('hit_dice'),
+    speedJson: text('speed_json'),
+    abilitiesJson: text('abilities_json'),
+    savingThrowsJson: text('saving_throws_json'),
+    skillsJson: text('skills_json'),
+    languagesJson: text('languages_json'),
+    challengeRating: real('challenge_rating'),
+    xp: integer('xp'),
+    senses: text('senses'),
+    telepathy: integer('telepathy'),
+    damageResistancesJson: text('damage_resistances_json'),
+    damageImmunitiesJson: text('damage_immunities_json'),
+    conditionImmunitiesJson: text('condition_immunities_json'),
+    traitsJson: text('traits_json'),
+    actionsJson: text('actions_json'),
+    legendaryActionsJson: text('legendary_actions_json'),
+    source: text('source'),
+  },
+  (t) => [
+    index('idx_monsters_name_fr').on(t.nameFr),
+    index('idx_monsters_type').on(t.type),
+    index('idx_monsters_cr').on(t.challengeRating),
+  ],
+);
+
+// ---------- Combat encounters (initiative tracker, party-scoped) ----------
+
+export const encounters = sqliteTable(
+  'encounters',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    partyId: integer('party_id')
+      .notNull()
+      .references(() => parties.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    round: integer('round').notNull().default(0), // 0 = setup, >=1 = in combat
+    turnIndex: integer('turn_index').notNull().default(0),
+    status: text('status').notNull().default('setup'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => [
+    index('idx_encounters_party').on(t.partyId),
+    check('encounters_status_check', sql`status IN ('setup','active','ended')`),
+  ],
+);
+
+export const combatants = sqliteTable(
+  'combatants',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    encounterId: integer('encounter_id')
+      .notNull()
+      .references(() => encounters.id, { onDelete: 'cascade' }),
+    type: text('type').notNull(),
+    characterId: integer('character_id').references(() => characters.id, { onDelete: 'cascade' }),
+    monsterSlug: text('monster_slug'),
+    name: text('name').notNull(),
+    count: integer('count').notNull().default(1),
+    groupId: integer('group_id'), // shared by grouped monsters (same initiative)
+    initiative: integer('initiative'), // NULL = not yet rolled
+    initiativeBonus: integer('initiative_bonus').notNull().default(0), // dex mod cached at add time
+    armorClass: integer('armor_class').notNull().default(10),
+    hitPoints: integer('hit_points').notNull().default(1),
+    maxHitPoints: integer('max_hit_points').notNull().default(1),
+    conditions: text('conditions').notNull().default('[]'), // JSON: [{name,duration}]
+    sortOrder: integer('sort_order').notNull().default(0),
+    defeated: integer('defeated').notNull().default(0),
+    cardColor: text('card_color'), // hex color for card background, NULL = default
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => [
+    index('idx_combatants_encounter').on(t.encounterId),
+    index('idx_combatants_character').on(t.characterId),
+    check('combatants_type_check', sql`type IN ('player','monster')`),
+  ],
+);
