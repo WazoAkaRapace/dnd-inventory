@@ -238,6 +238,9 @@ export default function CharacterInventoryPage() {
 
   // Active tab — the fiche opens on state (Survie), not on the bag
   const [activeTab, setActiveTab] = useState<CharacterTab>('survival');
+  // Concentration save popup — page-level because the state band's HP quick-edit
+  // (pinned above EVERY tab) must surface it wherever the player stands.
+  const [concCheck, setConcCheck] = useState<ConcentrationCheck | null>(null);
   useEffect(() => {
     const seen = localStorage.getItem('dnd-inv-tour-seen');
     if (!seen && !loading) {
@@ -761,8 +764,22 @@ export default function CharacterInventoryPage() {
           onSaved={refreshInventory}
           onError={(msg) => pushToast(msg, 'error')}
           onNotice={(msg) => pushToast(msg)}
+          onConcentrationCheck={setConcCheck}
         />
       </div>
+
+      {/* Concentration save after damage — portaled banner, fed by the band
+          (any tab) and the Survie tracker alike. */}
+      {concCheck && (
+        <ConcentrationAlert
+          check={concCheck}
+          onDone={() => setConcCheck(null)}
+          onBreak={async () => {
+            await api.patch(`/api/characters/${Number(charId)}`, { concentrating: false });
+            await refreshInventory();
+          }}
+        />
+      )}
 
       {/* ---------- Tab navigation — desktop top bar (settles 60ms behind the band) ---------- */}
       <div
@@ -1059,6 +1076,7 @@ export default function CharacterInventoryPage() {
             onSaved={refreshInventory}
             onError={(msg) => pushToast(msg, 'error')}
             onNotice={(msg) => pushToast(msg)}
+            onConcentrationCheck={setConcCheck}
           />
         )}
         {activeTab === 'stats' && (
@@ -2565,6 +2583,8 @@ interface SurvivalPanelProps {
   onSaved: () => Promise<void>;
   onError: (msg: string) => void;
   onNotice?: (msg: string) => void;
+  /** Damage-while-concentrating checks bubble to the page-level popup. */
+  onConcentrationCheck: (check: ConcentrationCheck) => void;
 }
 
 function SurvivalPanel({
@@ -2576,13 +2596,13 @@ function SurvivalPanel({
   onSaved,
   onError,
   onNotice,
+  onConcentrationCheck,
 }: SurvivalPanelProps) {
   const [exhaustion, setExhaustion] = useState(character.exhaustion);
   const [conditions, setConditions] = useState<string[]>(character.conditions);
   const [conditionPickerOpen, setConditionPickerOpen] = useState(false);
   const [foodDays, setFoodDays] = useState(character.foodDays);
   const [waterDays, setWaterDays] = useState(character.waterDays);
-  const [concCheck, setConcCheck] = useState<ConcentrationCheck | null>(null);
   const [shapePickerOpen, setShapePickerOpen] = useState(false);
   const [shapeForms, setShapeForms] = useState<WildShapeFormSummary[]>([]);
   const [shapeSearch, setShapeSearch] = useState('');
@@ -2960,14 +2980,7 @@ function SurvivalPanel({
             markLocalMutation={markLocalMutation}
             onSaved={onSaved}
             onError={onError}
-            onConcentrationCheck={setConcCheck}
-          />
-        )}
-        {concCheck && (
-          <ConcentrationAlert
-            check={concCheck}
-            onDone={() => setConcCheck(null)}
-            onBreak={() => patchCharacter({ concentrating: false }, 'Erreur de mise à jour')}
+            onConcentrationCheck={onConcentrationCheck}
           />
         )}
         {/* Death saves live with the HP they belong to — the panel opens only

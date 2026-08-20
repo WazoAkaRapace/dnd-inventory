@@ -21,6 +21,7 @@
 import {
   abilityModifier,
   type Character,
+  type ConcentrationCheck,
   computeAC,
   type EncumbranceState,
   findClass,
@@ -60,6 +61,8 @@ interface Props {
   onSaved: () => Promise<void>;
   onError: (msg: string) => void;
   onNotice: (msg: string) => void;
+  /** Damage while concentrating — the page surfaces the CON-save popup. */
+  onConcentrationCheck: (check: ConcentrationCheck) => void;
 }
 
 export default function CharacterStateBand({
@@ -74,6 +77,7 @@ export default function CharacterStateBand({
   onSaved,
   onError,
   onNotice,
+  onConcentrationCheck,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
 
@@ -179,6 +183,8 @@ export default function CharacterStateBand({
       const payload =
         temp === undefined ? { currentHp: clamped } : { currentHp: clamped, tempHp: temp };
       const res = await api.patch(`/api/characters/${character.id}`, payload);
+      // Losing HP while concentrating requires a CON save — surface it immediately.
+      if (res?.data?.concentrationCheck) onConcentrationCheck(res.data.concentrationCheck);
       if (res?.data?.concentrationBroken) {
         onNotice(
           `🌀 Concentration rompue : ${res.data.concentrationBroken} — le sort en cours est interrompu`,
