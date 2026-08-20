@@ -10,7 +10,7 @@
  * Permission: character owner or party GM (same as PATCH /characters/:id).
  */
 
-import { applyRest } from '@dnd-inventory/shared';
+import { applyRest, type FeatureResetType } from '@dnd-inventory/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
@@ -64,7 +64,7 @@ export async function restRoutes(app: FastifyInstance) {
       const features = featureRows.map((r) => ({
         id: r.id as number,
         catalogId: (r.catalog_id as string | null) ?? null,
-        resetType: (r.reset_type as 'short' | 'long' | null) ?? null,
+        resetType: (r.reset_type as FeatureResetType | null) ?? null,
         counterMax: (r.counter_max as number | null) ?? null,
         counterCurrent: (r.counter_current as number | null) ?? null,
       }));

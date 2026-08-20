@@ -126,12 +126,15 @@ function OptionRow({
   selected,
   title,
   meta,
+  sub,
   onChoose,
   indent = false,
 }: {
   selected: boolean;
   title: string;
   meta?: string;
+  /** Ligne secondaire (résumé mécanique sous la description). */
+  sub?: string;
   onChoose: () => void;
   indent?: boolean;
 }) {
@@ -158,6 +161,11 @@ function OptionRow({
         <span className="min-w-0 flex-1 text-sm font-medium text-ink-800">{title}</span>
       </span>
       {meta && <span className="mt-0.5 block pl-5 text-xs leading-snug text-ink-400">{meta}</span>}
+      {sub && (
+        <span className="mt-0.5 block pl-5 text-[11px] leading-snug text-ink-400/80 italic">
+          {sub}
+        </span>
+      )}
     </button>
   );
 }
@@ -435,7 +443,8 @@ export default function CharacterCreatePage() {
                 key={c.name}
                 selected={classChoice === c.name}
                 title={c.name}
-                meta={classSummary(c)}
+                meta={c.description}
+                sub={classSummary(c)}
                 onChoose={() => {
                   setClassChoice(c.name);
                   setSkills([]); // lists differ per class

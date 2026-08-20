@@ -6,9 +6,10 @@
 import {
   bardicInspirationDie,
   classFeatureResourceMax,
+  effectiveFeatureReset,
   eldritchInvocationsCount,
+  type FeatureResetType,
   findClassFeature,
-  resourceResetsOn,
   songOfRestDie,
 } from './classFeatures.ts';
 
@@ -734,16 +735,20 @@ export type SpellcastingType = 'none' | 'full' | 'half' | 'pact' | 'artificier';
 
 export interface ClassInfo {
   name: string; // French: "Magicien", "Guerrier"
+  /** One-line flavor + teaching description (AideDD intros, condensed). */
+  description: string;
   hitDie: number; // 6, 8, 10, 12
   savingThrows: AbilityKey[]; // 2 abilities
   spellcasting: SpellcastingType;
   spellcastingAbility?: AbilityKey; // INT, WIS, CHA (for casters)
-  preparesSpells: boolean; // true = must prepare from known list (Wizard/Cleric/Druid/Paladin/Ranger/Artificer)
+  preparesSpells: boolean; // true = must prepare from known list (Wizard/Cleric/Druid/Paladin/Ranger/Artificier)
 }
 
 export const DND_CLASSES: ClassInfo[] = [
   {
     name: 'Artificier',
+    description:
+      'Inventeurs suprêmes libérant la magie dans les objets du quotidien ; sorts canalisés par les outils, objets magiques imprégnés.',
     hitDie: 8,
     savingThrows: ['constitution', 'intelligence'],
     spellcasting: 'artificier',
@@ -752,6 +757,8 @@ export const DND_CLASSES: ClassInfo[] = [
   },
   {
     name: 'Barbare',
+    description:
+      'Guerriers sauvages nourris de fureur ; rage inextinguible, force et résistance surhumaines, combat sans armure.',
     hitDie: 12,
     savingThrows: ['strength', 'constitution'],
     spellcasting: 'none',
@@ -759,6 +766,8 @@ export const DND_CLASSES: ClassInfo[] = [
   },
   {
     name: 'Barde',
+    description:
+      'Polyvalents et inspirants, maîtres du chant et de la magie des mots ; charme, illusions, savoir universel.',
     hitDie: 8,
     savingThrows: ['dexterity', 'charisma'],
     spellcasting: 'full',
@@ -767,6 +776,8 @@ export const DND_CLASSES: ClassInfo[] = [
   },
   {
     name: 'Clerc',
+    description:
+      'Intermédiaires entre mortels et dieux, imprégnés de magie divine ; soignent leurs alliés, renvoient les morts-vivants, servent un domaine divin.',
     hitDie: 8,
     savingThrows: ['wisdom', 'charisma'],
     spellcasting: 'full',
@@ -775,6 +786,8 @@ export const DND_CLASSES: ClassInfo[] = [
   },
   {
     name: 'Druide',
+    description:
+      'Incarnations de la force et de la colère de la nature ; forme sauvage animale, sorts élémentaires ; langue druidique.',
     hitDie: 8,
     savingThrows: ['intelligence', 'wisdom'],
     spellcasting: 'full',
@@ -783,6 +796,8 @@ export const DND_CLASSES: ClassInfo[] = [
   },
   {
     name: 'Ensorceleur',
+    description:
+      'Porteurs d’une magie innée qui les choisit ; lignée draconique ou magie sauvage, métamagie et points de sorcellerie.',
     hitDie: 6,
     savingThrows: ['constitution', 'charisma'],
     spellcasting: 'full',
@@ -791,6 +806,8 @@ export const DND_CLASSES: ClassInfo[] = [
   },
   {
     name: 'Guerrier',
+    description:
+      'Maîtres inégalés des armes et des armures, du chevalier au mercenaire ; toutes armures, second souffle et fougue.',
     hitDie: 10,
     savingThrows: ['strength', 'constitution'],
     spellcasting: 'none',
@@ -798,6 +815,8 @@ export const DND_CLASSES: ClassInfo[] = [
   },
   {
     name: 'Magicien',
+    description:
+      'Savants obsédés par les arcanes et vivant par leurs sorts ; grimoire, incantation par Intelligence, huit écoles de magie.',
     hitDie: 6,
     savingThrows: ['intelligence', 'wisdom'],
     spellcasting: 'full',
@@ -806,6 +825,8 @@ export const DND_CLASSES: ClassInfo[] = [
   },
   {
     name: 'Moine',
+    description:
+      'Artistes martiaux disciplinés unissant corps et esprit ; ki, combat à mains nues, vitesse et défense sans armure.',
     hitDie: 8,
     savingThrows: ['strength', 'dexterity'],
     spellcasting: 'none',
@@ -813,6 +834,8 @@ export const DND_CLASSES: ClassInfo[] = [
   },
   {
     name: 'Occultiste',
+    description:
+      'Chercheurs de savoir interdit, liés par pacte à un patron d’Outremonde ; magie de pacte, manifestations occultes.',
     hitDie: 8,
     savingThrows: ['wisdom', 'charisma'],
     spellcasting: 'pact',
@@ -821,6 +844,8 @@ export const DND_CLASSES: ClassInfo[] = [
   },
   {
     name: 'Paladin',
+    description:
+      'Champions bénis liés par un serment sacré, remparts contre les forces du mal ; magie divine, soins et châtiments radiants.',
     hitDie: 10,
     savingThrows: ['wisdom', 'charisma'],
     spellcasting: 'half',
@@ -829,6 +854,8 @@ export const DND_CLASSES: ClassInfo[] = [
   },
   {
     name: 'Rôdeur',
+    description:
+      'Guerriers indépendants des étendues sauvages, veillent aux frontières de la civilisation ; ennemi juré, magie naturelle, terrain favori.',
     hitDie: 10,
     savingThrows: ['strength', 'dexterity'],
     spellcasting: 'half',
@@ -837,6 +864,8 @@ export const DND_CLASSES: ClassInfo[] = [
   },
   {
     name: 'Roublard',
+    description:
+      'Ingénieux et discrets, maîtres du crochetage et des ombres ; attaque sournoise et esquive instinctive.',
     hitDie: 8,
     savingThrows: ['dexterity', 'intelligence'],
     spellcasting: 'none',
@@ -1425,13 +1454,20 @@ export function computeAC(
 
 // ---------- Fighting styles (SRD) ----------
 
-export type FightingStyle = 'archery' | 'defense' | 'dueling' | 'great-weapon' | 'two-weapon';
+export type FightingStyle =
+  | 'archery'
+  | 'defense'
+  | 'dueling'
+  | 'great-weapon'
+  | 'protection'
+  | 'two-weapon';
 
 export const FIGHTING_STYLE_LABELS_FR: Record<FightingStyle, string> = {
-  archery: 'Archérie (+2 att. à distance)',
+  archery: 'Archerie (+2 att. à distance)',
   defense: 'Défense (+1 CA)',
   dueling: 'Duel (+2 dégâts arme à une main)',
-  'great-weapon': 'Armes à deux mains',
+  'great-weapon': 'Arme à deux mains',
+  protection: 'Protection (réaction : désavantage, bouclier requis)',
   'two-weapon': 'Combat à deux armes',
 };
 
@@ -3074,9 +3110,11 @@ export interface CharacterFeature {
   /** Catalog link (classFeatures.ts id) when added from the SRD catalog — powers
    *  rest resets (short/long) and level-scaled counterMax recomputation. */
   catalogId: string | null;
-  /** Manual rest recharge (traits without a catalog link): 'short' = court OU
-   *  long, 'long' = repos long uniquement, null = manual only. */
-  resetType: 'short' | 'long' | null;
+  /** Player's recharge choice — OVERRIDES the catalog's SRD rule (the catalog
+   *  pre-fills, the player decides). 'short' = court OU long, 'long' = repos
+   *  long uniquement, 'none' = rechargement manuel explicite,
+   *  null = suit la règle SRD du catalogue (ou manuel si pas de catalogue). */
+  resetType: FeatureResetType | null;
   counterMax: number | null; // null/0 = no counter; positive = max charges
   counterCurrent: number | null;
   sortOrder: number;
@@ -3088,7 +3126,7 @@ export interface CreateCharacterFeaturePayload {
   category?: FeatureCategory;
   description?: string;
   catalogId?: string | null;
-  resetType?: 'short' | 'long' | null;
+  resetType?: FeatureResetType | null;
   counterMax?: number;
 }
 
@@ -3097,7 +3135,7 @@ export interface PatchCharacterFeaturePayload {
   category?: FeatureCategory;
   description?: string | null;
   catalogId?: string | null;
-  resetType?: 'short' | 'long' | null;
+  resetType?: FeatureResetType | null;
   counterMax?: number | null;
   counterCurrent?: number | null;
 }
@@ -3239,25 +3277,24 @@ export function applyRest(
   const classInfo = findClass(character.characterClass);
   const patch: PatchCharacterPayload = {};
 
-  // Counters to reset on this rest type: catalog traits follow the SRD rule
-  // (max recomputed at the current level), manual traits follow their
-  // « repos court / repos long » checkbox (stored max, no formula).
+  // Counters to reset on this rest type. The PLAYER'S reset choice
+  // (resetType — the checkboxes) overrides the catalog's SRD rule: the catalog
+  // pre-fills, it doesn't automate. With no player choice, a catalog trait
+  // follows its SRD rule (max recomputed at the current level).
   const featureResets: RestResult['featureResets'] = [];
   for (const feature of features) {
     if ((feature.counterMax ?? 0) <= 0) continue;
-    if (feature.catalogId) {
-      const def = findClassFeature(feature.catalogId);
-      if (!def?.resource) continue;
-      if (!resourceResetsOn(def, character, options.type)) continue;
-      const max = classFeatureResourceMax(def, character);
-      if (max == null) continue; // unlimited (Rage @20): no counter to track
-      featureResets.push({ featureId: feature.id, counterMax: max, counterCurrent: max });
-    } else if (feature.resetType) {
-      // 'short' recharges on short AND long rests; 'long' only on long rests
-      if (feature.resetType !== 'short' && options.type !== 'long') continue;
-      const max = feature.counterMax ?? 0;
-      featureResets.push({ featureId: feature.id, counterMax: max, counterCurrent: max });
-    }
+    const effective = effectiveFeatureReset(feature, level);
+    // 'short' recharges on short AND long rests; 'long' only on long; 'none' never
+    if (effective !== 'short' && !(effective === 'long' && options.type === 'long')) continue;
+    // Catalog formula when the trait is catalog-linked with a resource,
+    // otherwise the stored max (manual trait, or counter added by hand)
+    const def = feature.catalogId ? findClassFeature(feature.catalogId) : null;
+    const max = def?.resource
+      ? (classFeatureResourceMax(def, character) ?? feature.counterMax ?? 0)
+      : (feature.counterMax ?? 0);
+    if (max <= 0) continue; // unlimited (Rage @20) or invalid: nothing to track
+    featureResets.push({ featureId: feature.id, counterMax: max, counterCurrent: max });
   }
 
   // Hit-dice spending on a short rest: the player rolls their own dice at the

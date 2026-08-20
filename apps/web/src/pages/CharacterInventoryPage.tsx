@@ -20,6 +20,7 @@ import {
   computeUnarmedStats,
   computeWeaponStats,
   DND_CONDITIONS_FR,
+  effectiveFeatureReset,
   extraAttacks,
   findClass,
   findClassFeature,
@@ -3110,10 +3111,14 @@ function SurvivalPanel({
               const max = feature.counterMax ?? 0;
               const current = feature.counterCurrent ?? max;
               const isPool = def?.resource?.unit === 'PV';
-              const resetShort =
-                def?.resource?.reset === 'short' ||
-                (def?.resource?.shortFromLevel !== undefined &&
-                  (character.level ?? 1) >= def.resource.shortFromLevel);
+              // Recharge effective : choix du joueur, sinon règle SRD du catalogue
+              const eff = effectiveFeatureReset(feature, character.level ?? 1);
+              const resetTitle =
+                eff === 'short'
+                  ? 'Repos court ou long'
+                  : eff === 'long'
+                    ? 'Repos long'
+                    : 'Rechargement manuel';
               return (
                 <div
                   key={feature.id}
@@ -3146,7 +3151,7 @@ function SurvivalPanel({
                       disabled={current >= max}
                       className="w-7 h-7 rounded-lg bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center"
                       aria-label={`Récupérer ${feature.title}`}
-                      title={resetShort ? 'Repos court ou long' : 'Repos long'}
+                      title={resetTitle}
                     >
                       +
                     </button>

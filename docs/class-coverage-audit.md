@@ -8,8 +8,9 @@ affiché sans application mécanique, ❌ est absent (candidat roadmap).
 ## Synthèse des chantiers livrés (cette itération)
 
 1. **Catalogue de capacités** (`packages/shared/src/classFeatures.ts`, réexporté
-   par `index.ts`) — 231 capacités FR (13 classes de base + 26 sous-classes SRD
-   5.1, dont Maître de guerre, Chevalier occulte et Escroc arcanique),
+   par `index.ts`) — 307 capacités FR (13 classes de base + 39 sous-classes, dont
+   les 7 domaines du Clerc, les 3 serments du Paladin et les 3 spécialistes
+   de l’Artificier),
    niveau d'acquisition, description courte avec variables de modèle,
    ressource optionnelle (formule de taille + recharge repos court/long).
    Onglet Traits → « Catalogue de classe » : ajout en 1 clic, compteur déduit de

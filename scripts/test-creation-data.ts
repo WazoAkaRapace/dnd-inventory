@@ -46,6 +46,11 @@ for (const cls of DND_CLASSES as ClassInfo[]) {
     cls.name === 'Roublard' ? 4 : cls.name === 'Barde' ? 3 : 2,
   );
   check(`${cls.name} — barde parmi toutes`, choice.anySkill ?? false, cls.name === 'Barde');
+  // Description AideDD : présente, une ligne raisonnable (saveur + traits)
+  if (cls.description.trim().length < 20 || cls.description.length > 180) {
+    failures++;
+    console.error(`✗ ${cls.name} — description absente ou hors gabarit (20-180 caractères)`);
+  }
   for (const key of choice.skills) {
     if (!SKILL_KEYS.has(key)) {
       failures++;

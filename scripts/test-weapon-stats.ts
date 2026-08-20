@@ -515,11 +515,11 @@ const rodeur5 = mkChar({
   fightingStyle: 'archery',
 });
 s = computeWeaponStats(arcLong, rodeur5);
-check('Rôdeur Archérie → +2 att. arc long (3 DEX + 3 maîtrise + 2)', s && { ab: s.attackBonus }, {
+check('Rôdeur Archerie → +2 att. arc long (3 DEX + 3 maîtrise + 2)', s && { ab: s.attackBonus }, {
   ab: 8,
 });
 s = computeWeaponStats(mkWeapon({}), rodeur5);
-check('Archérie sans effet en mêlée (FOR 10 → 0 + 3 maîtrise)', s?.attackBonus, 3);
+check('Archerie sans effet en mêlée (FOR 10 → 0 + 3 maîtrise)', s?.attackBonus, 3);
 
 const duelliste = mkChar({
   strength: 16,

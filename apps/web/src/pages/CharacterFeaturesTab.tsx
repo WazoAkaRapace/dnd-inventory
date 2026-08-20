@@ -10,9 +10,12 @@ import {
   CLASS_SUBCLASSES,
   type ClassFeatureDef,
   DND_CLASSES,
+  effectiveFeatureReset,
   FEATURE_CATEGORY_LABELS_FR,
   type FeatureCategory,
+  type FeatureResetType,
   findClass,
+  findClassFeature,
   nextClassFeatureGain,
   renderFeatureTemplate,
   TEMPLATE_VARIABLES,
@@ -106,8 +109,11 @@ export default function CharacterFeaturesTab({
     setCategory(feature.category);
     setDescription(feature.description ?? '');
     setCounterMax(feature.counterMax ? String(feature.counterMax) : '');
-    setResetShort(feature.resetType === 'short');
-    setResetLong(feature.resetType === 'short' || feature.resetType === 'long');
+    // Cases initialisées sur la recharge EFFECTIVE : choix du joueur s'il y en a
+    // un, sinon la règle SRD du catalogue au niveau actuel
+    const eff = effectiveFeatureReset(feature, character.level ?? 1);
+    setResetShort(eff === 'short');
+    setResetLong(eff === 'short' || eff === 'long');
     setShowTemplateHelp(false);
     setShowModal(true);
   };
@@ -119,8 +125,27 @@ export default function CharacterFeaturesTab({
     }
     const cm = counterMax.trim() ? Math.max(0, Number(counterMax)) : null;
     const cmVal = cm !== null && cm > 0 ? cm : null;
-    // Un repos court inclut le repos long : court ⇒ les deux.
-    const resetType = !cmVal ? null : resetShort ? 'short' : resetLong ? 'long' : null;
+    // Un repos court inclut le repos long : court ⇒ les deux. Décochées = manuel.
+    let resetType: FeatureResetType | null = !cmVal
+      ? null
+      : resetShort
+        ? 'short'
+        : resetLong
+          ? 'long'
+          : 'none';
+    if (cmVal && editing?.catalogId) {
+      // Trait de catalogue : le choix du joueur n'est stocké que s'il S'ÉCARTE
+      // de la règle SRD — sinon null et le trait continue de suivre le catalogue
+      // (y compris ses paliers de niveau, ex. Inspiration bardique au niv. 5).
+      const def = findClassFeature(editing.catalogId);
+      if (def?.resource) {
+        const catalogReset = effectiveFeatureReset(
+          { catalogId: editing.catalogId, resetType: null },
+          character.level ?? 1,
+        );
+        if (resetType === catalogReset) resetType = null;
+      }
+    }
     setSaving(true);
     try {
       if (editing) {
@@ -313,19 +338,24 @@ export default function CharacterFeaturesTab({
                           );
                         })()}
 
-                      {/* Badge de recharge aux repos (traits libres) */}
-                      {(feature.counterMax ?? 0) > 0 && feature.resetType && (
-                        <span
-                          className="self-start text-[10px] px-2 py-0.5 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-200"
-                          title={
-                            feature.resetType === 'short'
-                              ? 'Se recharge après un repos court ou long'
-                              : 'Se recharge après un repos long'
-                          }
-                        >
-                          ↻ {feature.resetType === 'short' ? 'repos court' : 'repos long'}
-                        </span>
-                      )}
+                      {/* Badge de recharge effective : choix du joueur, sinon règle SRD du catalogue */}
+                      {(feature.counterMax ?? 0) > 0 &&
+                        (() => {
+                          const eff = effectiveFeatureReset(feature, character.level ?? 1);
+                          if (eff !== 'short' && eff !== 'long') return null;
+                          return (
+                            <span
+                              className="self-start text-[10px] px-2 py-0.5 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-200"
+                              title={
+                                eff === 'short'
+                                  ? 'Se recharge après un repos court ou long'
+                                  : 'Se recharge après un repos long'
+                              }
+                            >
+                              ↻ {eff === 'short' ? 'repos court' : 'repos long'}
+                            </span>
+                          );
+                        })()}
 
                       <span
                         className={`inline-block self-start text-[10px] px-2 py-0.5 rounded-full border ${CATEGORY_COLORS[feature.category]}`}
@@ -422,11 +452,13 @@ export default function CharacterFeaturesTab({
             </p>
           </label>
 
-          {/* Recharge aux repos — traits libres uniquement (le catalogue suit la règle SRD) */}
-          {counterMax.trim() !== '' && Number(counterMax) > 0 && !editing?.catalogId && (
+          {/* Recharge aux repos — pour TOUS les traits à compteur : les cases sont
+              pré-cochées sur la règle SRD pour un trait du catalogue, et le choix
+              du joueur n'est mémorisé que s'il s'en écarte */}
+          {counterMax.trim() !== '' && Number(counterMax) > 0 && (
             <div className="bg-parchment-50 rounded-lg p-3 border border-parchment-200 space-y-1.5">
               <span className="text-xs font-medium text-ink-500 block">
-                Le compteur se restaure aux repos (boutons de l'onglet Survie) :
+                Le compteur se restaure aux repos (boutons de l’onglet Survie) :
               </span>
               <label className="flex items-center gap-2 text-sm text-ink-700">
                 <input
@@ -452,6 +484,12 @@ export default function CharacterFeaturesTab({
                 />
                 ↻ Repos long uniquement
               </label>
+              {editing?.catalogId && (
+                <p className="text-[11px] text-ink-400 italic">
+                  Pré-coché sur la règle du catalogue — un choix identique continue de la suivre
+                  (elle évolue avec le niveau) ; seul un écart est mémorisé.
+                </p>
+              )}
               {!resetShort && !resetLong && (
                 <p className="text-xs text-ink-400">
                   Aucune case cochée : rechargement manuel uniquement.

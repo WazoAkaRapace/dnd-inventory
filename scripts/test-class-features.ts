@@ -12,10 +12,13 @@ import {
   classFeatureResourceMax,
   criticalRange,
   DND_CLASSES,
+  effectiveFeatureReset,
   eldritchInvocationsCount,
+  featuresForCharacter,
   findClassFeature,
   maxSpellSlots,
   nextClassFeatureGain,
+  renderFeatureTemplate,
   SPELL_SLOTS_PACT,
 } from '@dnd-inventory/shared';
 
@@ -322,7 +325,7 @@ const mkFeature = (
   catalogId: string | null,
   cur: number,
   max: number,
-  resetType: 'short' | 'long' | null = null,
+  resetType: 'short' | 'long' | 'none' | null = null,
 ): CharacterFeature => ({
   id,
   characterId: 1,
@@ -450,6 +453,141 @@ check(
   findClassFeature('druide-corps-immortel')?.level,
   18,
 );
+
+// --- Choix du joueur vs règle SRD du catalogue (le catalogue pré-remplit, le joueur décide) ---
+
+// Recharge effective : null = règle SRD au niveau actuel (bardique 'long' < niv. 5)
+check(
+  'effectiveReset : Inspiration bardique suit le catalogue (long @3, short @5)',
+  [
+    effectiveFeatureReset({ catalogId: 'barde-inspiration-bardique', resetType: null }, 3),
+    effectiveFeatureReset({ catalogId: 'barde-inspiration-bardique', resetType: null }, 5),
+  ],
+  ['long', 'short'],
+);
+check(
+  'effectiveReset : le choix du joueur prime (override none/short)',
+  [
+    effectiveFeatureReset({ catalogId: 'barde-inspiration-bardique', resetType: 'none' }, 10),
+    effectiveFeatureReset({ catalogId: 'moine-ki', resetType: 'long' }, 10),
+    effectiveFeatureReset({ catalogId: null, resetType: null }, 10),
+  ],
+  ['none', 'long', null],
+);
+
+// Override 'long' sur un trait de catalogue dont la règle SRD est 'short'
+// (Second souffle) : le repos court ne le recharge PLUS, le repos long si.
+const overridden = [
+  ...feats, // 1: second souffle (SRD court), 2: Inflexible (SRD long)
+  mkFeature(20, 'guerrier-second-souffle', 0, 1, 'long'), // n'écrase pas : id distinct
+];
+const overrideShort = applyRest(restChar(), overridden, { type: 'short' });
+check(
+  'override long sur Second souffle : ignoré au repos court',
+  overrideShort.featureResets.map((r) => r.featureId),
+  [1], // seul le Second souffle SRD (id 1) est rechargé ; l'override (20) non
+);
+const overrideLong = applyRest(restChar(), overridden, { type: 'long' });
+check(
+  'override long sur Second souffle : rechargé au repos long',
+  overrideLong.featureResets.map((r) => r.featureId).includes(20),
+  true,
+);
+
+// Override 'none' : jamais rechargé, même au repos long
+const banned = applyRest(restChar(), [mkFeature(21, 'moine-ki', 0, 5, 'none')], {
+  type: 'long',
+});
+check('override none : jamais rechargé (même repos long)', banned.featureResets.length, 0);
+
+// Override sur un trait de catalogue : la formule SRD du max reste appliquée
+// (Imposition des mains niv 6 → 30 PV, rechargés au repos court grâce à l'override)
+const layOnHands = mkFeature(
+  22,
+  'paladin-imposition-des-mains',
+  0,
+  35, // max stocké volontairement faux : la formule doit gagner
+  'short',
+);
+const lohRest = applyRest(mkChar({ characterClass: 'Paladin', level: 6 }), [layOnHands], {
+  type: 'short',
+});
+check(
+  'override + formule : Imposition des mains override court, max recalculé à 30',
+  lohRest.featureResets[0],
+  { featureId: 22, counterMax: 30, counterCurrent: 30 },
+);
+
+// Régression bardique : la règle SRD (long → court au niv. 5) s'applique sans override
+const bardic5 = applyRest(
+  mkChar({ characterClass: 'Barde', level: 5, charisma: 18 }),
+  [mkFeature(23, 'barde-inspiration-bardique', 0, 4)],
+  { type: 'short' },
+);
+check('bardique niv 5 : rechargée au repos court (palier SRD)', bardic5.featureResets.length, 1);
+const bardic3 = applyRest(
+  mkChar({ characterClass: 'Barde', level: 3, charisma: 18 }),
+  [mkFeature(24, 'barde-inspiration-bardique', 0, 4)],
+  { type: 'short' },
+);
+check('bardique niv 3 : PAS rechargée au repos court', bardic3.featureResets.length, 0);
+
+// --- Couverture complète & placeholders (passe AideDD par agent) ---
+
+// Wiring des colonnes dédiées : domaines/serments/cercles alimentent le catalogue
+check(
+  'Clerc/Vie @8 voit la Frappe divine du domaine',
+  featuresForCharacter({ characterClass: 'Clerc', divineDomain: 'vie', level: 8 }).some(
+    (f) => f.id === 'vie-frappe-divine',
+  ),
+  true,
+);
+check(
+  'Paladin/Vengeance @20 voit l’Ange de la vengeance',
+  featuresForCharacter({ characterClass: 'Paladin', sacredOath: 'vengeance', level: 20 }).some(
+    (f) => f.id === 'paladin-ange-vengeance',
+  ),
+  true,
+);
+check(
+  'Artificier/Artilleur @3 voit le Canon occulte',
+  featuresForCharacter({ characterClass: 'Artificier', subclass: 'artilleur', level: 3 }).some(
+    (f) => f.id === 'artilleur-canon-occulte',
+  ),
+  true,
+);
+
+// Placeholders : aucune description de catalogue ne laisse de {{...}} non rendu
+// pour sa classe (les {{save_dc}} sont réservés aux classes à incantation —
+// les non-lanceurs portent la formule littérale « 8 + {{prof}} + mod »).
+const RENDER_CLASSES: Array<[string, Record<string, unknown>]> = [
+  ['Artificier', { subclass: 'alchimiste', intelligence: 16 }],
+  ['Barbare', { subclass: 'berserker', charisma: 12 }],
+  ['Barde', { subclass: 'savoir', charisma: 14 }],
+  ['Clerc', { divineDomain: 'tempete', wisdom: 14 }],
+  ['Druide', { druidCircle: 'lune', wisdom: 14 }],
+  ['Ensorceleur', { subclass: 'draconique', charisma: 14 }],
+  ['Guerrier', { subclass: 'maitre-de-guerre', strength: 16 }],
+  ['Magicien', { subclass: 'evocation', intelligence: 16 }],
+  ['Moine', { subclass: 'main-ouverte', wisdom: 14 }],
+  ['Occultiste', { subclass: 'fielon', charisma: 14 }],
+  ['Paladin', { sacredOath: 'vengeance', charisma: 14 }],
+  ['Rôdeur', { subclass: 'chasseur', wisdom: 14 }],
+  ['Roublard', { subclass: 'assassin', dexterity: 16 }],
+];
+const mkRenderChar = (cls: string, over: Record<string, unknown>): Character =>
+  mkChar({ characterClass: cls, ...over });
+for (const [cls, over] of RENDER_CLASSES) {
+  const ch = mkRenderChar(cls, over);
+  const all = featuresForCharacter(ch as never);
+  const unrendered: string[] = [];
+  for (const f of all) {
+    const rendered = renderFeatureTemplate(f.description, ch);
+    const leftover = rendered.match(/\{\{[^}]+\}\}/g);
+    if (leftover) unrendered.push(`${f.id}: ${leftover.join(',')}`);
+  }
+  check(`placeholders rendus — ${cls} (${all.length} capacités)`, unrendered, []);
+}
 
 console.log(failures === 0 ? '\n✅ All class-feature checks pass' : `\n❌ ${failures} failure(s)`);
 process.exit(failures === 0 ? 0 : 1);
