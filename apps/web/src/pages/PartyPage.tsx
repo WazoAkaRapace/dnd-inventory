@@ -287,7 +287,7 @@ export default function PartyPage() {
           Le MD a fermé la table : personnages, combats, PNJ et objets ont été supprimés avec elle.
         </p>
         <div>
-          <Link to="/parties" className="btn-secondary">
+          <Link to="/parties" className="btn-secondary inline-block">
             Mes groupes
           </Link>
         </div>
@@ -302,7 +302,7 @@ export default function PartyPage() {
           Le MD t'a retiré de la table. Pour revenir, il te faudra un code d'invitation valide.
         </p>
         <div>
-          <Link to="/parties" className="btn-secondary">
+          <Link to="/parties" className="btn-secondary inline-block">
             Mes groupes
           </Link>
         </div>
@@ -355,7 +355,7 @@ export default function PartyPage() {
         {myCharacters.length === 0 ? (
           <div className="border-b border-parchment-200 py-5">
             <p className="text-sm text-ink-500">Tu n'as pas encore de personnage dans ce groupe.</p>
-            <Link to={`/party/${partyId}/create`} className="btn-primary mt-4">
+            <Link to={`/party/${partyId}/create`} className="btn-primary mt-4 inline-block">
               ＋ Créer mon personnage
             </Link>
           </div>
@@ -397,7 +397,7 @@ export default function PartyPage() {
         )}
         {myCharacters.length > 0 && (
           <div className="pt-3">
-            <Link to={`/party/${partyId}/create`} className="btn-ghost text-ink-500">
+            <Link to={`/party/${partyId}/create`} className="btn-ghost inline-block text-ink-500">
               ＋ Nouveau personnage
             </Link>
           </div>
