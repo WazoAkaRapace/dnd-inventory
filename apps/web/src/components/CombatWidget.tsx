@@ -140,6 +140,24 @@ export default function CombatWidget() {
     }
   };
 
+  // "J'ai fini mon tour" — closes the player's own turn from the drawer; the
+  // server re-checks that the caller's combatant holds the current turn.
+  const [endingTurn, setEndingTurn] = useState(false);
+  const endMyTurn = async (encounterId: number) => {
+    setEndingTurn(true);
+    try {
+      await api.post(`/api/encounters/${encounterId}/end-my-turn`);
+      // combat:change is echo-exempt (GM tab + player tab), so our own sync
+      // listener reloads; loadCombats() again covers the event losing the race
+      // (e.g. a 403 because the MD advanced the same turn a beat earlier).
+      await loadCombats();
+    } catch {
+      await loadCombats();
+    } finally {
+      setEndingTurn(false);
+    }
+  };
+
   // Only show on the player's OWN character sheet
   const [isMyCharacter, setIsMyCharacter] = useState(false);
   useEffect(() => {
@@ -258,11 +276,22 @@ export default function CombatWidget() {
             </div>
           )}
 
-          {/* My turn banner */}
+          {/* My turn banner + the action that closes it */}
           {isMyTurn && (
-            <div className="text-center py-2 px-3 rounded-lg bg-blood-600 text-parchment-50 font-bold">
-              ⚔ À toi de jouer !
-            </div>
+            <>
+              <div className="text-center py-2 px-3 rounded-lg bg-blood-600 text-parchment-50 font-bold">
+                ⚔ À toi de jouer !
+              </div>
+              <button
+                type="button"
+                onClick={() => endMyTurn(combat.encounter.id)}
+                disabled={endingTurn}
+                className="btn-primary w-full min-h-[44px] text-sm"
+                aria-label="Terminer mon tour — passer au combattant suivant"
+              >
+                ✓ J'ai fini mon tour
+              </button>
+            </>
           )}
 
           {/* Current actor (only during active combat) */}

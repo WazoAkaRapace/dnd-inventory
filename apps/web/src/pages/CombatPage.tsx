@@ -325,6 +325,26 @@ export default function CombatPage() {
     }
   };
 
+  // Player-side close: same advance as nextTurn, but the server allows it only
+  // from the owner of a combatant holding the current turn.
+  const [endingTurn, setEndingTurn] = useState(false);
+  const endMyTurn = async () => {
+    if (!activeEncounter || endingTurn) return;
+    setEndingTurn(true);
+    setFocusId(null);
+    try {
+      await api.post(`/api/encounters/${activeEncounter.id}/end-my-turn`);
+      await loadEncounter(activeEncounter.id, true);
+    } catch {
+      // Most likely the MD advanced the same turn a beat earlier — resync
+      // quietly so the stage shows whose turn it actually is.
+      pushToast('Le tour a déjà changé', 'error');
+      await loadEncounter(activeEncounter.id, true);
+    } finally {
+      setEndingTurn(false);
+    }
+  };
+
   /** GM convenience in setup: roll every missing initiative (one per group). */
   const rollAllInitiatives = async () => {
     if (!activeEncounter) return;
@@ -518,6 +538,8 @@ export default function CombatPage() {
           onRollAll={rollAllInitiatives}
           rollingInit={rollingInit}
           onNextTurn={nextTurn}
+          onEndMyTurn={endMyTurn}
+          endMyTurnBusy={endingTurn}
           onEnd={() => patchEncounter({ status: 'ended' })}
           onAddMonster={() => setShowAddMonster(true)}
           onAddPlayer={() => setShowAddPlayer(true)}
@@ -835,6 +857,8 @@ function CombatTheatre({
   onRollAll,
   rollingInit,
   onNextTurn,
+  onEndMyTurn,
+  endMyTurnBusy,
   onEnd,
   onAddMonster,
   onAddPlayer,
@@ -860,6 +884,8 @@ function CombatTheatre({
   onRollAll: () => void;
   rollingInit: boolean;
   onNextTurn: () => void;
+  onEndMyTurn: () => void;
+  endMyTurnBusy: boolean;
   onEnd: () => void;
   onAddMonster: () => void;
   onAddPlayer: () => void;
@@ -891,6 +917,17 @@ function CombatTheatre({
     !!c.characterId &&
     party.characters.some((ch) => ch.id === c.characterId && ch.ownerId === userId);
 
+  // Does the CURRENT turn belong to one of the viewer's own characters?
+  // (group-aware, mirroring the server's same-turn rule)
+  const currentIsMine =
+    status === 'active' &&
+    !!current &&
+    combatants.some(
+      (c) =>
+        canSetInitiative(c) &&
+        (current.groupId !== null ? c.groupId === current.groupId : c.id === current.id),
+    );
+
   const sheetPath = (c: Combatant) =>
     c.characterId && party.characters.some((ch) => ch.id === c.characterId)
       ? `/party/${encounter.partyId}/character/${c.characterId}`
@@ -899,6 +936,14 @@ function CombatTheatre({
   // Turn controls + add actions, staged at the combatant's foot (active) or on
   // the bench bar (setup).
   const startDisabled = combatants.length === 0 || needsInitiative;
+  const nextHint = next ? (
+    <span className="ml-auto text-sm text-ink-400">
+      Puis : {next.name}
+      {next.groupId !== null &&
+        combatants.filter((c) => c.groupId === next.groupId).length > 1 &&
+        ` (×${combatants.filter((c) => c.groupId === next.groupId).length})`}
+    </span>
+  ) : null;
   const stageFooter =
     isGM && status === 'active' ? (
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-parchment-200 pt-4">
@@ -920,14 +965,22 @@ function CombatTheatre({
             + PJ
           </button>
         )}
-        {next && (
-          <span className="ml-auto text-sm text-ink-400">
-            Puis : {next.name}
-            {next.groupId !== null &&
-              combatants.filter((c) => c.groupId === next.groupId).length > 1 &&
-              ` (×${combatants.filter((c) => c.groupId === next.groupId).length})`}
-          </span>
-        )}
+        {nextHint}
+      </div>
+    ) : !isGM && currentIsMine ? (
+      // Player foot — the mirror of the MD's: the owner closes their own turn,
+      // handing it to the announced next combatant
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-parchment-200 pt-4">
+        <button
+          type="button"
+          onClick={onEndMyTurn}
+          disabled={endMyTurnBusy}
+          className="btn-primary min-h-[44px] text-sm"
+          aria-label="Terminer mon tour — passer au combattant suivant"
+        >
+          ✓ J'ai fini mon tour
+        </button>
+        {nextHint}
       </div>
     ) : null;
 

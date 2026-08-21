@@ -623,6 +623,29 @@ export default function CharacterInventoryPage() {
     if (rising) combatVibrate([80, 40, 80]);
   }, [needsInitNow]);
 
+  // "J'ai fini mon tour" — the owner of the current combatant advances the
+  // turn from the sheet (thumb zone, no reach for the MD's tracker). One tap,
+  // no confirm: the button only exists while the turn is actually theirs and
+  // the server re-checks ownership anyway.
+  const [endingTurn, setEndingTurn] = useState(false);
+  const endMyTurn = async () => {
+    if (!hubCombat || endingTurn) return;
+    setEndingTurn(true);
+    try {
+      await api.post(`/api/encounters/${hubCombat.encounterId}/end-my-turn`);
+      // combat:change is echo-EXEMPT (a user can be GM in one tab and player
+      // in another), so the sync listener already bumps combatRefresh; this
+      // manual bump covers the event losing the race.
+      setCombatRefresh((n) => n + 1);
+    } catch {
+      // Most likely the MD advanced the same turn a beat earlier
+      pushToast('Le tour a déjà changé', 'error');
+      setCombatRefresh((n) => n + 1);
+    } finally {
+      setEndingTurn(false);
+    }
+  };
+
   // ---------- Render guards ----------
   if (loading) return <LoadingSpinner label="Chargement du sac à dos…" />;
   if (error && !data) return <ErrorMsg message={error} />;
@@ -826,22 +849,45 @@ export default function CharacterInventoryPage() {
               </>
             )}
           </div>
+        ) : hubCombat?.isMyTurn ? (
+          // Your turn: the announce card becomes the action card — the card
+          // that opens the turn closes it (header + body grammar mirrors the
+          // initiative card above). One tap ends the turn; the link keeps the
+          // path to the full tracker. band-rise: the same 0.2 s sentence the
+          // Agir line speaks at the instant the turn becomes yours.
+          <div className="band-rise relative mb-[-6px] mx-auto w-fit max-w-full rounded-t-xl rounded-b-md shadow-md border border-b-0 bg-blood-600 border-blood-700 combat-turn-glow overflow-hidden">
+            <div className="relative px-3 py-1.5 text-xs font-bold text-parchment-50 text-center">
+              ⚔ À toi de jouer !
+              <TurnSlash active={turnSlash} />
+            </div>
+            <div className="flex items-center gap-2 px-2 py-1.5 bg-parchment-50 border-t border-blood-300">
+              <button
+                type="button"
+                onClick={endMyTurn}
+                disabled={endingTurn}
+                className="btn-primary min-h-[44px] flex-1 px-4 text-sm whitespace-nowrap"
+                aria-label="Terminer mon tour — passer au combattant suivant"
+              >
+                ✓ J'ai fini mon tour
+              </button>
+              <Link
+                to={`/party/${hubCombat.partyId}/combat?enc=${hubCombat.encounterId}`}
+                className="btn-secondary min-h-[44px] px-3 text-xs whitespace-nowrap"
+              >
+                Voir le combat
+              </Link>
+            </div>
+          </div>
         ) : (
           hubCombat && (
             <Link
               to={`/party/${hubCombat.partyId}/combat?enc=${hubCombat.encounterId}`}
-              className={`relative block mb-[-6px] mx-auto w-fit max-w-full px-3 py-1.5 rounded-t-xl rounded-b-md text-xs font-semibold shadow-md border border-b-0 transition-colors ${
-                hubCombat.isMyTurn
-                  ? 'bg-blood-600 text-parchment-50 border-blood-700 combat-turn-glow'
-                  : 'bg-ink-900 text-parchment-200 border-ink-700'
-              }`}
+              className="relative block mb-[-6px] mx-auto w-fit max-w-full px-3 py-1.5 rounded-t-xl rounded-b-md text-xs font-semibold shadow-md border border-b-0 transition-colors bg-ink-900 text-parchment-200 border-ink-700"
               aria-label="Combat en cours — ouvrir le traqueur"
             >
-              {hubCombat.isMyTurn
-                ? '⚔ À toi de jouer !'
-                : hubCombat.currentCombatantName
-                  ? `⚔ ${hubCombat.currentCombatantName}`
-                  : '⚔ Combat en préparation'}
+              {hubCombat.currentCombatantName
+                ? `⚔ ${hubCombat.currentCombatantName}`
+                : '⚔ Combat en préparation'}
               <TurnSlash active={turnSlash} />
             </Link>
           )

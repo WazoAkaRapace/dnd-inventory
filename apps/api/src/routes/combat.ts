@@ -31,8 +31,15 @@ import {
   computeAC,
   rollHitPoints,
 } from '@dnd-inventory/shared';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { getDrizzle } from '../db/drizzle.ts';
 import { getDb } from '../db/index.ts';
+import {
+  characters as charactersTable,
+  combatants as combatantsTable,
+  encounters as encountersTable,
+} from '../db/schema.ts';
 import { bus } from '../sync/bus.ts';
 import {
   getUserId,
@@ -56,37 +63,40 @@ function parseConditions(raw: any): CombatantCondition[] {
   }
 }
 
+// Row mappers read BOTH key styles: snake_case from raw db.prepare rows and
+// camelCase from Drizzle query-builder rows — one mapping truth for the two
+// SQL dialects that coexist in this file.
 function mapCombatant(row: any): Combatant {
   return {
     id: row.id,
-    encounterId: row.encounter_id,
+    encounterId: row.encounter_id ?? row.encounterId,
     type: row.type as CombatantType,
-    characterId: row.character_id ?? null,
-    monsterSlug: row.monster_slug ?? null,
+    characterId: row.character_id ?? row.characterId ?? null,
+    monsterSlug: row.monster_slug ?? row.monsterSlug ?? null,
     name: row.name,
     count: row.count ?? 1,
-    groupId: row.group_id ?? null,
+    groupId: row.group_id ?? row.groupId ?? null,
     initiative: row.initiative ?? null,
-    initiativeBonus: row.initiative_bonus ?? 0,
-    armorClass: row.armor_class ?? 10,
-    hitPoints: row.hit_points ?? 1,
-    maxHitPoints: row.max_hit_points ?? 1,
+    initiativeBonus: row.initiative_bonus ?? row.initiativeBonus ?? 0,
+    armorClass: row.armor_class ?? row.armorClass ?? 10,
+    hitPoints: row.hit_points ?? row.hitPoints ?? 1,
+    maxHitPoints: row.max_hit_points ?? row.maxHitPoints ?? 1,
     conditions: parseConditions(row.conditions),
-    sortOrder: row.sort_order ?? 0,
+    sortOrder: row.sort_order ?? row.sortOrder ?? 0,
     defeated: !!row.defeated,
-    cardColor: row.card_color ?? null,
+    cardColor: row.card_color ?? row.cardColor ?? null,
   };
 }
 
 function mapEncounter(row: any): Encounter {
   return {
     id: row.id,
-    partyId: row.party_id,
+    partyId: row.party_id ?? row.partyId,
     name: row.name,
     round: row.round ?? 0,
-    turnIndex: row.turn_index ?? 0,
+    turnIndex: row.turn_index ?? row.turnIndex ?? 0,
     status: row.status ?? 'setup',
-    createdAt: row.created_at,
+    createdAt: row.created_at ?? row.createdAt,
   };
 }
 
@@ -977,15 +987,23 @@ export async function combatRoutes(app: FastifyInstance) {
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const enc = db
-        .prepare('SELECT * FROM encounters WHERE id = ?')
-        .get(Number(req.params.id)) as any;
+      const drizzle = getDrizzle();
+      const enc = drizzle
+        .select()
+        .from(encountersTable)
+        .where(eq(encountersTable.id, Number(req.params.id)))
+        .get();
       if (!enc) return reply.code(404).send({ error: 'Rencontre introuvable' });
-      if (!isPartyGM(enc.party_id, userId)) return reply.code(403).send({ error: 'Réservé au MD' });
+      if (!isPartyGM(enc.partyId, userId)) return reply.code(403).send({ error: 'Réservé au MD' });
 
-      const rows = db.prepare('SELECT * FROM combatants WHERE encounter_id = ?').all(enc.id);
-      const sorted = sortCombatants(rows.map(mapCombatant));
+      const sorted = sortCombatants(
+        drizzle
+          .select()
+          .from(combatantsTable)
+          .where(eq(combatantsTable.encounterId, enc.id))
+          .all()
+          .map(mapCombatant),
+      );
       const active = sorted.filter((c) => !c.defeated);
 
       if (active.length === 0) {
@@ -999,133 +1017,244 @@ export async function combatRoutes(app: FastifyInstance) {
           0,
           sorted.findIndex((c) => !c.defeated),
         );
-        db.prepare('UPDATE encounters SET status = ?, round = 1, turn_index = ? WHERE id = ?').run(
-          'active',
-          firstIdx,
-          enc.id,
-        );
-        const started = db.prepare('SELECT * FROM encounters WHERE id = ?').get(enc.id);
+        drizzle
+          .update(encountersTable)
+          .set({ status: 'active', round: 1, turnIndex: firstIdx })
+          .where(eq(encountersTable.id, enc.id))
+          .run();
+        const started = drizzle
+          .select()
+          .from(encountersTable)
+          .where(eq(encountersTable.id, enc.id))
+          .get();
         bus.emitChange({
           type: 'combat:change',
-          partyId: enc.party_id,
+          partyId: enc.partyId,
           action: 'turn',
           actorUserId: userId,
         });
         return reply.send({ encounter: mapEncounter(started) });
       }
 
-      const currentIdx = Math.min(enc.turn_index, sorted.length - 1);
-      const currentCombatant = sorted[currentIdx];
+      const currentIdx = Math.min(enc.turnIndex, sorted.length - 1);
+      advanceTurnTx(enc, sorted, currentIdx, userId);
 
-      // --- One atomic advance: condition expiry writes (and their sheet
-      // mirrors), any round-wrap status flip and the turn/round UPDATE are a
-      // single unit — a mid-failure must not expire conditions without
-      // advancing the turn (or vice-versa). The condition mirror may emit a
-      // sync event from inside the tx; events are best-effort refresh
-      // nudges, so a rollback just leaves clients on the pre-tx state.
-      const advanceTx = db.transaction(() => {
-        // --- Condition expiry for ALL combatants whose turn is ending ---
-        // (grouped monsters share initiative, so they share a turn)
-        if (currentCombatant) {
-          const currentGroup = currentCombatant.groupId;
-          // Find all combatants sharing this turn (same group, or same initiative
-          // for non-grouped combatants at the same position)
-          const sameTurn = sorted.filter(
-            (c) => (currentGroup && c.groupId === currentGroup) || c.id === currentCombatant.id,
-          );
-          for (const c of sameTurn) {
-            if (c.conditions.length === 0) continue;
-            let changed = false;
-            const expired: string[] = [];
-            const updated = c.conditions
-              .map((cond) => {
-                if (cond.duration === null) return cond; // until dispelled
-                if (cond.duration <= 1) {
-                  changed = true;
-                  expired.push(cond.name);
-                  return null;
-                } // expired
-                changed = true;
-                return { ...cond, duration: cond.duration - 1 };
-              })
-              .filter((cond): cond is CombatantCondition => cond !== null);
-            if (changed) {
-              db.prepare('UPDATE combatants SET conditions = ? WHERE id = ?').run(
-                JSON.stringify(updated),
-                c.id,
-              );
-              // Expired conditions leave the character sheet too
-              if (expired.length > 0 && c.type === 'player' && c.characterId) {
-                mirrorConditionsToCharacter(enc.party_id, c.characterId, [], expired, userId);
-              }
-            }
-          }
-        }
-
-        // --- Advance turn: skip past the entire current group ---
-        // Grouped combatants are adjacent in sorted order. Find the next combatant
-        // that is NOT in the current group (or, for non-grouped, just +1).
-        let nextIndex = currentIdx + 1;
-        let round = enc.round;
-        const currentGroup = currentCombatant?.groupId;
-
-        // If current is part of a group, skip past all group members
-        if (currentGroup) {
-          while (nextIndex < sorted.length && sorted[nextIndex]?.groupId === currentGroup) {
-            nextIndex++;
-          }
-        }
-
-        // If we've passed the end, wrap to start and increment round
-        if (nextIndex >= sorted.length) {
-          nextIndex = 0;
-          round = round + 1;
-          if (round === 1) {
-            db.prepare('UPDATE encounters SET status = ? WHERE id = ?').run('active', enc.id);
-          }
-        }
-
-        // Skip defeated combatants (and their group members)
-        const refetchedRows = db
-          .prepare('SELECT * FROM combatants WHERE encounter_id = ?')
-          .all(enc.id);
-        const refetchedSorted = sortCombatants(refetchedRows.map(mapCombatant));
-        let guard = 0;
-        while (refetchedSorted[nextIndex]?.defeated && guard < refetchedSorted.length * 2) {
-          const skipGroup = refetchedSorted[nextIndex]?.groupId;
-          nextIndex++;
-          // Skip remaining group members too
-          if (skipGroup) {
-            while (
-              nextIndex < refetchedSorted.length &&
-              refetchedSorted[nextIndex]?.groupId === skipGroup
-            ) {
-              nextIndex++;
-            }
-          }
-          if (nextIndex >= refetchedSorted.length) {
-            nextIndex = 0;
-            round++;
-          }
-          guard++;
-        }
-
-        db.prepare('UPDATE encounters SET turn_index = ?, round = ? WHERE id = ?').run(
-          nextIndex,
-          round,
-          enc.id,
-        );
-      });
-      advanceTx();
-
-      const row = db.prepare('SELECT * FROM encounters WHERE id = ?').get(enc.id);
+      const row = drizzle
+        .select()
+        .from(encountersTable)
+        .where(eq(encountersTable.id, enc.id))
+        .get();
       bus.emitChange({
         type: 'combat:change',
-        partyId: enc.party_id,
+        partyId: enc.partyId,
         action: 'turn',
         actorUserId: userId,
       });
       return reply.send({ encounter: mapEncounter(row) });
     },
   );
+
+  // ===== End MY turn (player): the owner of the current combatant advances the
+  // turn themselves — same advance as the GM's next-turn (condition expiry,
+  // round wrap), allowed ONLY while one of the caller's characters holds the
+  // current turn. The GM keeps next-turn; this route never starts a combat.
+  app.post(
+    '/encounters/:id/end-my-turn',
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const userId = requireUser(req, reply);
+      if (userId === null) return;
+      const drizzle = getDrizzle();
+      const enc = drizzle
+        .select()
+        .from(encountersTable)
+        .where(eq(encountersTable.id, Number(req.params.id)))
+        .get();
+      if (!enc) return reply.code(404).send({ error: 'Rencontre introuvable' });
+      if (enc.status !== 'active') return reply.code(400).send({ error: 'Combat non actif' });
+
+      const sorted = sortCombatants(
+        drizzle
+          .select()
+          .from(combatantsTable)
+          .where(eq(combatantsTable.encounterId, enc.id))
+          .all()
+          .map(mapCombatant),
+      );
+      const active = sorted.filter((c) => !c.defeated);
+
+      if (active.length === 0) {
+        return reply.code(400).send({ error: 'Aucun combattant actif' });
+      }
+
+      const currentIdx = Math.min(enc.turnIndex, sorted.length - 1);
+      const current = sorted[currentIdx];
+      if (!current) return reply.code(400).send({ error: 'Aucun combattant actif' });
+
+      // The current turn belongs to a group (or a lone combatant): the caller
+      // must own one of its characters to close it. Ownership is checked on the
+      // character row — UI gating hides the button, this is the real guard.
+      const currentGroup = current.groupId;
+      const sameTurn = sorted.filter(
+        (c) => (currentGroup && c.groupId === currentGroup) || c.id === current.id,
+      );
+      const turnCharacterIds = sameTurn
+        .filter((c) => c.characterId !== null)
+        .map((c) => c.characterId as number);
+      const owned =
+        turnCharacterIds.length > 0
+          ? drizzle
+              .select({ id: charactersTable.id })
+              .from(charactersTable)
+              .where(
+                and(
+                  inArray(charactersTable.id, turnCharacterIds),
+                  eq(charactersTable.ownerId, userId),
+                ),
+              )
+              .get()
+          : undefined;
+      if (!owned) return reply.code(403).send({ error: "Ce n'est pas ton tour" });
+
+      advanceTurnTx(enc, sorted, currentIdx, userId);
+
+      const row = drizzle
+        .select()
+        .from(encountersTable)
+        .where(eq(encountersTable.id, enc.id))
+        .get();
+      bus.emitChange({
+        type: 'combat:change',
+        partyId: enc.partyId,
+        action: 'turn',
+        actorUserId: userId,
+      });
+      return reply.send({ encounter: mapEncounter(row) });
+    },
+  );
+}
+
+/**
+ * One atomic turn advance — shared by the GM's next-turn and the player's
+ * end-my-turn: expires the ending turn's conditions (grouped monsters share a
+ * turn), then updates turn/round skipping defeated combatants. Queries use the
+ * Drizzle query-builder over the same better-sqlite3 connection; the native
+ * db.transaction() wrapper keeps the condition-mirror writes (raw SQL in
+ * helpers.ts, same connection) inside the same unit — a mid-failure must not
+ * expire conditions without advancing the turn (or vice-versa). Sync events
+ * emitted from inside are best-effort refresh nudges; a rollback just leaves
+ * clients on the pre-tx state.
+ */
+function advanceTurnTx(
+  enc: { id: number; partyId: number; round: number },
+  sorted: Combatant[],
+  currentIdx: number,
+  userId: number,
+): void {
+  const db = getDb();
+  const drizzle = getDrizzle();
+  const currentCombatant = sorted[currentIdx];
+
+  const advanceTx = db.transaction(() => {
+    // --- Condition expiry for ALL combatants whose turn is ending ---
+    // (grouped monsters share initiative, so they share a turn)
+    if (currentCombatant) {
+      const currentGroup = currentCombatant.groupId;
+      // Find all combatants sharing this turn (same group, or same initiative
+      // for non-grouped combatants at the same position)
+      const sameTurn = sorted.filter(
+        (c) => (currentGroup && c.groupId === currentGroup) || c.id === currentCombatant.id,
+      );
+      for (const c of sameTurn) {
+        if (c.conditions.length === 0) continue;
+        let changed = false;
+        const expired: string[] = [];
+        const updated = c.conditions
+          .map((cond) => {
+            if (cond.duration === null) return cond; // until dispelled
+            if (cond.duration <= 1) {
+              changed = true;
+              expired.push(cond.name);
+              return null;
+            } // expired
+            changed = true;
+            return { ...cond, duration: cond.duration - 1 };
+          })
+          .filter((cond): cond is CombatantCondition => cond !== null);
+        if (changed) {
+          drizzle
+            .update(combatantsTable)
+            .set({ conditions: JSON.stringify(updated) })
+            .where(eq(combatantsTable.id, c.id))
+            .run();
+          // Expired conditions leave the character sheet too
+          if (expired.length > 0 && c.type === 'player' && c.characterId) {
+            mirrorConditionsToCharacter(enc.partyId, c.characterId, [], expired, userId);
+          }
+        }
+      }
+    }
+
+    // --- Advance turn: skip past the entire current group ---
+    // Grouped combatants are adjacent in sorted order. Find the next combatant
+    // that is NOT in the current group (or, for non-grouped, just +1).
+    let nextIndex = currentIdx + 1;
+    let round = enc.round;
+    const currentGroup = currentCombatant?.groupId;
+
+    // If current is part of a group, skip past all group members
+    if (currentGroup) {
+      while (nextIndex < sorted.length && sorted[nextIndex]?.groupId === currentGroup) {
+        nextIndex++;
+      }
+    }
+
+    // If we've passed the end, wrap to start and increment round
+    if (nextIndex >= sorted.length) {
+      nextIndex = 0;
+      round = round + 1;
+      if (round === 1) {
+        drizzle
+          .update(encountersTable)
+          .set({ status: 'active' })
+          .where(eq(encountersTable.id, enc.id))
+          .run();
+      }
+    }
+
+    // Skip defeated combatants (and their group members)
+    const refetchedSorted = sortCombatants(
+      drizzle
+        .select()
+        .from(combatantsTable)
+        .where(eq(combatantsTable.encounterId, enc.id))
+        .all()
+        .map(mapCombatant),
+    );
+    let guard = 0;
+    while (refetchedSorted[nextIndex]?.defeated && guard < refetchedSorted.length * 2) {
+      const skipGroup = refetchedSorted[nextIndex]?.groupId;
+      nextIndex++;
+      // Skip remaining group members too
+      if (skipGroup) {
+        while (
+          nextIndex < refetchedSorted.length &&
+          refetchedSorted[nextIndex]?.groupId === skipGroup
+        ) {
+          nextIndex++;
+        }
+      }
+      if (nextIndex >= refetchedSorted.length) {
+        nextIndex = 0;
+        round++;
+      }
+      guard++;
+    }
+
+    drizzle
+      .update(encountersTable)
+      .set({ turnIndex: nextIndex, round })
+      .where(eq(encountersTable.id, enc.id))
+      .run();
+  });
+  advanceTx();
 }

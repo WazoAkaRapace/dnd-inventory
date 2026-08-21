@@ -538,6 +538,98 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
   r = await api(base, 'POST', `/api/encounters/${encDead.id}/next-turn`, { token: fx.gm.token });
   eq(r.status, 400, 'no active combatant → 400');
 
+  // ---------- end-my-turn (player-initiated advance) ----------
+  r = await api(base, 'POST', `/api/encounters/${encDead.id}/end-my-turn`, {
+    token: fx.player.token,
+  });
+  eq(r.status, 400, 'end-my-turn before combat starts → 400');
+  r = await api(base, 'POST', '/api/encounters/999999/end-my-turn', { token: fx.gm.token });
+  eq(r.status, 404, 'end-my-turn 404');
+  r = await api(base, 'POST', `/api/encounters/${enc.id}/end-my-turn`, {
+    token: fx.player2.token,
+  });
+  eq(r.status, 403, 'end-my-turn without a combatant → 403');
+
+  // Deterministic fight: goblin (init 20) acts before Bran (init 5, bob's
+  // character) — so ending Bran's turn wraps the round.
+  const encTurn = (
+    await api(base, 'POST', `/api/parties/${P}/encounters`, {
+      token: fx.gm.token,
+      body: { name: 'Tour du joueur' },
+    })
+  ).data.encounter;
+  const turnGob = (
+    await api(base, 'POST', `/api/encounters/${encTurn.id}/combatants/monster`, {
+      token: fx.gm.token,
+      body: { monsterSlug: goblin.slug, count: 1 },
+    })
+  ).data.combatants[0];
+  const turnBran = (
+    await api(base, 'POST', `/api/encounters/${encTurn.id}/combatants/player`, {
+      token: fx.gm.token,
+      body: { characterId: fx.charBran.id },
+    })
+  ).data.combatants[0];
+  await api(base, 'PATCH', `/api/encounters/${encTurn.id}/combatants/${turnGob.id}/initiative`, {
+    token: fx.gm.token,
+    body: { initiative: 20 },
+  });
+  await api(base, 'PATCH', `/api/encounters/${encTurn.id}/combatants/${turnBran.id}/initiative`, {
+    token: fx.player.token,
+    body: { initiative: 5 },
+  });
+  await api(base, 'POST', `/api/encounters/${encTurn.id}/next-turn`, { token: fx.gm.token }); // start: goblin
+  await api(base, 'POST', `/api/encounters/${encTurn.id}/next-turn`, { token: fx.gm.token }); // → Bran
+
+  // It IS Bran's turn, but the GM's characters aren't in this fight —
+  // ownership of a current-turn combatant, not the GM role, opens the advance
+  r = await api(base, 'POST', `/api/encounters/${encTurn.id}/end-my-turn`, {
+    token: fx.gm.token,
+  });
+  eq(r.status, 403, "end-my-turn from a user whose character isn't in the turn → 403");
+
+  // Bran's owner closes his turn: advance + round wrap by the player
+  await api(base, 'PATCH', `/api/combatants/${turnBran.id}`, {
+    token: fx.gm.token,
+    body: { conditions: [{ name: 'Engourdi', duration: 1 }] },
+  });
+  r = await api(base, 'POST', `/api/encounters/${encTurn.id}/end-my-turn`, {
+    token: fx.player.token,
+  });
+  eq(r.status, 200, 'player ends own turn');
+  eq(r.data.encounter.round, 2, 'player advance wraps the round');
+  const afterTurn = (
+    await api(base, 'GET', `/api/encounters/${encTurn.id}`, { token: fx.gm.token })
+  ).data.encounter;
+  eq(afterTurn.combatants[afterTurn.turnIndex].id, turnGob.id, 'turn passed to the goblin');
+  ok(
+    !JSON.parse(
+      srv.query('SELECT conditions AS c FROM combatants WHERE id = ?', turnBran.id).c,
+    ).some((c: any) => c.name === 'Engourdi'),
+    'player-ended turn expires tracker conditions',
+  );
+  ok(
+    !srv
+      .query('SELECT conditions AS c FROM characters WHERE id = ?', fx.charBran.id)
+      .c.includes('Engourdi'),
+    'expired condition leaves the sheet',
+  );
+
+  // Goblin holds the turn now — Bran's owner is locked out
+  r = await api(base, 'POST', `/api/encounters/${encTurn.id}/end-my-turn`, {
+    token: fx.player.token,
+  });
+  eq(r.status, 403, 'end-my-turn when not your turn → 403');
+  await api(base, 'PATCH', `/api/encounters/${encTurn.id}`, {
+    token: fx.gm.token,
+    body: { status: 'ended' },
+  });
+  r = await api(base, 'POST', `/api/encounters/${encTurn.id}/end-my-turn`, {
+    token: fx.gm.token,
+  });
+  eq(r.status, 400, 'end-my-turn after combat ended → 400');
+  await api(base, 'DELETE', `/api/encounters/${encTurn.id}`, { token: fx.gm.token });
+
   // ---------- hidden character purge ----------
   const sneaky = await createCharacter(base, fx.gm.token, P, { name: 'Filou' });
   const enc2 = (
