@@ -35,7 +35,10 @@ export async function partyRoutes(app: FastifyInstance) {
         ...cols(parties),
         role: partyMembers.role,
         gm_name: users.displayName,
-        member_count: sql<number>`(SELECT COUNT(*) FROM party_members x WHERE x.party_id = ${parties.id})`,
+        // Table-qualified outer reference by hand: drizzle renders
+        // ${parties.id} as bare "id" in select fields — it resolves outward
+        // only because party_members has no id column. Don't rely on that.
+        member_count: sql<number>`(SELECT COUNT(*) FROM party_members x WHERE x.party_id = parties.id)`,
       })
       .from(parties)
       .innerJoin(
