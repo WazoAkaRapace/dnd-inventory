@@ -1381,14 +1381,15 @@ export function computeAC(
     if (!armor) {
       armor = {
         acBase,
-        armorType:
-          base && base.armorType !== 'shield'
-            ? base.armorType
-            : entry.item.strMin !== null && entry.item.strMin >= 13
-              ? 'heavy'
-              : acBase >= 13 && acBase <= 15
-                ? 'medium'
-                : 'light',
+        // (a shield base already `continue`d above, so base.armorType is
+        // never 'shield' here — the type was narrowed accordingly)
+        armorType: base
+          ? base.armorType
+          : entry.item.strMin !== null && entry.item.strMin >= 13
+            ? 'heavy'
+            : acBase >= 13 && acBase <= 15
+              ? 'medium'
+              : 'light',
         name: entry.item.nameFr ?? entry.item.name,
       };
       magicAcBonus = magicBonus;
@@ -3089,7 +3090,9 @@ export interface MagicArmorBase {
  *     excluding the conditional "+N à la CA contre …" (Bouclier attrape-flèches).
  */
 export function resolveMagicArmorBase(
-  item: Pick<Item, 'name' | 'nameFr' | 'description'>,
+  // Wider than Pick<Item, …>: computeAC/computeSpeed entry items carry an
+  // optional description (string | null | undefined) — full Item still matches.
+  item: { name: string; nameFr: string | null; description?: string | null },
 ): MagicArmorBase {
   const result: MagicArmorBase = { base: null, shield: false, magicBonus: 0 };
   const header = item.description?.match(/^Armure \(([^)]+)\)/i)?.[1]?.toLowerCase() ?? '';

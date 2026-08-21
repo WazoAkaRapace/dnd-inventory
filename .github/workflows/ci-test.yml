@@ -1,0 +1,113 @@
+# Validation: lint + typecheck + rules suites + API integration tests.
+# Runs on every PR and every push to main. The Docker build/push workflow
+# (ci.yml) stays separate — it only fires on main pushes and releases.
+
+name: Validate (lint, types, tests)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# One validation run per ref; superseded PR runs are cancelled.
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  # playwright is a heavy root devDep (browser binaries); never needed here
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (Biome)
+        run: npm run lint
+
+      # ---- Rules suites (fast tsx scripts, non-zero exit on failure) ----
+      - name: Rules suite - weapons
+        run: npm run test-weapon-stats
+
+      - name: Rules suite - armor
+        run: npm run test-armor-stats
+
+      - name: Rules suite - skills
+        run: npm run test-skill-stats
+
+      - name: Rules suite - class features
+        run: npm run test-class-features
+
+      - name: Rules suite - creation data
+        run: npm run test-creation-data
+
+      # ---- Typecheck ----
+      # apps/web `tsc -b` transitively typechecks packages/shared too
+      # (shared exports raw TS sources). The baseline errors that used to
+      # live here were fixed in shared in Aug 2026 — this is now a hard gate.
+      #
+      # The API is deliberately NOT tsc-gated: its tsconfig uses NodeNext
+      # resolution while the codebase imports with `.ts` extensions (TS5097
+      # noise everywhere, plus pre-existing type errors in routes) — the API
+      # runs via tsx with no build step, and its real signal is the API
+      # integration suite below, which boots an actual tsx server.
+      - name: Typecheck (apps/web + packages/shared)
+        working-directory: apps/web
+        run: npx tsc -b
+
+      # ---- API integration suite, LAST (slowest: boots a throwaway server) ----
+      # Own temp SQLite + seeds on a free port; includes the 100% query-site
+      # coverage gate over routes/** + sync/** (.prepare call sites).
+      - name: API integration suite
+        run: npm run test-api
+
+  # ---- Browser E2E: parallel to validate (own throwaway stack + fresh DB) ----
+  # The workflow-level PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD keeps `npm ci` fast;
+  # the explicit `playwright install` below is unaffected by it and fetches
+  # just the chromium build the suite needs.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+
+      # Playwright's webServer boots the API (tsx + fresh data/db/e2e.sqlite)
+      # and vite dev (proxy /api + /ws), then global-setup seeds the campaign
+      # over REST. Never touches any external DB.
+      - name: E2E suite (throwaway API + Web stack)
+        run: npm run test:e2e
+
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-e2e
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

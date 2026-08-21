@@ -22,6 +22,10 @@ COPY apps/web/ ./apps/web/
 ARG VITE_API_URL=""
 ENV VITE_API_URL=$VITE_API_URL
 WORKDIR /app/apps/web
+# Typecheck first: vite/esbuild strips types without checking them.
+# `tsc -b` also covers packages/shared (imported as raw TS sources).
+# Baseline is clean since Aug 2026 — the build fails on any type error.
+RUN npx tsc -b
 RUN npx vite build
 
 # --- Production stage: nginx ---
