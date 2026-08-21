@@ -5,8 +5,11 @@
 
 import type { User } from '@dnd-inventory/shared';
 import bcrypt from 'bcryptjs';
+import { eq } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { getDb } from '../db/index.ts';
+import { getDrizzle } from '../db/drizzle.ts';
+import { cols } from '../db/projections.ts';
+import { users } from '../db/schema.ts';
 
 const BCRYPT_ROUNDS = 10;
 
@@ -35,15 +38,22 @@ export async function authRoutes(app: FastifyInstance) {
     if (username.length < 3) return reply.code(400).send({ error: 'username must be ≥ 3 chars' });
     if (password.length < 6) return reply.code(400).send({ error: 'password must be ≥ 6 chars' });
 
-    const db = getDb();
-    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+    const drizzle = getDrizzle();
+    const existing = drizzle
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.username, username))
+      .get();
     if (existing) return reply.code(409).send({ error: 'username already taken' });
 
     const hash = bcrypt.hashSync(password, BCRYPT_ROUNDS);
-    const info = db
-      .prepare('INSERT INTO users (username, password_hash, display_name) VALUES (?, ?, ?)')
-      .run(username, hash, displayName);
-    const row = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
+    // users.username is COLLATE NOCASE at the column level (schema.sql) — the
+    // uniqueness check above inherits it, no query-text collation needed.
+    const row = drizzle
+      .insert(users)
+      .values({ username, passwordHash: hash, displayName })
+      .returning(cols(users))
+      .get() as any;
     const user = sanitizeUser(row);
     const token = app.jwt.sign({ sub: user.id, username: user.username });
     return reply.code(201).send({ token, user });
@@ -55,8 +65,12 @@ export async function authRoutes(app: FastifyInstance) {
     if (!username || !password)
       return reply.code(400).send({ error: 'username and password required' });
 
-    const db = getDb();
-    const row = db.prepare('SELECT * FROM users WHERE username = ?').get(username) as any;
+    const drizzle = getDrizzle();
+    const row = drizzle
+      .select(cols(users))
+      .from(users)
+      .where(eq(users.username, username))
+      .get() as any;
     if (!row) return reply.code(401).send({ error: 'invalid credentials' });
 
     const ok = bcrypt.compareSync(password, row.password_hash);
@@ -74,8 +88,11 @@ export async function authRoutes(app: FastifyInstance) {
     async (req: FastifyRequest, reply: FastifyReply) => {
       const userId = (req as any).user?.sub;
       if (!userId) return reply.code(401).send({ error: 'unauthorized' });
-      const db = getDb();
-      const row = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+      const row = getDrizzle()
+        .select(cols(users))
+        .from(users)
+        .where(eq(users.id, userId))
+        .get() as any;
       if (!row) return reply.code(404).send({ error: 'user not found' });
       return reply.send({ user: sanitizeUser(row) });
     },

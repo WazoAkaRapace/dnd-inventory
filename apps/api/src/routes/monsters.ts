@@ -4,8 +4,11 @@
  */
 
 import type { Monster, MonsterSummary } from '@dnd-inventory/shared';
+import { eq, or, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { getDb } from '../db/index.ts';
+import { getDrizzle } from '../db/drizzle.ts';
+import { cols } from '../db/projections.ts';
+import { monsters } from '../db/schema.ts';
 import { requireUser } from './helpers.ts';
 
 interface MonsterQuery {
@@ -97,29 +100,31 @@ export async function monsterRoutes(app: FastifyInstance) {
       const { search } = req.query || {};
       const lim = Math.min(parseInt(req.query.limit || '20', 10) || 20, 100);
 
-      const where: string[] = [];
-      const params: any[] = [];
+      // normalize() (registered on the shared better-sqlite3 handle) strips
+      // diacritics and lowercases — accent-insensitive search.
+      const conditions =
+        search !== undefined && search !== ''
+          ? or(
+              sql`normalize(${monsters.nameFr}) LIKE normalize(${`%${search}%`})`,
+              sql`normalize(${monsters.type}) LIKE normalize(${`%${search}%`})`,
+            )
+          : undefined;
 
-      if (search) {
-        where.push(`(
-          normalize(name_fr) LIKE normalize(?) OR
-          normalize(type) LIKE normalize(?)
-        )`);
-        params.push(`%${search}%`, `%${search}%`);
-      }
-
-      const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-
-      const db = getDb();
-      const rows = db
-        .prepare(`
-        SELECT slug, name_fr, type, size, challenge_rating, armor_class, hit_points
-        FROM monsters
-        ${whereSql}
-        ORDER BY challenge_rating ASC, name_fr COLLATE NOCASE ASC
-        LIMIT ?
-      `)
-        .all(...params, lim);
+      const rows = getDrizzle()
+        .select({
+          slug: monsters.slug,
+          name_fr: monsters.nameFr,
+          type: monsters.type,
+          size: monsters.size,
+          challenge_rating: monsters.challengeRating,
+          armor_class: monsters.armorClass,
+          hit_points: monsters.hitPoints,
+        })
+        .from(monsters)
+        .where(conditions)
+        .orderBy(monsters.challengeRating, sql`${monsters.nameFr} COLLATE NOCASE ASC`)
+        .limit(lim)
+        .all();
 
       return reply.send({ monsters: rows.map(mapMonsterSummary) });
     },
@@ -132,8 +137,11 @@ export async function monsterRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
 
-      const db = getDb();
-      const row = db.prepare('SELECT * FROM monsters WHERE slug = ?').get(req.params.slug);
+      const row = getDrizzle()
+        .select(cols(monsters))
+        .from(monsters)
+        .where(eq(monsters.slug, req.params.slug))
+        .get() as any;
       if (!row) return reply.code(404).send({ error: 'Monstre introuvable' });
 
       return reply.send({ monster: mapMonster(row) });

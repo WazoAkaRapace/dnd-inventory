@@ -12,8 +12,10 @@
  */
 
 import type { WebSocket } from '@fastify/websocket';
+import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { getDb } from '../db/index.ts';
+import { getDrizzle } from '../db/drizzle.ts';
+import { characters, partyMembers } from '../db/schema.ts';
 import { bus, type SyncEvent } from './bus.ts';
 
 interface ClientInfo {
@@ -27,10 +29,11 @@ const clients = new Set<ClientInfo>();
 
 /** Get all party IDs a user belongs to (queried once at connection time). */
 function getUserPartyIds(userId: number): Set<number> {
-  const db = getDb();
-  const rows = db
-    .prepare('SELECT party_id FROM party_members WHERE user_id = ?')
-    .all(userId) as any[];
+  const rows = getDrizzle()
+    .select({ party_id: partyMembers.partyId })
+    .from(partyMembers)
+    .where(eq(partyMembers.userId, userId))
+    .all();
   return new Set(rows.map((r) => r.party_id));
 }
 
@@ -127,16 +130,20 @@ export async function registerWsRoutes(app: FastifyInstance) {
     // public (party:change / combat:change refresh lists for everyone).
     let restrictTo: Set<number> | null = null;
     if (event.type === 'character:change' && event.characterId !== undefined) {
-      const db = getDb();
-      const char = db
-        .prepare('SELECT hidden, owner_id FROM characters WHERE id = ?')
-        .get(event.characterId) as any;
+      const drizzle = getDrizzle();
+      const char = drizzle
+        .select({ hidden: characters.hidden, owner_id: characters.ownerId })
+        .from(characters)
+        .where(eq(characters.id, event.characterId))
+        .get() as any;
       // No row = deleted character: deliver to everyone so lists refresh
       if (char?.hidden) {
         restrictTo = new Set([char.owner_id]);
-        const gms = db
-          .prepare("SELECT user_id FROM party_members WHERE party_id = ? AND role = 'gm'")
-          .all(event.partyId) as any[];
+        const gms = drizzle
+          .select({ user_id: partyMembers.userId })
+          .from(partyMembers)
+          .where(and(eq(partyMembers.partyId, event.partyId), eq(partyMembers.role, 'gm')))
+          .all();
         for (const g of gms) restrictTo.add(g.user_id);
       }
     }

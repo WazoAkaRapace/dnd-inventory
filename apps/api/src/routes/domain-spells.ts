@@ -5,8 +5,11 @@
 
 import type { Spell } from '@dnd-inventory/shared';
 import { bonusPreparedSpells, domainSpellsFor, findClass } from '@dnd-inventory/shared';
+import { eq, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { getDb } from '../db/index.ts';
+import { getDrizzle } from '../db/drizzle.ts';
+import { cols } from '../db/projections.ts';
+import { characterClasses, characters, spells } from '../db/schema.ts';
 import { isPartyGM, mapSpell, requireUser } from './helpers.ts';
 
 export async function domainSpellRoutes(app: FastifyInstance) {
@@ -15,10 +18,12 @@ export async function domainSpellRoutes(app: FastifyInstance) {
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const char = db
-        .prepare('SELECT * FROM characters WHERE id = ?')
-        .get(Number(req.params.id)) as any;
+      const drizzle = getDrizzle();
+      const char = drizzle
+        .select(cols(characters))
+        .from(characters)
+        .where(eq(characters.id, Number(req.params.id)))
+        .get() as any;
       if (!char) return reply.code(404).send({ error: 'Personnage introuvable' });
       const gm = isPartyGM(char.party_id, userId);
       if (char.owner_id !== userId && !gm) {
@@ -29,9 +34,12 @@ export async function domainSpellRoutes(app: FastifyInstance) {
       // all the same SRD mechanic: always prepared, excluded from the limit.
       // Multiclassage : chaque source divine est évaluée au NIVEAU DE SA
       // CLASSE (les lignes character_classes font foi).
-      const classRows = db
-        .prepare('SELECT * FROM character_classes WHERE character_id = ? ORDER BY position, id')
-        .all(char.id) as any[];
+      const classRows = drizzle
+        .select(cols(characterClasses))
+        .from(characterClasses)
+        .where(eq(characterClasses.characterId, char.id))
+        .orderBy(characterClasses.position, characterClasses.id)
+        .all() as any[];
       const lines: Array<{ classKey: string; level: number; subclassKey: string | null }> =
         classRows.length > 0
           ? classRows.map((r) => ({
@@ -67,14 +75,18 @@ export async function domainSpellRoutes(app: FastifyInstance) {
           groups.push(...bonusPreparedSpells('Paladin', line.subclassKey, line.level));
         }
       }
-      const spells: Array<Spell & { domainLevel: number }> = [];
+      const domainSpells: Array<Spell & { domainLevel: number }> = [];
       for (const g of groups) {
         for (const name of g.names) {
-          const row = db.prepare('SELECT * FROM spells WHERE name = ? COLLATE NOCASE').get(name);
-          if (row) spells.push({ ...mapSpell(row), domainLevel: g.level });
+          const row = drizzle
+            .select(cols(spells))
+            .from(spells)
+            .where(sql`${spells.name} = ${name} COLLATE NOCASE`)
+            .get() as any;
+          if (row) domainSpells.push({ ...mapSpell(row), domainLevel: g.level });
         }
       }
-      return reply.send({ domain: char.divine_domain ?? null, spells }); // 'domain' kept for client compat
+      return reply.send({ domain: char.divine_domain ?? null, spells: domainSpells }); // 'domain' kept for client compat
     },
   );
 }

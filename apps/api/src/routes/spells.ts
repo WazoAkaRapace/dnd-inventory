@@ -3,8 +3,12 @@
  * Spells are global SRD reference data (no party scoping), but still
  * require authentication (enforced by the global guard in server.ts).
  */
+
+import { and, eq, isNotNull, or, type SQL, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { getDb } from '../db/index.ts';
+import { getDrizzle } from '../db/drizzle.ts';
+import { cols } from '../db/projections.ts';
+import { spells } from '../db/schema.ts';
 import { mapSpell, requireUser } from './helpers.ts';
 
 interface SpellQuery {
@@ -28,8 +32,7 @@ export async function spellRoutes(app: FastifyInstance) {
       const lim = Math.min(parseInt(req.query.limit || '30', 10) || 30, 200);
       const off = Math.max(parseInt(req.query.offset || '0', 10) || 0, 0);
 
-      const where: string[] = [];
-      const params: any[] = [];
+      const where: Array<SQL | undefined> = [];
 
       // Class filter: classes_json LIKE (French class names, case-insensitive).
       // classes_json is stored as '["Magicien","Ensorceleur"]' so we match
@@ -43,11 +46,13 @@ export async function spellRoutes(app: FastifyInstance) {
           .map((c) => c.trim())
           .filter(Boolean);
         if (classNames.length > 0) {
-          const likes = classNames
-            .map(() => `normalize(classes_json) LIKE normalize(?)`)
-            .join(' OR ');
-          where.push(`(${likes})`);
-          for (const name of classNames) params.push(`%"${name}"%`);
+          where.push(
+            or(
+              ...classNames.map(
+                (name) => sql`normalize(${spells.classesJson}) LIKE normalize(${`%"${name}"%`})`,
+              ),
+            ),
+          );
         }
       }
 
@@ -55,40 +60,39 @@ export async function spellRoutes(app: FastifyInstance) {
       if (level !== undefined && level !== '') {
         const lv = parseInt(level, 10);
         if (!Number.isNaN(lv) && lv >= 0 && lv <= 9) {
-          where.push('level = ?');
-          params.push(lv);
+          where.push(eq(spells.level, lv));
         }
       }
 
       // School filter: exact match (lowercase school key).
       if (school) {
-        where.push('school = ?');
-        params.push(school.toLowerCase());
+        where.push(eq(spells.school, school.toLowerCase()));
       }
 
       // Search: accent-insensitive match on name OR name_fr.
       if (search) {
-        where.push(`(
-          normalize(name) LIKE normalize(?) OR
-          normalize(name_fr) LIKE normalize(?)
-        )`);
-        params.push(`%${search}%`, `%${search}%`);
+        where.push(
+          or(
+            sql`normalize(${spells.name}) LIKE normalize(${`%${search}%`})`,
+            sql`normalize(${spells.nameFr}) LIKE normalize(${`%${search}%`})`,
+          ),
+        );
       }
 
-      const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+      const filter = where.length > 0 ? and(...where) : undefined;
 
-      const db = getDb();
-      const rows = db
-        .prepare(`
-        SELECT * FROM spells
-        ${whereSql}
-        ORDER BY level ASC, COALESCE(name_fr, name) COLLATE NOCASE ASC
-        LIMIT ? OFFSET ?
-      `)
-        .all(...params, lim, off);
+      const drizzle = getDrizzle();
+      const rows = drizzle
+        .select(cols(spells))
+        .from(spells)
+        .where(filter)
+        .orderBy(spells.level, sql`COALESCE(${spells.nameFr}, ${spells.name}) COLLATE NOCASE ASC`)
+        .limit(lim)
+        .offset(off)
+        .all() as any[];
 
       const total = (
-        db.prepare(`SELECT COUNT(*) as n FROM spells ${whereSql}`).get(...params) as any
+        drizzle.select({ n: sql<number>`count(*)` }).from(spells).where(filter).get() as any
       ).n;
 
       return reply.send({
@@ -105,12 +109,11 @@ export async function spellRoutes(app: FastifyInstance) {
   app.get('/spells/light', async (req: FastifyRequest, reply: FastifyReply) => {
     const userId = requireUser(req, reply);
     if (userId === null) return;
-    const db = getDb();
-    const rows = db
-      .prepare(`
-      SELECT id, name_fr, level FROM spells WHERE name_fr IS NOT NULL
-      ORDER BY level ASC, name_fr COLLATE NOCASE ASC
-    `)
+    const rows = getDrizzle()
+      .select({ id: spells.id, name_fr: spells.nameFr, level: spells.level })
+      .from(spells)
+      .where(isNotNull(spells.nameFr))
+      .orderBy(spells.level, sql`${spells.nameFr} COLLATE NOCASE ASC`)
       .all();
     return reply.send({
       spells: rows.map((r: any) => ({ id: r.id, nameFr: r.name_fr, level: r.level })),
@@ -123,8 +126,11 @@ export async function spellRoutes(app: FastifyInstance) {
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const row = db.prepare('SELECT * FROM spells WHERE id = ?').get(Number(req.params.id));
+      const row = getDrizzle()
+        .select(cols(spells))
+        .from(spells)
+        .where(eq(spells.id, Number(req.params.id)))
+        .get() as any;
       if (!row) return reply.code(404).send({ error: 'spell not found' });
       return reply.send({ spell: mapSpell(row) });
     },
