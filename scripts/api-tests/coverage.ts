@@ -1,24 +1,19 @@
 /**
- * Query-site coverage gate for npm run test-api.
+ * Raw-SQL gate for npm run test-api.
  *
- * db/index.ts (DB_SQL_TRACE) recorded every prepared statement with its
- * callsite during the run. This module:
- *   1. scrapes every `.prepare(...)` site from apps/api/src/routes/** and
- *      apps/api/src/sync/** (the app's data-query surface; db/seed.ts runs
- *      at boot and db/index.ts is the migration layer — both out of scope),
- *   2. matches each site against the trace, and
- *   3. fails unless every site executed at least once (minus the documented
- *      allowlist below — target: empty).
+ * The raw-SQL → Drizzle migration completed 2026-08: every route query in
+ * apps/api/src/routes/** and src/sync/** goes through the Drizzle query
+ * builder on the shared better-sqlite3 connection. This module scrapes
+ * every `.prepare(...)` site from those directories and the suite FAILS if
+ * any exists — a new raw site is a regression. (db/seed.ts runs at boot and
+ * db/index.ts is the frozen legacy migration layer — both out of scope;
+ * DB_SQL_TRACE in db/index.ts still records every prepared statement with
+ * its callsite for debugging.)
  *
- * Matching rules:
- *   - static string literal → normalized SQL equality, same file
- *   - template literal      → the stable prefix before the first `${` must
- *                             start an executed statement from that file
- *   - variable argument (.prepare(sql)) → requires an executed statement
- *                             from the exact file:line
- * Line numbers are trusted for variable-arg sites only (they pin the one
- * dynamic builder); string matching alone carries the rest, keeping the
- * gate robust against column drift in stack traces.
+ * The trace-matching machinery (static/template/variable kinds) is kept so
+ * the historical semantics stay available and the violation report can
+ * classify each site: static → normalized SQL equality, template → prefix
+ * before the first `${`, variable → exact file:line.
  *
  * Scraping is whole-file (not line-based): multi-line template literals
  * (`.prepare(` + newline + SQL) and literals starting on the line after
@@ -195,6 +190,9 @@ export interface CoverageReport {
   totalSites: number;
   covered: number;
   uncovered: Array<{ site: Site; reason: string }>;
+  /** Every scraped site — since the Drizzle migration completed, ANY raw site
+   *  in routes/ + sync/ is a violation, covered or not. */
+  sites: Site[];
 }
 
 export function computeCoverage(tracePath: string): CoverageReport {
@@ -219,5 +217,5 @@ export function computeCoverage(tracePath: string): CoverageReport {
     if (hit) covered++;
     else uncovered.push({ site, reason: allow?.reason ?? 'not executed' });
   }
-  return { totalSites: sites.length, covered, uncovered };
+  return { totalSites: sites.length, covered, uncovered, sites };
 }

@@ -1,12 +1,13 @@
 /**
- * API data-query test suite + query-site coverage gate.
+ * API data-query test suite + raw-SQL gate.
  * Run: npm run test-api
  *
  * Boots a throwaway API server (fresh SQLite in a temp dir), runs the
- * domain modules sequentially, then verifies that every .prepare(...) site
- * in apps/api/src/routes/** and src/sync/** executed at least once
- * (DB_SQL_TRACE trace) — the safety net for a future file-by-file migration
- * of raw SQL to the Drizzle query builder. Exit non-zero on any failure.
+ * domain modules sequentially, then verifies that ZERO .prepare(...) sites
+ * remain in apps/api/src/routes/** and src/sync/** — the raw-SQL → Drizzle
+ * migration completed 2026-08; every route query now goes through the
+ * query builder on the shared better-sqlite3 connection. Any new raw site
+ * is a regression. Exit non-zero on any failure.
  */
 import { computeCoverage } from './api-tests/coverage.ts';
 import {
@@ -63,13 +64,12 @@ async function main(): Promise<void> {
       }
     }
 
-    // Coverage BEFORE stop() — the harness deletes the temp dir (trace) on stop.
+    // Gate BEFORE stop() — the harness deletes the temp dir (trace) on stop.
     const cov = computeCoverage(srv.tracePath);
-    const pct = cov.totalSites > 0 ? Math.round((cov.covered / cov.totalSites) * 100) : 100;
-    console.log(`\n[test-api] query-site coverage: ${cov.covered}/${cov.totalSites} (${pct}%)`);
-    if (cov.uncovered.length > 0) {
-      console.log('  uncovered sites:');
-      for (const { site } of cov.uncovered) {
+    console.log(`\n[test-api] raw SQL sites in routes/ + sync/: ${cov.totalSites} (must be 0)`);
+    if (cov.totalSites > 0) {
+      console.log('  raw .prepare( is forbidden there — use the Drizzle query builder:');
+      for (const site of cov.sites) {
         console.log(`    - ${site.file}:${site.line} [${site.kind}] "${site.sql.slice(0, 70)}"`);
       }
       exitCode = 1;
