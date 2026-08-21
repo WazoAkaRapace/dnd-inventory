@@ -13,8 +13,20 @@ import {
   CONCENTRATION_BREAKING_CONDITIONS_FR,
   computeAC,
 } from '@dnd-inventory/shared';
+import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { getDrizzle } from '../db/drizzle.ts';
 import { getDb } from '../db/index.ts';
+import { cols } from '../db/projections.ts';
+import {
+  characterClasses,
+  characters,
+  combatants,
+  encounters,
+  inventory,
+  items,
+  users,
+} from '../db/schema.ts';
 import { bus } from '../sync/bus.ts';
 import {
   attachCharacterClasses,
@@ -28,6 +40,51 @@ import {
   requireUser,
   validateClassEntries,
 } from './helpers.ts';
+
+/** characters.* + the owner's display_name (JOIN users) — the mappers' shape. */
+const CHARACTER_WITH_OWNER = { ...cols(characters), owner_name: users.displayName };
+
+function getCharacterWithOwner(drizzle: ReturnType<typeof getDrizzle>, id: number): any {
+  return drizzle
+    .select(CHARACTER_WITH_OWNER)
+    .from(characters)
+    .innerJoin(users, eq(users.id, characters.ownerId))
+    .where(eq(characters.id, id))
+    .get() as any;
+}
+
+/** The character's player combatants in non-ended encounters (newest first). */
+function activePlayerCombatants(characterId: number): any[] {
+  return getDrizzle()
+    .select(cols(combatants))
+    .from(combatants)
+    .innerJoin(encounters, eq(combatants.encounterId, encounters.id))
+    .where(
+      and(
+        eq(combatants.characterId, characterId),
+        eq(combatants.type, 'player'),
+        ne(encounters.status, 'ended'),
+      ),
+    )
+    .orderBy(desc(encounters.createdAt), desc(combatants.id))
+    .all() as any[];
+}
+
+/** AC input rows from the character's equipped items (sheet-side recompute). */
+function equippedAcRows(characterId: number): any[] {
+  return getDrizzle()
+    .select({
+      category: items.category,
+      ac_base: items.acBase,
+      str_min: items.strMin,
+      name_fr: items.nameFr,
+      name: items.name,
+    })
+    .from(inventory)
+    .innerJoin(items, eq(items.id, inventory.itemId))
+    .where(and(eq(inventory.characterId, characterId), eq(inventory.equipped, 1)))
+    .all() as any[];
+}
 
 export async function characterRoutes(app: FastifyInstance) {
   // ---------- Create character in a party ----------
@@ -71,36 +128,32 @@ export async function characterRoutes(app: FastifyInstance) {
         (l): l is string => typeof l === 'string' && l.trim().length > 0,
       );
 
-      const db = getDb();
-      const info = db
-        .prepare(`
-        INSERT INTO characters
-          (party_id, owner_id, name, strength, dexterity, constitution, intelligence,
-           wisdom, charisma, capacity_multiplier, character_class, level, race, background,
-           skill_proficiencies, languages, max_hp, current_hp, hidden)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `)
-        .run(
+      const drizzle = getDrizzle();
+      const { id: charId } = drizzle
+        .insert(characters)
+        .values({
           partyId,
-          userId,
-          body.name.trim(),
-          abilities.strength,
-          abilities.dexterity,
-          abilities.constitution,
-          abilities.intelligence,
-          abilities.wisdom,
-          abilities.charisma,
-          capMult,
-          body.characterClass ?? null,
-          body.level ?? 1,
-          body.race ?? null,
-          body.background ?? null,
-          JSON.stringify(skillProficiencies),
-          JSON.stringify(languages),
+          ownerId: userId,
+          name: body.name.trim(),
+          strength: abilities.strength,
+          dexterity: abilities.dexterity,
+          constitution: abilities.constitution,
+          intelligence: abilities.intelligence,
+          wisdom: abilities.wisdom,
+          charisma: abilities.charisma,
+          capacityMultiplier: capMult,
+          characterClass: body.characterClass ?? null,
+          level: body.level ?? 1,
+          race: body.race ?? null,
+          background: body.background ?? null,
+          skillProficiencies: JSON.stringify(skillProficiencies),
+          languages: JSON.stringify(languages),
           maxHp,
           currentHp,
-          body.hidden ? 1 : 0,
-        );
+          hidden: body.hidden ? 1 : 0,
+        })
+        .returning({ id: characters.id })
+        .get();
       // Multiclassage : lignes de classe (toujours présentes, même mono-classe)
       const classPayload =
         body.classes ??
@@ -108,20 +161,14 @@ export async function characterRoutes(app: FastifyInstance) {
       if (classPayload.length > 0) {
         const validated = validateClassEntries(classPayload);
         if (!validated.ok) return reply.code(400).send({ error: validated.error });
-        replaceCharacterClasses(info.lastInsertRowid as number, validated.entries);
+        replaceCharacterClasses(charId, validated.entries);
       }
-      const row = db
-        .prepare(`
-        SELECT c.*, u.display_name AS owner_name
-        FROM characters c JOIN users u ON u.id = c.owner_id
-        WHERE c.id = ?
-      `)
-        .get(info.lastInsertRowid);
+      const row = getCharacterWithOwner(drizzle, charId);
       attachCharacterClasses([row]);
       bus.emitChange({
         type: 'party:change',
         partyId,
-        characterId: info.lastInsertRowid as number,
+        characterId: charId,
         action: 'stats',
         actorUserId: userId,
       });
@@ -138,15 +185,13 @@ export async function characterRoutes(app: FastifyInstance) {
       const partyId = Number(req.params.partyId);
       if (!isPartyMember(partyId, userId)) return reply.code(403).send({ error: 'not a member' });
 
-      const db = getDb();
-      const rows = db
-        .prepare(`
-        SELECT c.*, u.display_name AS owner_name
-        FROM characters c JOIN users u ON u.id = c.owner_id
-        WHERE c.party_id = ?
-        ORDER BY c.name COLLATE NOCASE ASC
-      `)
-        .all(partyId) as any[];
+      const rows = getDrizzle()
+        .select(CHARACTER_WITH_OWNER)
+        .from(characters)
+        .innerJoin(users, eq(users.id, characters.ownerId))
+        .where(eq(characters.partyId, partyId))
+        .orderBy(sql`${characters.name} COLLATE NOCASE ASC`)
+        .all() as any[];
       // Hidden characters leave the party listing for everyone but their
       // owner and the GM.
       const callerIsGM = isPartyGM(partyId, userId);
@@ -162,14 +207,7 @@ export async function characterRoutes(app: FastifyInstance) {
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const row = db
-        .prepare(`
-      SELECT c.*, u.display_name AS owner_name
-      FROM characters c JOIN users u ON u.id = c.owner_id
-      WHERE c.id = ?
-    `)
-        .get(Number(req.params.id)) as any;
+      const row = getCharacterWithOwner(getDrizzle(), Number(req.params.id));
       if (!row) return reply.code(404).send({ error: 'character not found' });
       if (!isPartyMember(row.party_id, userId))
         return reply.code(403).send({ error: 'not a member' });
@@ -190,10 +228,12 @@ export async function characterRoutes(app: FastifyInstance) {
     ) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const char = db
-        .prepare('SELECT * FROM characters WHERE id = ?')
-        .get(Number(req.params.id)) as any;
+      const drizzle = getDrizzle();
+      const char = drizzle
+        .select(cols(characters))
+        .from(characters)
+        .where(eq(characters.id, Number(req.params.id)))
+        .get() as any;
       if (!char) return reply.code(404).send({ error: 'character not found' });
       // Owner or GM can edit
       const isGM = isPartyGM(char.party_id, userId);
@@ -284,40 +324,11 @@ export async function characterRoutes(app: FastifyInstance) {
         'sacredOath',
         'subclass',
       ];
-      const sets: string[] = [];
-      const vals: any[] = [];
-      const fieldMap: Record<string, string> = {
-        capacityMultiplier: 'capacity_multiplier',
-        foodDays: 'food_days',
-        waterDays: 'water_days',
-        maxHp: 'max_hp',
-        currentHp: 'current_hp',
-        tempHp: 'temp_hp',
-        characterClass: 'character_class',
-        skillProficiencies: 'skill_proficiencies',
-        skillExpertise: 'skill_expertise',
-        toolProficiencies: 'tool_proficiencies',
-        toolExpertise: 'tool_expertise',
-        savingThrowProficiencies: 'saving_throw_proficiencies',
-        weaponProficiencies: 'weapon_proficiencies',
-        armorProficiencies: 'armor_proficiencies',
-        fightingStyle: 'fighting_style',
-        spellSlotsUsed: 'spell_slots_used',
-        pactSlotsUsed: 'pact_slots_used',
-        unarmoredDefense: 'unarmored_defense',
-        portraitUrl: 'portrait_url',
-        personalityTraits: 'personality_traits',
-        armorClassOverride: 'armor_class_override',
-        deathSaveSuccesses: 'death_save_successes',
-        deathSaveFailures: 'death_save_failures',
-        wildShapeHp: 'wild_shape_hp',
-        wildShapeUses: 'wild_shape_uses',
-        hitDiceUsed: 'hit_dice_used',
-        wildShapeSeen: 'wild_shape_seen_json',
-        druidCircle: 'druid_circle',
-        divineDomain: 'divine_domain',
-        landCircle: 'land_circle',
-        sacredOath: 'sacred_oath',
+      // Payload key → characters column property. Every key maps to the
+      // identically-named schema property except wildShapeSeen (stored in
+      // wild_shape_seen_json).
+      const propMap: Record<string, keyof typeof characters.$inferInsert> = {
+        wildShapeSeen: 'wildShapeSeenJson',
       };
       // Fields stored as JSON arrays — serialize on write
       const jsonFields = new Set([
@@ -334,23 +345,24 @@ export async function characterRoutes(app: FastifyInstance) {
         'pactSlotsUsed',
         'wildShapeSeen',
       ]);
+      // Built in `allowed` order; later assignments overwrite earlier ones
+      // (same last-write-wins semantics as the old SET list).
+      const values: Record<string, unknown> = {};
       for (const key of allowed) {
         if (body[key] !== undefined) {
-          const col = fieldMap[key as string] || key;
+          const prop = propMap[key as string] ?? key;
           const nullResetsClassDefault =
             key === 'weaponProficiencies' || key === 'armorProficiencies';
           if (nullResetsClassDefault && body[key] === null) {
-            // null = back to class default
-            sets.push(`${col} = NULL`); // literal — no ? placeholder
+            values[prop] = null; // null = back to class default
             continue;
           }
-          sets.push(`${col} = ?`);
           if (jsonFields.has(key as string)) {
-            vals.push(JSON.stringify(body[key]));
+            values[prop] = JSON.stringify(body[key]);
           } else if (typeof body[key] === 'boolean') {
-            vals.push(body[key] ? 1 : 0);
+            values[prop] = body[key] ? 1 : 0;
           } else {
-            vals.push(body[key]);
+            values[prop] = body[key];
           }
         }
       }
@@ -361,7 +373,7 @@ export async function characterRoutes(app: FastifyInstance) {
         if (!validated.ok) return reply.code(400).send({ error: validated.error });
         replaceCharacterClasses(char.id, validated.entries);
       }
-      if (sets.length === 0 && body.classes === undefined) {
+      if (Object.keys(values).length === 0 && body.classes === undefined) {
         return reply.code(400).send({ error: 'no fields to update' });
       }
 
@@ -370,14 +382,7 @@ export async function characterRoutes(app: FastifyInstance) {
       // tracker combatant follows the shape's bar (or the normal form back).
       if (body.currentHp !== undefined && char.wild_shape_slug) {
         const shapeHp = Math.max(0, body.currentHp);
-        const combatants = db
-          .prepare(`
-          SELECT c.* FROM combatants c
-          JOIN encounters e ON e.id = c.encounter_id
-          WHERE c.character_id = ? AND c.type = 'player' AND e.status != 'ended'
-          ORDER BY e.created_at DESC, c.id DESC
-        `)
-          .all(char.id) as any[];
+        const combatantsOnShape = activePlayerCombatants(char.id);
 
         if (shapeHp <= 0) {
           // Auto-revert with carry-over — atomic: the sheet write and the
@@ -385,21 +390,19 @@ export async function characterRoutes(app: FastifyInstance) {
           // state splits.
           const excess = -body.currentHp;
           const newHp = Math.max(0, (char.current_hp ?? 1) - excess);
-          const shapeTx = db.transaction(() => {
-            db.prepare(`
-              UPDATE characters
-              SET wild_shape_slug = NULL, wild_shape_hp = NULL, wild_shape_max_hp = NULL, current_hp = ?
-              WHERE id = ?
-            `).run(newHp, char.id);
-            for (const combatant of combatants) {
-              const acRows = db
-                .prepare(`
-                SELECT i.category AS category, i.ac_base AS ac_base, i.str_min AS str_min,
-                       i.name_fr AS name_fr, i.name AS name
-                FROM inventory inv JOIN items i ON i.id = inv.item_id
-                WHERE inv.character_id = ? AND inv.equipped = 1
-              `)
-                .all(char.id) as any[];
+          getDb().transaction(() => {
+            drizzle
+              .update(characters)
+              .set({
+                wildShapeSlug: null,
+                wildShapeHp: null,
+                wildShapeMaxHp: null,
+                currentHp: newHp,
+              })
+              .where(eq(characters.id, char.id))
+              .run();
+            for (const combatant of combatantsOnShape) {
+              const acRows = equippedAcRows(char.id);
               const acResult = computeAC(
                 acRows.map((r) => ({
                   item: {
@@ -415,34 +418,40 @@ export async function characterRoutes(app: FastifyInstance) {
                 char.fighting_style === 'defense',
                 char,
               );
-              db.prepare(
-                'UPDATE combatants SET name = ?, hit_points = ?, max_hit_points = ?, armor_class = ?, defeated = ? WHERE id = ?',
-              ).run(
-                char.name,
-                newHp,
-                char.max_hp ?? 1,
-                char.armor_class_override ?? acResult.ac,
-                newHp <= 0 ? 1 : 0,
-                combatant.id,
-              );
+              drizzle
+                .update(combatants)
+                .set({
+                  name: char.name,
+                  hitPoints: newHp,
+                  maxHitPoints: char.max_hp ?? 1,
+                  armorClass: char.armor_class_override ?? acResult.ac,
+                  defeated: newHp <= 0 ? 1 : 0,
+                })
+                .where(eq(combatants.id, combatant.id))
+                .run();
             }
-          });
-          shapeTx();
+          })();
         } else {
-          const shapeTx = db.transaction(() => {
-            db.prepare('UPDATE characters SET wild_shape_hp = ? WHERE id = ?').run(
-              shapeHp,
-              char.id,
-            );
-            for (const combatant of combatants) {
-              db.prepare(
-                'UPDATE combatants SET hit_points = ?, max_hit_points = ?, defeated = 0 WHERE id = ?',
-              ).run(shapeHp, char.wild_shape_max_hp ?? shapeHp, combatant.id);
+          getDb().transaction(() => {
+            drizzle
+              .update(characters)
+              .set({ wildShapeHp: shapeHp })
+              .where(eq(characters.id, char.id))
+              .run();
+            for (const combatant of combatantsOnShape) {
+              drizzle
+                .update(combatants)
+                .set({
+                  hitPoints: shapeHp,
+                  maxHitPoints: char.wild_shape_max_hp ?? shapeHp,
+                  defeated: 0,
+                })
+                .where(eq(combatants.id, combatant.id))
+                .run();
             }
-          });
-          shapeTx();
+          })();
         }
-        if (combatants.length > 0) {
+        if (combatantsOnShape.length > 0) {
           bus.emitChange({
             type: 'combat:change',
             partyId: char.party_id,
@@ -454,13 +463,7 @@ export async function characterRoutes(app: FastifyInstance) {
         (body as any).currentHp = undefined;
         const remaining = Object.entries(body).filter(([, v]) => v !== undefined);
         if (remaining.length === 0) {
-          const rowAfter = db
-            .prepare(`
-            SELECT c.*, u.display_name AS owner_name
-            FROM characters c JOIN users u ON u.id = c.owner_id
-            WHERE c.id = ?
-          `)
-            .get(char.id);
+          const rowAfter = getCharacterWithOwner(drizzle, char.id);
           attachCharacterClasses([rowAfter]);
           return reply.send({ character: mapCharacter(rowAfter) });
         }
@@ -494,9 +497,9 @@ export async function characterRoutes(app: FastifyInstance) {
           concentratingAfter &&
           body.currentHp <= 0 &&
           (body.tempHp ?? char.temp_hp ?? 0) <= 0 &&
-          !sets.some((s) => s.startsWith('concentrating'))
+          body.concentrating === undefined
         ) {
-          sets.push('concentrating = 0'); // literal — no ? placeholder, no val needed
+          values.concentrating = 0;
         }
       }
 
@@ -509,16 +512,11 @@ export async function characterRoutes(app: FastifyInstance) {
         );
         if (breaking) {
           concentrationBroken = breaking;
-          if (
-            body.concentrating === undefined &&
-            !sets.some((s) => s.startsWith('concentrating'))
-          ) {
-            sets.push('concentrating = 0'); // literal — no ? placeholder
+          if (body.concentrating === undefined) {
+            values.concentrating = 0;
           }
         }
       }
-
-      vals.push(char.id);
 
       // --- HP sync: mirror PV/PV max changes to this character's combatants
       // in non-ended encounters, so the combat tracker shows the same HP
@@ -526,13 +524,18 @@ export async function characterRoutes(app: FastifyInstance) {
       // themselves join the atomic block below.
       const hpMirrorTargets =
         body.currentHp !== undefined || body.maxHp !== undefined
-          ? (db
-              .prepare(`
-              SELECT c.id FROM combatants c
-              JOIN encounters e ON e.id = c.encounter_id
-              WHERE c.character_id = ? AND c.type = 'player' AND e.status != 'ended'
-            `)
-              .all(char.id) as any[])
+          ? getDrizzle()
+              .select({ id: combatants.id })
+              .from(combatants)
+              .innerJoin(encounters, eq(combatants.encounterId, encounters.id))
+              .where(
+                and(
+                  eq(combatants.characterId, char.id),
+                  eq(combatants.type, 'player'),
+                  ne(encounters.status, 'ended'),
+                ),
+              )
+              .all()
           : [];
 
       // --- One atomic write sequence: the sheet UPDATE, the HP/condition
@@ -541,28 +544,24 @@ export async function characterRoutes(app: FastifyInstance) {
       // sheet/tracker state. (The condition mirror may emit a sync event
       // from inside the tx; events are best-effort refresh nudges, so a
       // rollback just leaves clients on the pre-tx state.)
-      const writeTx = db.transaction(() => {
-        if (sets.length > 0) {
-          db.prepare(`UPDATE characters SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+      const writeTx = getDb().transaction(() => {
+        if (Object.keys(values).length > 0) {
+          drizzle.update(characters).set(values).where(eq(characters.id, char.id)).run();
         }
 
         for (const cr of hpMirrorTargets) {
-          const setsC: string[] = [];
-          const valsC: any[] = [];
+          const valuesC: Record<string, unknown> = {};
           if (body.currentHp !== undefined) {
-            setsC.push('hit_points = ?');
-            valsC.push(Math.max(0, body.currentHp));
+            valuesC.hitPoints = Math.max(0, body.currentHp);
             // Mirror the defeated state the tracker derives from HP — temp HP
             // remaining keeps the character up (same rule as the death saves).
-            setsC.push('defeated = ?');
-            valsC.push(body.currentHp <= 0 && (body.tempHp ?? char.temp_hp ?? 0) <= 0 ? 1 : 0);
+            valuesC.defeated =
+              body.currentHp <= 0 && (body.tempHp ?? char.temp_hp ?? 0) <= 0 ? 1 : 0;
           }
           if (body.maxHp !== undefined) {
-            setsC.push('max_hit_points = ?');
-            valsC.push(Math.max(1, body.maxHp));
+            valuesC.maxHitPoints = Math.max(1, body.maxHp);
           }
-          valsC.push(cr.id);
-          db.prepare(`UPDATE combatants SET ${setsC.join(', ')} WHERE id = ?`).run(...valsC);
+          drizzle.update(combatants).set(valuesC).where(eq(combatants.id, cr.id)).run();
         }
 
         // --- Condition sync: sheet condition changes mirror to the combat
@@ -591,15 +590,24 @@ export async function characterRoutes(app: FastifyInstance) {
         // player combatants out of non-ended encounters (ended fights keep
         // their history) so rosters never leak its presence.
         if (hiding) {
-          return db
-            .prepare(`
-            DELETE FROM combatants
-            WHERE character_id = ? AND type = 'player'
-              AND encounter_id IN (
-                SELECT id FROM encounters WHERE party_id = ? AND status != 'ended'
-              )
-          `)
-            .run(char.id, char.party_id).changes;
+          return drizzle
+            .delete(combatants)
+            .where(
+              and(
+                eq(combatants.characterId, char.id),
+                eq(combatants.type, 'player'),
+                inArray(
+                  combatants.encounterId,
+                  getDrizzle()
+                    .select({ id: encounters.id })
+                    .from(encounters)
+                    .where(
+                      and(eq(encounters.partyId, char.party_id), ne(encounters.status, 'ended')),
+                    ),
+                ),
+              ),
+            )
+            .run().changes;
         }
         return 0;
       });
@@ -619,9 +627,12 @@ export async function characterRoutes(app: FastifyInstance) {
         'fightingStyle',
       ] as const;
       const changedLegacy = legacyClassFields.filter((f) => (body as any)[f] !== undefined);
-      const classRows = db
-        .prepare('SELECT * FROM character_classes WHERE character_id = ? ORDER BY position, id')
-        .all(char.id) as any[];
+      const classRows = getDrizzle()
+        .select(cols(characterClasses))
+        .from(characterClasses)
+        .where(eq(characterClasses.characterId, char.id))
+        .orderBy(characterClasses.position, characterClasses.id)
+        .all() as any[];
       if (changedLegacy.length > 0) {
         const entries =
           classRows.length > 0
@@ -702,13 +713,7 @@ export async function characterRoutes(app: FastifyInstance) {
         });
       }
 
-      const row = db
-        .prepare(`
-        SELECT c.*, u.display_name AS owner_name
-        FROM characters c JOIN users u ON u.id = c.owner_id
-        WHERE c.id = ?
-      `)
-        .get(char.id);
+      const row = getCharacterWithOwner(drizzle, char.id);
       attachCharacterClasses([row]);
       // Detect if this was a coin change vs stat change for the event action
       const coinKeys = ['copper', 'silver', 'electrum', 'gold', 'platinum'];
@@ -738,16 +743,18 @@ export async function characterRoutes(app: FastifyInstance) {
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const char = db
-        .prepare('SELECT * FROM characters WHERE id = ?')
-        .get(Number(req.params.id)) as any;
+      const drizzle = getDrizzle();
+      const char = drizzle
+        .select(cols(characters))
+        .from(characters)
+        .where(eq(characters.id, Number(req.params.id)))
+        .get() as any;
       if (!char) return reply.code(404).send({ error: 'character not found' });
       const isGM = isPartyGM(char.party_id, userId);
       if (char.owner_id !== userId && !isGM) {
         return reply.code(403).send({ error: 'only the owner or GM can delete' });
       }
-      db.prepare('DELETE FROM characters WHERE id = ?').run(char.id);
+      drizzle.delete(characters).where(eq(characters.id, char.id)).run();
       bus.emitChange({
         type: 'party:change',
         partyId: char.party_id,
