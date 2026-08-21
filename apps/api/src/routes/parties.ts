@@ -46,7 +46,15 @@ export async function partyRoutes(app: FastifyInstance) {
         and(eq(partyMembers.partyId, parties.id), eq(partyMembers.userId, userId)),
       )
       .leftJoin(users, eq(users.id, parties.gmUserId))
-      .orderBy(desc(parties.createdAt))
+      // The register pins the LAST OPENED party first (per member —
+      // party_members.last_opened_at). Never-opened parties fall back to
+      // creation order. Hand-qualified: users is joined and a bare
+      // "created_at" would be ambiguous.
+      .orderBy(
+        sql`COALESCE(party_members.last_opened_at, parties.created_at) DESC`,
+        desc(parties.createdAt),
+        desc(parties.id),
+      )
       .all();
     // Roster names for the register's current entry — parties are few, one batched query.
     // Hidden characters of other owners stay out of the names AND the count
@@ -207,6 +215,28 @@ export async function partyRoutes(app: FastifyInstance) {
     },
   );
 
+  // ---------- Record a party open (member) ----------
+  // Fired by the web app whenever the user enters a /party/:id route.
+  // Per-member register ordering only — no WS fan-out (nobody else's
+  // view changes because I opened my table).
+  app.post(
+    '/parties/:id/open',
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const userId = requireUser(req, reply);
+      if (userId === null) return;
+      const partyId = Number(req.params.id);
+      if (!isPartyMember(partyId, userId)) return reply.code(403).send({ error: 'not a member' });
+
+      const drizzle = getDrizzle();
+      drizzle
+        .update(partyMembers)
+        .set({ lastOpenedAt: sql`datetime('now')` })
+        .where(and(eq(partyMembers.partyId, partyId), eq(partyMembers.userId, userId)))
+        .run();
+      return reply.send({ ok: true });
+    },
+  );
+
   // ---------- Join party via invite code ----------
   app.post(
     '/parties/join',
@@ -239,7 +269,11 @@ export async function partyRoutes(app: FastifyInstance) {
         .get();
       if (already) return reply.code(409).send({ error: 'already a member', partyId: party.id });
 
-      drizzle.insert(partyMembers).values({ partyId: party.id, userId, role: 'player' }).run();
+      // Joining counts as an open — the fresh table leads the register.
+      drizzle
+        .insert(partyMembers)
+        .values({ partyId: party.id, userId, role: 'player', lastOpenedAt: sql`datetime('now')` })
+        .run();
 
       bus.emitChange({
         type: 'party:change',

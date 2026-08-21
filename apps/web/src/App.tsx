@@ -1,6 +1,7 @@
 import type { ConcentrationCheck } from '@dnd-inventory/shared';
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import api from './api';
 import { useAuth } from './auth';
 import CombatWidget from './components/CombatWidget';
 import ConcentrationAlert from './components/ConcentrationAlert';
@@ -201,6 +202,26 @@ function ConcentrationWatcher() {
   return <ConcentrationAlert check={check} onDone={() => setCheck(null)} />;
 }
 
+/**
+ * Records party opens: entering any /party/:id/* route bumps the member's
+ * last_opened_at so the register (/parties) pins the last opened group
+ * first. Fires once per party entry — navigating between a party's
+ * sub-pages keeps the same partyId and doesn't re-fire.
+ */
+function PartyOpenTracker() {
+  const { user } = useAuth();
+  const loc = useLocation();
+  const userId = user?.id;
+  const partyId = loc.pathname.match(/^\/party\/(\d+)/)?.[1];
+  useEffect(() => {
+    if (!userId || !partyId) return;
+    api.post(`/api/parties/${partyId}/open`).catch(() => {
+      // Fire-and-forget: a failed open only means yesterday's register order.
+    });
+  }, [userId, partyId]);
+  return null;
+}
+
 /** Suspense fallback shown while a lazy route chunk downloads. */
 function RouteFallback() {
   return (
@@ -281,6 +302,7 @@ export default function App() {
       </main>
       <CombatWidget />
       <ConcentrationWatcher />
+      <PartyOpenTracker />
     </HeaderProvider>
   );
 }

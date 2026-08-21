@@ -1,7 +1,8 @@
 /*
  * LE REGISTRE — direction contract (seed 7ab2b22c, assigned surface candidate 6)
  * THESIS: The welcome page is a scribe's party register — ruled entries under a
- * head rule, not a card grid; the most recent group is the expanded current entry.
+ * head rule, not a card grid; the most recently opened group (API-ordered via
+ * party_members.last_opened_at) is the expanded current entry.
  * OWN-WORLD: parchment ground, ink Cinzel names, Roman ordinals (blood on the
  * current entry, ink on the rest), MD/Joueur stamps, mono invite chips.
  * STORY: A player logs in, sees their table by name, and is inside in one tap;

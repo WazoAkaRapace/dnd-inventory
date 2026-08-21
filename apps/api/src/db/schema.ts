@@ -72,6 +72,10 @@ export const partyMembers = sqliteTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     role: text('role').notNull().default('player'),
     joinedAt: text('joined_at').notNull().default(sql`(datetime('now'))`),
+    // Per-member "last opened" — drives the register's ordering (most
+    // recently opened party first). NULL = never opened (falls back to
+    // the party's created_at when sorting).
+    lastOpenedAt: text('last_opened_at'),
   },
   (t) => [
     primaryKey({ columns: [t.partyId, t.userId] }),

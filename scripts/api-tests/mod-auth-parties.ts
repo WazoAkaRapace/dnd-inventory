@@ -1,5 +1,6 @@
 /**
- * Auth + parties: register/login/me/logout, party CRUD, join/remove/ban/unban.
+ * Auth + parties: register/login/me/logout, party CRUD, join/remove/ban/unban,
+ * last-opened register ordering (/parties/:id/open).
  * Covers every .prepare site in routes/auth.ts and routes/parties.ts.
  */
 import {
@@ -207,6 +208,49 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
     body: { inviteCode: fx.inviteCode },
   });
   eq(r.status, 201, 'eve rejoins after unban');
+
+  // ---------- last-opened ordering (the register pins the last OPENED group first) ----------
+  // datetime('now') has 1s resolution: pause a second so the open below is
+  // strictly newer than Troisième's created_at (the createdAt DESC tiebreak
+  // would otherwise decide, making the assert flaky).
+  const third = await createParty(base, eve.token, 'Troisième');
+  r = await api(base, 'GET', '/api/parties', { token: eve.token });
+  eq(r.data.parties[0].id, third.id, 'never-opened: newest created party leads');
+
+  await new Promise((res) => setTimeout(res, 1100));
+  r = await api(base, 'POST', `/api/parties/${fx.partyId}/open`, { token: eve.token });
+  eq(r.status, 200, 'open party → 200');
+  eq(r.data.ok, true, 'open returns ok');
+  ok(
+    srv.query(
+      'SELECT last_opened_at AS t FROM party_members WHERE party_id = ? AND user_id = ?',
+      fx.partyId,
+      eve.userId,
+    ).t,
+    'party_members.last_opened_at recorded',
+  );
+  r = await api(base, 'GET', '/api/parties', { token: eve.token });
+  eq(r.data.parties[0].id, fx.partyId, 'opening an older party promotes it to the top');
+
+  r = await api(base, 'POST', `/api/parties/${third.id}/open`, { token: eve.token });
+  eq(r.status, 200, 're-open → 200');
+  r = await api(base, 'GET', '/api/parties', { token: eve.token });
+  eq(r.data.parties[0].id, third.id, 'the last opened party takes the lead');
+
+  // Joining counts as an open — the freshly joined table leads the register.
+  const fourth = await createParty(base, fx.gm.token, 'Quatrième');
+  r = await api(base, 'POST', '/api/parties/join', {
+    token: eve.token,
+    body: { inviteCode: fourth.inviteCode },
+  });
+  eq(r.status, 201, 'eve joins the fourth party');
+  r = await api(base, 'GET', '/api/parties', { token: eve.token });
+  eq(r.data.parties[0].id, fourth.id, 'join bumps the party to the top');
+
+  r = await api(base, 'POST', `/api/parties/${fx.partyId}/open`, { token: fx.outsider.token });
+  eq(r.status, 403, 'open by non-member → 403');
+  r = await api(base, 'POST', `/api/parties/${fx.partyId}/open`, {});
+  eq(r.status, 401, 'open without token → 401');
 
   // eve cleanup: remove again so later modules see alice+bob+eve… keep eve, harmless.
 

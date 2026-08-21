@@ -1,0 +1,1 @@
+ALTER TABLE `party_members` ADD `last_opened_at` text;
