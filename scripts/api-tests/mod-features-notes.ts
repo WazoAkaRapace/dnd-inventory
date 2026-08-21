@@ -8,7 +8,7 @@ import { api, eq, type Fixtures, ok, type ServerHandle } from './harness.ts';
 
 const ALL_FEATURES = Object.values(CLASS_FEATURES).flat();
 
-export async function run(base: string, fx: Fixtures, _srv: ServerHandle): Promise<void> {
+export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promise<void> {
   const A = fx.charAlya.id;
 
   // ---------- features ----------
@@ -71,6 +71,16 @@ export async function run(base: string, fx: Fixtures, _srv: ServerHandle): Promi
 
   r = await api(base, 'GET', `/api/characters/${A}/features`, { token: fx.player.token });
   eq(r.data.features.length, 2, 'features listed');
+  // raw rows: catalog linkage + counter columns persist as the API reported them
+  const catRow = srv.query(
+    'SELECT title, catalog_id, counter_max, counter_current, reset_type, sort_order FROM character_features WHERE id = ?',
+    catFeat.id,
+  );
+  eq(catRow.title, withResource.name, 'db: catalog feature title');
+  eq(catRow.catalog_id, withResource.id, 'db: catalog_id stored');
+  eq(catRow.counter_max, catFeat.counterMax, 'db: counter_max matches derived max');
+  eq(catRow.counter_current, catFeat.counterMax, 'db: counter_current starts at max');
+  eq(catRow.reset_type, 'short', 'db: reset_type stored');
   r = await api(base, 'GET', `/api/characters/${fx.charSecret.id}/features`, {
     token: fx.player.token,
   });
@@ -111,6 +121,13 @@ export async function run(base: string, fx: Fixtures, _srv: ServerHandle): Promi
     body: { counterMax: 3, counterCurrent: 1 },
   });
   eq(r.data.feature.counterCurrent, 1, 'counter set');
+  const patchedRow = srv.query(
+    'SELECT title, counter_max, counter_current FROM character_features WHERE id = ?',
+    catFeat.id,
+  );
+  eq(patchedRow.title, 'Renommé', 'db: patched title persisted');
+  eq(patchedRow.counter_max, 3, 'db: patched counter_max persisted');
+  eq(patchedRow.counter_current, 1, 'db: patched counter_current persisted');
 
   r = await api(base, 'DELETE', `/api/character-features/${feat.id}`, { token: fx.player2.token });
   eq(r.status, 403, 'delete feature non-owner → 403');
@@ -118,6 +135,11 @@ export async function run(base: string, fx: Fixtures, _srv: ServerHandle): Promi
   eq(r.status, 404, 'delete feature 404');
   r = await api(base, 'DELETE', `/api/character-features/${feat.id}`, { token: fx.gm.token });
   eq(r.status, 204, 'delete feature');
+  eq(
+    srv.query('SELECT COUNT(*) as n FROM character_features WHERE id = ?', feat.id).n,
+    0,
+    'db: feature row gone',
+  );
 
   // ---------- notes ----------
   r = await api(base, 'GET', `/api/characters/${A}/notes`, { token: fx.player.token });
@@ -149,6 +171,13 @@ export async function run(base: string, fx: Fixtures, _srv: ServerHandle): Promi
 
   r = await api(base, 'GET', `/api/characters/${A}/notes`, { token: fx.player.token });
   eq(r.data.notes.length, 1, 'note listed');
+  const noteRow = srv.query(
+    'SELECT title, content, created_at, updated_at FROM character_notes WHERE id = ?',
+    note.id,
+  );
+  eq(noteRow.title, 'Journal', 'db: note title persisted');
+  eq(noteRow.content, 'Jour 1 : Port de Port Nyanzaru.', 'db: note content persisted');
+  ok(noteRow.created_at, 'db: created_at set');
   r = await api(base, 'GET', `/api/characters/${fx.charSecret.id}/notes`, {
     token: fx.player.token,
   });
@@ -173,6 +202,13 @@ export async function run(base: string, fx: Fixtures, _srv: ServerHandle): Promi
   });
   eq(r.status, 200, 'patch note');
   ok(r.data.note.updatedAt, "updated_at refreshed via datetime('now')");
+  const patchedNote = srv.query(
+    'SELECT title, content, updated_at FROM character_notes WHERE id = ?',
+    note.id,
+  );
+  eq(patchedNote.title, 'Journal (2)', 'db: patched note title persisted');
+  eq(patchedNote.content, 'Jour 2 : jungle.', 'db: patched note content persisted');
+  ok(patchedNote.updated_at, 'db: updated_at set');
 
   r = await api(base, 'DELETE', `/api/character-notes/${note.id}`, { token: fx.player2.token });
   eq(r.status, 403, 'delete note non-owner → 403');
@@ -180,4 +216,9 @@ export async function run(base: string, fx: Fixtures, _srv: ServerHandle): Promi
   eq(r.status, 404, 'delete note 404');
   r = await api(base, 'DELETE', `/api/character-notes/${note.id}`, { token: fx.gm.token });
   eq(r.status, 204, 'delete note');
+  eq(
+    srv.query('SELECT COUNT(*) as n FROM character_notes WHERE id = ?', note.id).n,
+    0,
+    'db: note row gone',
+  );
 }
