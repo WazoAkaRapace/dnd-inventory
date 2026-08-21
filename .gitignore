@@ -43,3 +43,8 @@ gui-test-screenshots/
 
 # Mimosa security-hook session state (tool output, not source)
 .mimosa/
+
+# Playwright E2E: HTML report, traces, per-run seed (fresh DB per run is the contract)
+playwright-report/
+test-results/
+e2e/.seed.json

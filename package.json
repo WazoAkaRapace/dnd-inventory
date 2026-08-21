@@ -26,6 +26,7 @@
     "test-class-features": "tsx scripts/test-class-features.ts",
     "test-creation-data": "tsx scripts/test-creation-data.ts",
     "test-api": "tsx scripts/test-api.ts",
+    "test:e2e": "playwright test",
     "screenshots": "tsx scripts/generate-screenshots.ts"
   },
   "devDependencies": {
