@@ -44,34 +44,47 @@ export default function CastSpellSheet({
   profBonus?: number;
   charLevel?: number;
   onClose: () => void;
-  /** Called with the chosen slot level (0 = cantrip, no slot) and whether it's a ritual cast (no slot either). */
-  onCast: (level: number, ritual?: boolean) => Promise<void> | void;
+  /** Called with the chosen slot level (0 = cantrip, no slot), whether it's
+   * a ritual cast (no slot either) and WHICH pool the slot comes from —
+   * SRD magie de pacte : les deux pools sont interchangeables, LE JOUEUR
+   * choisit (un emplacement de pacte lance le sort au niveau de SON dé). */
+  onCast: (level: number, ritual?: boolean, pool?: 'spellcasting' | 'pact') => Promise<void> | void;
 }) {
   const isCantrip = spell.level === 0;
   const canUpcast = !!(spell.higherLevelFr || spell.higherLevel);
 
-  // Castable levels: the spell's own level, plus higher levels when the
-  // spell scales ("Aux niveaux supérieurs"), limited to slots remaining —
-  // SRD magie de pacte : un emplacement de PACTE de niveau ≥ au sort convient
-  // aussi (les deux pools sont interchangeables).
+  // Options d'emplacement : un bouton par dépense possible — Incantation
+  // (le niveau du sort + les niveaux supérieurs quand il évolue) ET, si le
+  // pool de pacte a un emplacement libre de niveau ≥ au sort, l'option pacte
+  // (qui lance le sort AU NIVEAU de l'emplacement de pacte — SRD). Le joueur
+  // choisit son pool, rien n'est automatique.
   const pactSlotsRef = pactSlots ?? [0, 0, 0, 0, 0, 0, 0, 0, 0];
   const pactUsedRef = pactUsed ?? [0, 0, 0, 0, 0, 0, 0, 0, 0];
-  const pactAvailableFrom = (lvl: number): boolean => {
-    for (let i = lvl - 1; i < 9; i++) {
-      if ((pactSlotsRef[i] ?? 0) - (pactUsedRef[i] ?? 0) > 0) return true;
-    }
-    return false;
-  };
-  const castableLevels: number[] = [];
+  const remainingAt = (lvl: number) => (slots[lvl - 1] ?? 0) - (slotsUsed[lvl - 1] ?? 0);
+  type CastOption = { key: string; level: number; pool: 'spellcasting' | 'pact' };
+  const castOptions: CastOption[] = [];
   if (!isCantrip) {
     for (let lvl = spell.level; lvl <= 9; lvl++) {
       if (lvl > spell.level && !canUpcast) break;
-      const remaining = (slots[lvl - 1] ?? 0) - (slotsUsed[lvl - 1] ?? 0);
-      if (remaining > 0 || pactAvailableFrom(lvl)) castableLevels.push(lvl);
+      if (remainingAt(lvl) > 0)
+        castOptions.push({ key: `s${lvl}`, level: lvl, pool: 'spellcasting' });
     }
+    // Les emplacements de pacte partagent tous le même niveau : une option.
+    const pactIdx = pactSlotsRef.findIndex((max, i) => max - (pactUsedRef[i] ?? 0) > 0);
+    if (pactIdx >= 0 && pactIdx + 1 >= spell.level) {
+      castOptions.push({ key: `p${pactIdx + 1}`, level: pactIdx + 1, pool: 'pact' });
+    }
+    castOptions.sort((a, b) => a.level - b.level || (a.pool === 'pact' ? 1 : -1));
   }
+  const pactRemaining = () => {
+    const idx = pactSlotsRef.findIndex((max, i) => max - (pactUsedRef[i] ?? 0) > 0);
+    return idx >= 0 ? pactSlotsRef[idx] - (pactUsedRef[idx] ?? 0) : 0;
+  };
 
-  const [chosen, setChosen] = useState<number>(isCantrip ? 0 : (castableLevels[0] ?? -1));
+  const [chosenKey, setChosenKey] = useState<string>(
+    isCantrip ? 'cantrip' : (castOptions[0]?.key ?? ''),
+  );
+  const chosenOption = castOptions.find((o) => o.key === chosenKey) ?? null;
   const [casting, setCasting] = useState(false);
 
   // Same dialog contract as BottomSheet: Escape closes, body scroll locks.
@@ -89,18 +102,14 @@ export default function CastSpellSheet({
 
   const concConflict = spell.concentration && concentrating;
 
-  const cast = async (level: number, ritual = false) => {
+  const cast = async (level: number, ritual = false, pool?: 'spellcasting' | 'pact') => {
     setCasting(true);
     try {
-      await onCast(level, ritual);
+      await onCast(level, ritual, pool);
     } finally {
       setCasting(false);
     }
   };
-
-  const remainingAt = (lvl: number) => (slots[lvl - 1] ?? 0) - (slotsUsed[lvl - 1] ?? 0);
-  /** Niveau puisé dans le PACTE (incantation épuisée à ce niveau) ? */
-  const viaPact = (lvl: number) => remainingAt(lvl) <= 0 && pactAvailableFrom(lvl);
 
   return createPortal(
     <div
@@ -147,46 +156,57 @@ export default function CastSpellSheet({
           <p className="text-sm text-ink-600 bg-parchment-100 rounded-lg p-3">
             Les tours de magie se lancent à volonté — aucun emplacement à dépenser.
           </p>
-        ) : castableLevels.length === 0 ? (
+        ) : castOptions.length === 0 ? (
           <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
             Aucun emplacement de sort disponible. Il te faut un repos.
           </p>
         ) : (
           <div className="space-y-1.5">
             <p className="text-xs font-medium text-ink-500">Emplacement à dépenser :</p>
-            {castableLevels.map((lvl) => {
-              const selected = chosen === lvl;
-              const isUpcast = lvl > spell.level;
+            {castOptions.map((opt) => {
+              const selected = chosenKey === opt.key;
+              const isUpcast = opt.level > spell.level && canUpcast;
+              const isPact = opt.pool === 'pact';
               return (
                 <button
                   type="button"
-                  key={lvl}
-                  onClick={() => setChosen(lvl)}
-                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border text-sm transition-colors ${
+                  key={opt.key}
+                  onClick={() => setChosenKey(opt.key)}
+                  className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border text-sm transition-colors ${
                     selected
                       ? 'bg-blood-600 text-white border-blood-700'
                       : 'bg-parchment-50 text-ink-700 border-parchment-200 hover:border-blood-400'
                   }`}
                   aria-pressed={selected}
                 >
-                  <span className="font-medium">
-                    Niveau {lvl}
+                  <span className="font-medium flex items-center gap-1.5 min-w-0">
+                    Niveau {opt.level}
                     {isUpcast && (
                       <span
-                        className={`ml-1.5 text-[10px] font-semibold uppercase ${selected ? 'text-gold-300' : 'text-blood-500'}`}
+                        className={`text-[10px] font-semibold uppercase ${selected ? 'text-gold-300' : 'text-blood-500'}`}
                       >
                         supérieur
                       </span>
                     )}
+                    {isPact && (
+                      <span
+                        className={`text-[10px] font-semibold uppercase ${selected ? 'text-gold-300' : 'text-gold-600'}`}
+                        title="Emplacement de magie de pacte — recharge au repos court (SRD : les deux pools sont interchangeables)"
+                      >
+                        ☾ pacte
+                      </span>
+                    )}
                   </span>
-                  <span className={selected ? 'text-parchment-100' : 'text-ink-400'}>
-                    {viaPact(lvl) ? (
+                  <span
+                    className={`shrink-0 ${selected ? 'text-parchment-100' : isPact ? 'text-gold-600' : 'text-ink-400'}`}
+                  >
+                    {isPact ? (
                       <span title="Emplacement de pacte (recharge au repos court) — SRD magie de pacte">
-                        ☾ magie de pacte
+                        ☾ {pactRemaining()} restant{pactRemaining() > 1 ? 's' : ''} · repos court
                       </span>
                     ) : (
                       <>
-                        {remainingAt(lvl)} restant{remainingAt(lvl) > 1 ? 's' : ''}
+                        {remainingAt(opt.level)} restant{remainingAt(opt.level) > 1 ? 's' : ''}
                       </>
                     )}
                   </span>
@@ -198,14 +218,18 @@ export default function CastSpellSheet({
 
         {/* Damage / healing / DD preview at the chosen level */}
         {(() => {
-          const dmg = spellDamageAtLevel(spell, chosen, charLevel ?? 1);
-          const healing = spellHealingAtLevel(spell, chosen, charLevel ?? 1);
+          const chosenLvl = isCantrip ? 0 : chosenOption?.level;
+          const dmg = spellDamageAtLevel(spell, chosenLvl ?? -1, charLevel ?? 1);
+          const healing = spellHealingAtLevel(spell, chosenLvl ?? -1, charLevel ?? 1);
           const hasPreview = dmg.dice || healing.dice || spell.dcJson || spell.attackType;
-          if (!hasPreview || (chosen < 0 && !isCantrip)) return null;
+          if (!hasPreview || (!chosenOption && !isCantrip)) return null;
           return (
             <div className="flex flex-wrap items-center gap-1.5 mt-3">
-              {!isCantrip && chosen > 0 && (
-                <span className="text-xs text-ink-400">Au niveau {chosen} :</span>
+              {!isCantrip && chosenOption && (
+                <span className="text-xs text-ink-400">
+                  Au niveau {chosenOption.level}
+                  {chosenOption.pool === 'pact' ? ' (pacte)' : ''} :
+                </span>
               )}
               {dmg.dice && (
                 <Chip tone="orange">
@@ -241,8 +265,11 @@ export default function CastSpellSheet({
 
         <button
           type="button"
-          onClick={() => cast(chosen)}
-          disabled={casting || chosen < 0}
+          onClick={() => {
+            if (isCantrip) cast(0);
+            else if (chosenOption) cast(chosenOption.level, false, chosenOption.pool);
+          }}
+          disabled={casting || (!chosenOption && !isCantrip)}
           className="btn-primary w-full mt-4 py-2.5 disabled:opacity-40"
         >
           {casting
@@ -251,7 +278,7 @@ export default function CastSpellSheet({
               ? '🪄 Lancer et rompre la concentration'
               : isCantrip
                 ? '🪄 Lancer le tour de magie'
-                : `🪄 Lancer au niveau ${chosen > 0 ? chosen : '—'}`}
+                : `🪄 Lancer au niveau ${chosenOption ? chosenOption.level : '—'}`}
         </button>
 
         {/* Ritual cast: no slot consumed, +10 minutes */}

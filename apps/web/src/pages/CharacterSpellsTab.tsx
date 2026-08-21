@@ -393,30 +393,41 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
   };
 
   /**
-   * Cast a spell at the chosen level: consume one slot of that level (unless
-   * cast as a ritual — no slot, +10 min) and, for concentration spells, take
-   * over the concentration flag (breaking any spell already concentrated on).
+   * Cast a spell: consume the CHOSEN slot (level + pool — SRD magie de pacte :
+   * les deux pools sont interchangeables et c'est le joueur qui choisit) or
+   * none for a ritual/cantrip, and for concentration spells take over the
+   * concentration flag (breaking any spell already concentrated on).
    * On success the cast row flashes; on network error the sheet stays open.
    */
-  const castSpell = async (castLevel: number, ritual = false) => {
+  const castSpell = async (castLevel: number, ritual = false, pool?: 'spellcasting' | 'pact') => {
     if (!castingSpell) return;
     const rowId = castingRowId;
     const fields: Record<string, unknown> = {};
     if (castLevel > 0 && !ritual) {
-      // SRD magie de pacte : les emplacements des DEUX pools sont
-      // interchangeables — on puise d'abord dans l'incantation, puis dans le
-      // plus petit emplacement de pacte utilisable (de niveau ≥ sort lancé).
-      if (slotsUsed[castLevel - 1] < (slots[castLevel - 1] ?? 0)) {
+      const spendSpellcasting = () => {
+        if (slotsUsed[castLevel - 1] >= (slots[castLevel - 1] ?? 0)) return false;
         const used = [...slotsUsed];
         used[castLevel - 1] = used[castLevel - 1] + 1;
         fields.spellSlotsUsed = used;
-      } else {
+        return true;
+      };
+      const spendPact = () => {
         const pi = pactSlots.findIndex((max, i) => i + 1 >= castLevel && pactUsed[i] < max);
-        if (pi < 0) return;
+        if (pi < 0) return false;
         const used = [...pactUsed];
         used[pi] = used[pi] + 1;
         fields.pactSlotsUsed = used;
-      }
+        return true;
+      };
+      // Pool explicite depuis la feuille d'incantation ; sans précision
+      // (appels hérités) : incantation d'abord, pacte en repli.
+      const okSpend =
+        pool === 'pact'
+          ? spendPact()
+          : pool === 'spellcasting'
+            ? spendSpellcasting()
+            : spendSpellcasting() || spendPact();
+      if (!okSpend) return;
     }
     if (castingSpell.concentration) fields.concentrating = true;
     let ok = true;

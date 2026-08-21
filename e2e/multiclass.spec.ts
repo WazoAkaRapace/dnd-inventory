@@ -174,6 +174,67 @@ playerTest.describe('Multiclassage', () => {
         ).toBeVisible({ timeout: 8000 });
       },
     );
+
+    playerTest(
+      'aux deux pools disponibles, le joueur CHOISIT ses emplacements',
+      async ({ page }) => {
+        // Reset complet des deux pools + un sort de niveau 1 connu (Occultiste)
+        const token = seed().player.token;
+        await fetch(`${API_BASE}/api/characters/${morriganId}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            spellSlotsUsed: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+            pactSlotsUsed: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+          }),
+          signal: AbortSignal.timeout(8000),
+        });
+        const search = await fetch(
+          `${API_BASE}/api/spells?search=${encodeURIComponent('Charme-personne')}`,
+          { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8000) },
+        );
+        const charm = (
+          (await search.json()) as {
+            spells: Array<{ id: number; nameFr: string | null; name: string }>;
+          }
+        ).spells.find((sp) => (sp.nameFr ?? sp.name) === 'Charme-personne');
+        if (!charm) throw new Error('E2E : Charme-personne introuvable');
+        await fetch(`${API_BASE}/api/characters/${morriganId}/spells`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+          body: JSON.stringify({ spellId: charm.id, classSource: 'Occultiste' }),
+          signal: AbortSignal.timeout(8000),
+        });
+        await page.reload();
+        await expect(page.getByText('Morrigan').first()).toBeVisible();
+        await openTab(page, 'Sorts');
+
+        // La feuille d'incantation propose UNE option par pool : l'incantation
+        // au niveau du sort, et le pacte AU NIVEAU DE SON PROPRE emplacement
+        // (Occultiste 5 → niveau 3) — SRD : les pools sont interchangeables.
+        await page.getByRole('button', { name: 'Lancer Charme-personne' }).click();
+        const castSheet = page.getByRole('dialog', { name: 'Lancer Charme-personne' });
+        await expect(castSheet).toBeVisible();
+        const incantation = castSheet.getByRole('button', { name: /Niveau 1/ }).first();
+        const pacte = castSheet.getByRole('button', { name: /pacte/ });
+        await expect(incantation).toBeVisible();
+        await expect(pacte).toBeVisible();
+
+        // Choix explicite du PACTE : seul ce pool se décrémente.
+        await pacte.click();
+        await castSheet.getByRole('button', { name: '🪄 Lancer au niveau 3' }).click();
+        await expect(
+          page.getByRole('button', {
+            name: 'Niveau 3 : 1 emplacement disponible sur 2 — corriger',
+          }),
+        ).toBeVisible({ timeout: 8000 });
+        await expect(
+          page.getByRole('button', {
+            name: 'Niveau 1 : 4 emplacements disponibles sur 4 — corriger',
+          }),
+        ).toBeVisible();
+      },
+    );
   });
 
   playerTest.describe('Sorts — préparation par classe (Clerc 2 / Magicien 3)', () => {
