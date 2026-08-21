@@ -2478,6 +2478,46 @@ export function spellDamageAtLevel(
   }
 }
 
+/** Healing a spell restores at a given slot level (cantrips: character level),
+ * from damageJson's heal_at_slot_level / heal_at_character_level tables — the
+ * healing mirror of the SRD damage tables. `dice` is the raw value ("1d8",
+ * "4d8+15", Heal's flat "70") picked at the highest known key at or below the
+ * requested level; `addsModifier` flags the SRD spells that heal "XdY + le
+ * modificateur de votre caractéristique d'incantation" (Soins, Mot de
+ * guérison…) — callers append the character's casting modifier. Display-only. */
+export interface SpellHealingPreview {
+  dice: string | null;
+  addsModifier: boolean;
+}
+
+export function spellHealingAtLevel(
+  spell: { level: number; damageJson: string | null },
+  slotLevel: number,
+  charLevel: number,
+): SpellHealingPreview {
+  if (!spell.damageJson) return { dice: null, addsModifier: false };
+  try {
+    const heal = JSON.parse(spell.damageJson) as {
+      heal_at_slot_level?: Record<string, string>;
+      heal_at_character_level?: Record<string, string>;
+      heal_adds_modifier?: boolean;
+    };
+    const table = spell.level === 0 ? heal.heal_at_character_level : heal.heal_at_slot_level;
+    if (!table) return { dice: null, addsModifier: false };
+    const wanted = spell.level === 0 ? charLevel : slotLevel;
+    const keys = Object.keys(table)
+      .map(Number)
+      .sort((a, b) => a - b);
+    const best = [...keys].reverse().find((k) => k <= Math.max(wanted, keys[0]));
+    return {
+      dice: best !== undefined ? (table[String(best)] ?? null) : null,
+      addsModifier: heal.heal_adds_modifier === true,
+    };
+  } catch {
+    return { dice: null, addsModifier: false };
+  }
+}
+
 // ---------- Divine domains (Clerc, SRD) ----------
 
 export interface DivineDomainInfo {

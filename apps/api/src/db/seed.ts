@@ -201,6 +201,7 @@ const SPELL_INSERT = `
     material = excluded.material,
     description_fr = excluded.description_fr,
     higher_level_fr = excluded.higher_level_fr,
+    damage_json = excluded.damage_json,
     classes_json = excluded.classes_json
 `;
 

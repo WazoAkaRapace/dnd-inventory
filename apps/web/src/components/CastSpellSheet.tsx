@@ -1,5 +1,10 @@
 import type { Spell } from '@dnd-inventory/shared';
-import { formatModifier, spellDamageAtLevel, spellSaveDC } from '@dnd-inventory/shared';
+import {
+  formatModifier,
+  spellDamageAtLevel,
+  spellHealingAtLevel,
+  spellSaveDC,
+} from '@dnd-inventory/shared';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Chip } from './ui';
@@ -166,10 +171,11 @@ export default function CastSpellSheet({
           </div>
         )}
 
-        {/* Damage / DD preview at the chosen level */}
+        {/* Damage / healing / DD preview at the chosen level */}
         {(() => {
           const dmg = spellDamageAtLevel(spell, chosen, charLevel ?? 1);
-          const hasPreview = dmg.dice || spell.dcJson || spell.attackType;
+          const healing = spellHealingAtLevel(spell, chosen, charLevel ?? 1);
+          const hasPreview = dmg.dice || healing.dice || spell.dcJson || spell.attackType;
           if (!hasPreview || (chosen < 0 && !isCantrip)) return null;
           return (
             <div className="flex flex-wrap items-center gap-1.5 mt-3">
@@ -180,6 +186,22 @@ export default function CastSpellSheet({
                 <Chip tone="orange">
                   ⚔ {dmg.dice}
                   {dmg.typeFr ? ` dégâts ${dmg.typeFr}` : ''}
+                </Chip>
+              )}
+              {healing.dice && (
+                <Chip
+                  tone="green"
+                  title={
+                    healing.addsModifier
+                      ? 'Points de vie restaurés : dés + modificateur de caractéristique'
+                      : 'Points de vie restaurés'
+                  }
+                >
+                  ✚ {healing.dice}
+                  {healing.addsModifier && castingMod !== undefined
+                    ? formatModifier(castingMod)
+                    : ''}{' '}
+                  PV
                 </Chip>
               )}
               {spell.dcJson && castingMod !== undefined && profBonus !== undefined && (

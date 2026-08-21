@@ -2775,7 +2775,7 @@
     "higherLevel": "When you cast this spell using a spell slot of 2nd level or higher, the healing increases by 1d4 for each slot level above 1st.",
     "higherLevelFr": "Lorsque vous lancez ce sort en utilisant un emplacement de sort de niveau 2 ou supérieur, les points de vie récupérés augmentent de 1d4 pour chaque niveau d'emplacement au-delà du niveau 1.",
     "attackType": null,
-    "damageJson": null,
+    "damageJson": "{\"heal_at_slot_level\":{\"1\":\"1d4\",\"2\":\"2d4\",\"3\":\"3d4\",\"4\":\"4d4\",\"5\":\"5d4\",\"6\":\"6d4\",\"7\":\"7d4\",\"8\":\"8d4\",\"9\":\"9d4\"},\"heal_adds_modifier\":true}",
     "dcJson": null,
     "classes": [
       "Barde",
@@ -3211,7 +3211,7 @@
     "higherLevel": "When you cast this spell using a spell slot of 2nd level or higher, you gain 5 additional temporary hit points for each slot level above 1st.",
     "higherLevelFr": "Lorsque vous lancez ce sort en utilisant un emplacement de sort de niveau 2 ou supérieur, vous gagnez 5 points de vie temporaires supplémentaires pour chaque niveau d'emplacement au-delà du niveau 1.",
     "attackType": null,
-    "damageJson": null,
+    "damageJson": "{\"heal_at_slot_level\":{\"1\":\"1d4+4\",\"2\":\"1d4+9\",\"3\":\"1d4+14\",\"4\":\"1d4+19\",\"5\":\"1d4+24\",\"6\":\"1d4+29\",\"7\":\"1d4+34\",\"8\":\"1d4+39\",\"9\":\"1d4+44\"}}",
     "dcJson": null,
     "classes": [
       "Ensorceleur",
@@ -3239,7 +3239,7 @@
     "higherLevel": "When you cast this spell using a spell slot of 2nd level or higher, the healing increases by 1d8 for each slot level above 1st.",
     "higherLevelFr": "Lorsque vous lancez ce sort en utilisant un emplacement de sort de niveau 2 ou supérieur, la quantité de points de vie récupérés est augmentée de 1d8 pour chaque niveau d'emplacement au-delà du niveau 1.",
     "attackType": null,
-    "damageJson": null,
+    "damageJson": "{\"heal_at_slot_level\":{\"1\":\"1d8\",\"2\":\"2d8\",\"3\":\"3d8\",\"4\":\"4d8\",\"5\":\"5d8\",\"6\":\"6d8\",\"7\":\"7d8\",\"8\":\"8d8\",\"9\":\"9d8\"},\"heal_adds_modifier\":true}",
     "dcJson": null,
     "classes": [
       "Barde",
@@ -4157,7 +4157,7 @@
     "higherLevel": "Lorsque vous lancez ce sort en utilisant un emplacement de sort de niveau 3 ou supérieur, les soins augmentent de 1d6 pour chaque niveau d'emplacement au-delà du niveau 2.",
     "higherLevelFr": "Lorsque vous lancez ce sort en utilisant un emplacement de sort de niveau 3 ou supérieur, les soins augmentent de 1d6 pour chaque niveau d'emplacement au-delà du niveau 2.",
     "attackType": null,
-    "damageJson": null,
+    "damageJson": "{\"heal_at_slot_level\":{\"2\":\"1d6\",\"3\":\"2d6\",\"4\":\"3d6\",\"5\":\"4d6\",\"6\":\"5d6\",\"7\":\"6d6\",\"8\":\"7d6\",\"9\":\"8d6\"}}",
     "dcJson": null,
     "classes": [
       "Druide",
@@ -5005,7 +5005,7 @@
     "higherLevel": "When you cast this spell using a spell slot of 3rd level or higher, the healing increases by 1d8 for each slot level above 2nd.",
     "higherLevelFr": "Lorsque vous lancez ce sort en utilisant un emplacement de sort de niveau 3 ou supérieur, les points de vie récupérés augmentent de 1d8 pour chaque niveau d'emplacement au-delà du niveau 2.",
     "attackType": null,
-    "damageJson": null,
+    "damageJson": "{\"heal_at_slot_level\":{\"2\":\"2d8\",\"3\":\"3d8\",\"4\":\"4d8\",\"5\":\"5d8\",\"6\":\"6d8\",\"7\":\"7d8\",\"8\":\"8d8\",\"9\":\"9d8\"},\"heal_adds_modifier\":true}",
     "dcJson": null,
     "classes": [
       "Clerc"
@@ -5756,7 +5756,7 @@
     "higherLevel": null,
     "higherLevelFr": null,
     "attackType": null,
-    "damageJson": null,
+    "damageJson": "{\"heal_at_slot_level\":{\"3\":\"2d6\"}}",
     "dcJson": null,
     "classes": [
       "Paladin"
@@ -7036,7 +7036,7 @@
     "higherLevel": "When you cast this spell using a spell slot of 4th level or higher, the healing increases by 1d4 for each slot level above 3rd.",
     "higherLevelFr": "Lorsque vous lancez ce sort en utilisant un emplacement de sort de niveau 4 ou supérieur, les points de vie récupérés augmentent de 1d4 pour chaque niveau d'emplacement au-delà du niveau 3.",
     "attackType": null,
-    "damageJson": null,
+    "damageJson": "{\"heal_at_slot_level\":{\"3\":\"1d4\",\"4\":\"2d4\",\"5\":\"3d4\",\"6\":\"4d4\",\"7\":\"5d4\",\"8\":\"6d4\",\"9\":\"7d4\"},\"heal_adds_modifier\":true}",
     "dcJson": null,
     "classes": [
       "Clerc"
@@ -10662,7 +10662,7 @@
     "higherLevel": "When you cast this spell using a spell slot of 6th level or higher, the healing increases by 1d8 for each slot level above 5th.",
     "higherLevelFr": "Lorsque vous lancez ce sort en utilisant un emplacement de sort de niveau 6 ou supérieur, la quantité de points de vie récupérés est augmentée de 1d8 pour chaque niveau d'emplacement au-delà du niveau 5.",
     "attackType": null,
-    "damageJson": null,
+    "damageJson": "{\"heal_at_slot_level\":{\"5\":\"3d8\",\"6\":\"4d8\",\"7\":\"5d8\",\"8\":\"6d8\",\"9\":\"7d8\"},\"heal_adds_modifier\":true}",
     "dcJson": null,
     "classes": [
       "Barde",
@@ -11317,7 +11317,7 @@
     "higherLevel": "When you cast this spell using a spell slot of 7th level or higher, the amount of healing increases by 10 for each slot level above 6th.",
     "higherLevelFr": "Lorsque vous lancez ce sort en utilisant un emplacement de sort de niveau 7 ou supérieur, la quantité de points de vie récupérés est augmentée de 10 pour chaque niveau d'emplacement au-delà du niveau 6.",
     "attackType": null,
-    "damageJson": null,
+    "damageJson": "{\"heal_at_slot_level\":{\"6\":\"70\",\"7\":\"80\",\"8\":\"90\",\"9\":\"100\"}}",
     "dcJson": null,
     "classes": [
       "Clerc",
@@ -12614,7 +12614,7 @@
     "higherLevel": null,
     "higherLevelFr": null,
     "attackType": null,
-    "damageJson": null,
+    "damageJson": "{\"heal_at_slot_level\":{\"7\":\"4d8+15\"}}",
     "dcJson": null,
     "classes": [
       "Barde",
@@ -13641,7 +13641,7 @@
     "higherLevel": null,
     "higherLevelFr": null,
     "attackType": null,
-    "damageJson": null,
+    "damageJson": "{\"heal_at_slot_level\":{\"9\":\"700\"}}",
     "dcJson": null,
     "classes": [
       "Clerc"

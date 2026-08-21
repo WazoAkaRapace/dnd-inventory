@@ -19,6 +19,8 @@ import {
   type Spell,
   type SpellcastingType,
   type SpellSchool,
+  spellDamageAtLevel,
+  spellHealingAtLevel,
   spellSaveDC,
 } from '@dnd-inventory/shared';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
@@ -895,23 +897,6 @@ function SpellRowSkeleton() {
   );
 }
 
-// ---------- Damage type translations (English → French) ----------
-const DAMAGE_TYPE_FR: Record<string, string> = {
-  fire: 'feu',
-  cold: 'froid',
-  lightning: 'foudre',
-  thunder: 'tonnerre',
-  acid: 'acide',
-  poison: 'poison',
-  necrotic: 'nécrotique',
-  radiant: 'radiant',
-  force: 'force',
-  psychic: 'psychique',
-  bludgeoning: 'contondant',
-  piercing: 'perforant',
-  slashing: 'tranchant',
-};
-
 // DC success type labels
 const DC_SUCCESS_FR: Record<string, string> = {
   none: 'Aucun effet en cas de réussite',
@@ -929,35 +914,11 @@ function safeParse<T>(json: string | null): T | null {
   }
 }
 
-/** Compute damage dice string for a spell based on character level / spell level. */
+/** Damage dice string for a spell based on character level / spell level. */
 function computeDamageDice(spell: Spell, charLevel: number): string | null {
-  const dmg = safeParse<{
-    damage_type?: { index?: string; name?: string };
-    damage_at_slot_level?: Record<string, string>;
-    damage_at_character_level?: Record<string, string>;
-  }>(spell.damageJson);
-  if (!dmg) return null;
-
-  let dice: string | null = null;
-  const damageType = dmg.damage_type?.index ?? '';
-
-  if (dmg.damage_at_character_level) {
-    // Cantrip — scale with character level. Pick highest key ≤ charLevel.
-    const levels = Object.keys(dmg.damage_at_character_level)
-      .map(Number)
-      .sort((a, b) => a - b);
-    const applicable = levels.filter((l) => l <= charLevel);
-    const key = applicable.length > 0 ? applicable[applicable.length - 1] : levels[0];
-    dice = dmg.damage_at_character_level[String(key)] ?? null;
-  } else if (dmg.damage_at_slot_level) {
-    // Slotted spell — show dice at the spell's base level (first key).
-    const firstKey = Object.keys(dmg.damage_at_slot_level).sort((a, b) => Number(a) - Number(b))[0];
-    dice = firstKey ? dmg.damage_at_slot_level[firstKey] : null;
-  }
-
+  const { dice, typeFr } = spellDamageAtLevel(spell, spell.level, charLevel);
   if (!dice) return null;
-  const typeFr = DAMAGE_TYPE_FR[damageType] ?? damageType ?? '';
-  return `${dice}${typeFr ? ` ${typeFr}` : ''}`;
+  return typeFr ? `${dice} ${typeFr}` : dice;
 }
 
 /** Render spell stat badges: save DC, attack bonus, damage — computed from character stats. */
@@ -982,11 +943,12 @@ function SpellStatBadges({
   }>(spell.dcJson);
 
   const damageDice = computeDamageDice(spell, charLevel);
+  const healing = spellHealingAtLevel(spell, spell.level, charLevel);
   const attackBonus = castingMod + profBonus;
   const dcValue = spellSaveDC(castingMod, profBonus);
 
   // No relevant data to show
-  if (!dc && !spell.attackType && !damageDice) return null;
+  if (!dc && !spell.attackType && !damageDice && !healing.dice) return null;
 
   return (
     <div className="flex flex-wrap gap-1.5 pt-0.5">
@@ -1014,6 +976,19 @@ function SpellStatBadges({
         </Chip>
       )}
       {damageDice && <Chip tone="orange">⚔ {damageDice}</Chip>}
+      {healing.dice && (
+        <Chip
+          tone="green"
+          title={
+            healing.addsModifier
+              ? 'Points de vie restaurés : dés + modificateur de caractéristique'
+              : 'Points de vie restaurés'
+          }
+        >
+          ✚ {healing.dice}
+          {healing.addsModifier ? formatModifier(castingMod) : ''} PV
+        </Chip>
+      )}
     </div>
   );
 }

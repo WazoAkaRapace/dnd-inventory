@@ -42,7 +42,7 @@ Conçue pour être utilisée sur téléphone et tablette pendant la partie : PWA
 - Traqueur d'emplacements par classe/niveau (grimoire complet, pacte, demi-magie, artificier)
 - **Lancement de sort** : choix de l'emplacement, **incantation supérieure** (tous les niveaux disponibles avec dégâts mis à l'échelle affichés en direct), rituel sans emplacement, gestion de la concentration
 - **Sorts toujours préparés** : domaine divin du Clerc, terrain du Cercle de la Terre du Druide, serment du Paladin — fusionnés dans la liste avec le marqueur ◆, hors quota de préparation
-- Aperçu des dés au niveau choisi, DD de sauvegarde et bonus d'attaque
+- Aperçu des dés au niveau choisi : dégâts ⚔ orange, **soins ✚ verts** (dés + modificateur de caractéristique pour Soins, Mot de guérison…), DD de sauvegarde et bonus d'attaque
 
 | Grimoire | Lancer (avec dégâts upcastés) |
 |---|---|
