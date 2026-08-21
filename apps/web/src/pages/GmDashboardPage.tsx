@@ -13,8 +13,9 @@ import {
   skillProficiencyLevel,
 } from '@dnd-inventory/shared';
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import api from '../api';
+import { useAuth } from '../auth';
 import { CategoryBadge, EmptyState, ErrorMsg, Fab, LoadingSpinner, Modal } from '../components/ui';
 import { useSyncEvent } from '../sync';
 import { plural } from '../utils';
@@ -33,6 +34,8 @@ interface Transaction {
 
 export default function GmDashboardPage() {
   const { partyId } = useParams();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [party, setParty] = useState<PartyDetail | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -118,6 +121,117 @@ export default function GmDashboardPage() {
           partyId={partyId!}
           onReload={load}
         />
+      )}
+
+      {/* Danger zone — visible to the GM only (the API enforces it too) */}
+      {party.members.some((m) => m.userId === user?.id && m.role === 'gm') && (
+        <DisbandPartySection
+          partyId={partyId!}
+          name={party.party.name}
+          onDone={() => navigate('/parties')}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Dissoudre le groupe — the irreversible door. DELETE /api/parties/:id
+ * cascades through everything party-scoped: membres, bannis, personnages
+ * (fiches, sorts, traits, notes, inventaire, rangements), transactions,
+ * PNJ, rencontres + combattants et objets personnalisés.
+ * Type-the-name confirmation: this is the most destructive button in the app.
+ */
+function DisbandPartySection({
+  partyId,
+  name,
+  onDone,
+}: {
+  partyId: string;
+  name: string;
+  onDone: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [confirmName, setConfirmName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const nameMatches =
+    confirmName.trim().length > 0 && confirmName.trim().toLowerCase() === name.trim().toLowerCase();
+
+  async function disband() {
+    setBusy(true);
+    setError('');
+    try {
+      await api.delete(`/api/parties/${partyId}`);
+      onDone();
+    } catch {
+      setError('Dissolution impossible — vérifie la connexion.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-8 rounded-lg border border-red-200 bg-red-50/60 p-4">
+      <h3 className="section-title text-red-700">Zone de danger</h3>
+      <p className="mt-1 text-xs text-ink-500">
+        Dissoudre « {name} » supprime définitivement la table et tout ce qui s'y rattache :
+        personnages et leurs fiches, combats, PNJ, objets personnalisés, journal. Aucun retour en
+        arrière n'est possible.
+      </p>
+      <button
+        type="button"
+        className="mt-3 rounded border border-red-300 px-3.5 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-600 hover:text-white"
+        onClick={() => {
+          setConfirmName('');
+          setError('');
+          setOpen(true);
+        }}
+      >
+        Dissoudre le groupe…
+      </button>
+
+      {open && (
+        <Modal
+          open={open}
+          onClose={() => !busy && setOpen(false)}
+          title={`Dissoudre « ${name} » ?`}
+        >
+          <p className="mb-3 text-sm text-ink-500">
+            Tout le contenu du groupe sera supprimé, pour le MD comme pour les joueurs. Cette action
+            est définitive.
+          </p>
+          <label className="block">
+            <span className="label">Tape le nom du groupe ({name}) pour confirmer</span>
+            <input
+              className="input"
+              value={confirmName}
+              onChange={(e) => setConfirmName(e.target.value)}
+              placeholder={name}
+              autoFocus
+              disabled={busy}
+            />
+          </label>
+          {error && <div className="mt-3 text-sm text-red-600">{error}</div>}
+          <div className="mt-4 flex gap-2">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              disabled={busy}
+              className="btn-secondary flex-1"
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              onClick={disband}
+              disabled={busy || !nameMatches}
+              className="btn-primary flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50"
+            >
+              {busy ? 'Dissolution…' : 'Dissoudre définitivement'}
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );

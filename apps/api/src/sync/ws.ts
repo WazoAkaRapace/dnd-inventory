@@ -90,12 +90,35 @@ export async function registerWsRoutes(app: FastifyInstance) {
     }
     // Membership may have changed (join/leave) — refresh the cached party sets
     if (event.type === 'party:change') {
+      // Party dissolution: the DB cascade already emptied party_members, so
+      // the refresh below would empty every member's cached set BEFORE the
+      // fan-out gate could match. Snapshot the pre-refresh members so their
+      // open tabs still hear 'disband' and leave the dead party's pages.
+      const disbandRecipients = new Set<ClientInfo>();
+      if (event.action === 'disband') {
+        for (const client of clients) {
+          if (client.partyIds.has(event.partyId)) disbandRecipients.add(client);
+        }
+      }
       const refreshed = new Set<number>();
       for (const client of clients) {
         if (!refreshed.has(client.userId)) {
           client.partyIds = getUserPartyIds(client.userId);
           refreshed.add(client.userId);
         }
+      }
+      // Deliver on pre-refresh membership (disband only — joins rely on the
+      // refresh ADDING the party to the joiner's other tabs).
+      if (event.action === 'disband') {
+        for (const client of disbandRecipients) {
+          if (client.ws.readyState !== 1 || client.userId === event.actorUserId) continue;
+          try {
+            client.ws.send(message);
+          } catch {
+            clients.delete(client);
+          }
+        }
+        return; // already delivered to everyone who mattered
       }
     }
     // Hidden (secret prep) characters: character:change events — including

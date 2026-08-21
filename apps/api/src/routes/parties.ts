@@ -371,4 +371,36 @@ export async function partyRoutes(app: FastifyInstance) {
       });
     },
   );
+
+  // ---------- Disband party (GM only) — deletes EVERYTHING ----------
+  // One DELETE cascades through every party-scoped table (foreign_keys=ON):
+  // members, bans, characters (+ classes/spells/features/notes/inventory/
+  // locations), transactions, PNJ, encounters (+ combatants) and the party's
+  // custom items. Global SRD items (party_id NULL) are untouched.
+  app.delete(
+    '/parties/:id',
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const userId = requireUser(req, reply);
+      if (userId === null) return;
+      const partyId = Number(req.params.id);
+
+      const db = getDb();
+      const party = db.prepare('SELECT * FROM parties WHERE id = ?').get(partyId) as any;
+      if (!party) return reply.code(404).send({ error: 'party not found' });
+      if (!isPartyGM(partyId, userId)) return reply.code(403).send({ error: 'GM only' });
+
+      db.prepare('DELETE FROM parties WHERE id = ?').run(partyId);
+
+      // 'disband' — ws.ts delivers on PRE-refresh membership (the cascade
+      // already emptied party_members, so the usual member gate would skip
+      // everyone) and every member's tab leaves the dead party's pages.
+      bus.emitChange({
+        type: 'party:change',
+        partyId,
+        action: 'disband',
+        actorUserId: userId,
+      });
+      return reply.code(204).send();
+    },
+  );
 }

@@ -3,7 +3,7 @@
  * exemptions), hidden-character gating, membership-cache refresh.
  * Covers every .prepare site in sync/ws.ts (via Node's global WebSocket).
  */
-import { api, eq, type Fixtures, ok, type ServerHandle } from './harness.ts';
+import { api, createParty, eq, type Fixtures, ok, type ServerHandle } from './harness.ts';
 
 interface WsClient {
   userId: number;
@@ -133,6 +133,33 @@ export async function run(base: string, fx: Fixtures, _srv: ServerHandle): Promi
     await waitMsg(alice.messages, (m) => m.type === 'party:change' && m.action === 'join', 5000);
     // targeted delivery to carol herself
     // (carol has no socket here — the targetUserId loop just no-ops.)
+
+    // disband: the DB cascade empties party_members BEFORE fan-out, so ws.ts
+    // delivers on the PRE-refresh membership snapshot. bob (member, connected
+    // before the party existed — his cache gained it via the join refresh
+    // above) must still receive 'disband'; the acting GM is echo-suppressed.
+    const doomed = await createParty(base, fx.gm.token, 'WS Disband');
+    await api(base, 'POST', '/api/parties/join', {
+      token: fx.player.token,
+      body: { inviteCode: doomed.inviteCode },
+    });
+    await waitMsg(
+      alice.messages,
+      (m) => m.type === 'party:change' && m.action === 'join' && m.partyId === doomed.id,
+      5000,
+    );
+    const del = await api(base, 'DELETE', `/api/parties/${doomed.id}`, { token: fx.gm.token });
+    eq(del.status, 204, 'GM disbands the WS-test party');
+    await waitMsg(
+      bob.messages,
+      (m) => m.type === 'party:change' && m.action === 'disband' && m.partyId === doomed.id,
+      5000,
+    );
+    await silence(alice.messages, (m) => m.type === 'party:change' && m.action === 'disband', 700);
+    ok(
+      !alice.messages.some((m) => m.type === 'party:change' && m.action === 'disband'),
+      'disband echo-suppressed for the acting GM',
+    );
   } finally {
     alice.close();
     bob.close();

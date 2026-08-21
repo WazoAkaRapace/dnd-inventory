@@ -4,6 +4,8 @@
  */
 import {
   api,
+  createCharacter,
+  createParty,
   eq,
   type Fixtures,
   mintToken,
@@ -234,4 +236,143 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
   eq(r.status, 200, 'patch party name + mode');
   eq(r.data.party.name, 'Compagnie Renommée', 'name updated');
   eq(r.data.party.encumbranceMode, 'standard', 'mode updated');
+
+  // ---------- disband party (GM only) — cascade deletes everything ----------
+  // Throwaway party owned by eve — fx.partyId must survive for later modules.
+  const doomed = await createParty(base, eve.token, 'Groupe Éphémère');
+  r = await api(base, 'POST', '/api/parties/join', {
+    token: fx.player2.token,
+    body: { inviteCode: doomed.inviteCode },
+  });
+  eq(r.status, 201, 'carol joins the doomed party');
+
+  const doomedChar = await createCharacter(base, eve.token, doomed.id, {
+    name: 'Fantoche',
+    maxHp: 8,
+    classes: [{ classKey: 'Magicien', level: 1 }],
+  });
+  r = await api(base, 'POST', `/api/parties/${doomed.id}/items`, {
+    token: eve.token,
+    body: { name: 'Relique éphémère' },
+  });
+  eq(r.status, 201, 'doomed custom item created');
+  const doomedItem = r.data.item;
+  r = await api(base, 'POST', `/api/characters/${doomedChar.id}/inventory`, {
+    token: eve.token,
+    body: { itemId: doomedItem.id, quantity: 2 },
+  });
+  eq(r.status, 201, 'doomed inventory entry (creates a transaction)');
+  r = await api(base, 'POST', `/api/parties/${doomed.id}/npcs`, {
+    token: eve.token,
+    body: { name: 'Guide perdu' },
+  });
+  eq(r.status, 201, 'doomed npc created');
+  r = await api(base, 'POST', `/api/parties/${doomed.id}/encounters`, {
+    token: eve.token,
+    body: { name: 'Embuscade finale' },
+  });
+  eq(r.status, 201, 'doomed encounter created');
+  const doomedEnc = r.data.encounter;
+  const anyMonsterSlug = srv.query('SELECT slug FROM monsters LIMIT 1')?.slug;
+  r = await api(base, 'POST', `/api/encounters/${doomedEnc.id}/combatants/monster`, {
+    token: eve.token,
+    body: { monsterSlug: anyMonsterSlug },
+  });
+  eq(r.status, 201, 'doomed monster combatant added');
+  r = await api(base, 'POST', `/api/parties/${doomed.id}/bans`, {
+    token: eve.token,
+    body: { userId: fx.player2.userId },
+  });
+  eq(r.status, 201, 'carol banned from the doomed party (party_bans row)');
+
+  // Pre-check: the doomed party really owns rows everywhere we assert below.
+  eq(
+    srv.query('SELECT COUNT(*) AS n FROM character_classes WHERE character_id = ?', doomedChar.id)
+      .n,
+    1,
+    'doomed character has its class line',
+  );
+  ok(
+    srv.query('SELECT 1 AS x FROM transactions WHERE party_id = ?', doomed.id),
+    'doomed transaction exists',
+  );
+
+  // Permissions: GM only.
+  r = await api(base, 'DELETE', `/api/parties/${doomed.id}`, {});
+  eq(r.status, 401, 'disband without token → 401');
+  r = await api(base, 'DELETE', `/api/parties/${doomed.id}`, { token: fx.player.token });
+  eq(r.status, 403, 'disband by non-GM → 403');
+  r = await api(base, 'DELETE', '/api/parties/999999', { token: eve.token });
+  eq(r.status, 404, 'disband unknown party → 404');
+
+  r = await api(base, 'DELETE', `/api/parties/${doomed.id}`, { token: eve.token });
+  eq(r.status, 204, 'GM disbands → 204');
+
+  // Cascade: every party-scoped table emptied for the doomed party.
+  eq(srv.query('SELECT COUNT(*) AS n FROM parties WHERE id = ?', doomed.id).n, 0, 'party gone');
+  eq(
+    srv.query('SELECT COUNT(*) AS n FROM party_members WHERE party_id = ?', doomed.id).n,
+    0,
+    'members gone',
+  );
+  eq(
+    srv.query('SELECT COUNT(*) AS n FROM party_bans WHERE party_id = ?', doomed.id).n,
+    0,
+    'bans gone',
+  );
+  eq(
+    srv.query('SELECT COUNT(*) AS n FROM characters WHERE party_id = ?', doomed.id).n,
+    0,
+    'characters gone',
+  );
+  eq(
+    srv.query('SELECT COUNT(*) AS n FROM character_classes WHERE character_id = ?', doomedChar.id)
+      .n,
+    0,
+    'class lines gone',
+  );
+  eq(
+    srv.query('SELECT COUNT(*) AS n FROM inventory WHERE character_id = ?', doomedChar.id).n,
+    0,
+    'inventory gone',
+  );
+  eq(
+    srv.query('SELECT COUNT(*) AS n FROM items WHERE party_id = ?', doomed.id).n,
+    0,
+    'custom items gone',
+  );
+  eq(srv.query('SELECT COUNT(*) AS n FROM npcs WHERE party_id = ?', doomed.id).n, 0, 'npcs gone');
+  eq(
+    srv.query('SELECT COUNT(*) AS n FROM transactions WHERE party_id = ?', doomed.id).n,
+    0,
+    'transactions gone',
+  );
+  eq(
+    srv.query('SELECT COUNT(*) AS n FROM encounters WHERE party_id = ?', doomed.id).n,
+    0,
+    'encounters gone',
+  );
+  eq(
+    srv.query('SELECT COUNT(*) AS n FROM combatants WHERE encounter_id = ?', doomedEnc.id).n,
+    0,
+    'combatants gone',
+  );
+  eq(
+    srv.query('SELECT COUNT(*) AS n FROM character_spells WHERE character_id = ?', doomedChar.id).n,
+    0,
+    'character spells gone',
+  );
+
+  // The fixture party survives untouched, and the dead invite code is inert.
+  ok(srv.query('SELECT 1 AS x FROM parties WHERE id = ?', fx.partyId), 'fixture party survives');
+  eq(
+    srv.query('SELECT COUNT(*) AS n FROM characters WHERE party_id = ?', fx.partyId).n,
+    3,
+    'fixture characters survive',
+  );
+  r = await api(base, 'POST', '/api/parties/join', {
+    token: fx.player2.token,
+    body: { inviteCode: doomed.inviteCode },
+  });
+  eq(r.status, 404, 'disbanded invite code → 404');
 }

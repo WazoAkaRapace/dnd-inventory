@@ -219,6 +219,8 @@ export default function PartyPage() {
   const [error, setError] = useState('');
   // 403 from the detail route: the visitor was removed/banned (or never joined).
   const [notMember, setNotMember] = useState(false);
+  // Live 'disband' sync event: the MD dissolved the whole party — dedicated copy.
+  const [disbanded, setDisbanded] = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
   const [inviteCopyFailed, setInviteCopyFailed] = useState(false);
 
@@ -253,9 +255,13 @@ export default function PartyPage() {
   const currentPartyId = Number(partyId);
   useSyncEvent(
     (event) => {
-      if (event.partyId === currentPartyId) {
-        load(true); // silent — no spinner flash on sync updates
+      if (event.partyId !== currentPartyId) return;
+      if (event.action === 'disband') {
+        // The party row is GONE (cascade) — a reload would only 403.
+        setDisbanded(true);
+        return;
       }
+      load(true); // silent — no spinner flash on sync updates
     },
     [currentPartyId],
   );
@@ -273,6 +279,21 @@ export default function PartyPage() {
   }
 
   if (loading) return <LoadingSpinner label="Ouverture du groupe…" />;
+  if (disbanded) {
+    return (
+      <div className="mx-auto w-full max-w-xl space-y-4 pt-10 text-center">
+        <h1 className="font-display text-2xl font-bold">Le groupe a été dissous</h1>
+        <p className="text-sm text-ink-400">
+          Le MD a fermé la table : personnages, combats, PNJ et objets ont été supprimés avec elle.
+        </p>
+        <div>
+          <Link to="/parties" className="btn-secondary">
+            Mes groupes
+          </Link>
+        </div>
+      </div>
+    );
+  }
   if (notMember) {
     return (
       <div className="mx-auto w-full max-w-xl space-y-4 pt-10 text-center">

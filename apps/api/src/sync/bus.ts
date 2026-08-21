@@ -28,6 +28,7 @@ export interface SyncEvent {
     | 'remove'
     | 'ban'
     | 'unban'
+    | 'disband'
     | 'initiative'
     | 'turn'
     | 'hp'
