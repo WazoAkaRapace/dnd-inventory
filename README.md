@@ -96,7 +96,7 @@ Le serveur auto-migre et sème la base au démarrage : 646 objets, 490 sorts, 96
 - `apps/web` — React 19 + Vite + Tailwind v4 (mobile-first, PWA)
 - `packages/shared` — **moteur de règles SRD** partagé (CA, armes, vitesse, sorts, forme sauvage) + types
 - `data/` — seeds JSON + SQLite
-- Tests de règles : `npm run test-weapon-stats` / `npm run test-armor-stats`
+- Tests : suites de règles (`npm run test-weapon-stats`, `test-armor-stats`, `test-skill-stats`, `test-class-features`, `test-creation-data`) + intégration API (`npm run test-api`) + E2E navigateur Playwright (`npm run test:e2e`, stack jetable dédiée)
 
 ## 🧹 Lint & format (Biome)
 
@@ -109,6 +109,10 @@ npm run format     # formate uniquement
 ```
 
 Sous VS Code : l'extension `biomejs.biome` formate à la sauvegarde (réglages dans `.vscode/`, non versionnés).
+
+## ✅ CI
+
+À chaque PR et push sur `main`, [ci-test.yml](.github/workflows/ci-test.yml) exécute le lint Biome, le typecheck (`tsc -b`, web + shared), les 5 suites de règles, la suite d'intégration API (avec sa porte de couverture 100 % des sites de requêtes) et, en job parallèle, la suite E2E Playwright (`npm run test:e2e` — API + vite jetables sur base neuve, jamais les bases dev/Docker).
 
 ## 📜 Licence & données
 
