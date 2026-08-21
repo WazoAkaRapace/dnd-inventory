@@ -23,8 +23,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const savedToken = localStorage.getItem('dnd-inv-token');
     const savedUser = localStorage.getItem('dnd-inv-user');
     if (savedToken && savedUser) {
+      // localStorage corrompu (écriture partielle, quota, etc.) : sans ce garde,
+      // JSON.parse lèverait au montage et blanchirait définitivement l'écran.
+      let savedUserParsed: User;
+      try {
+        savedUserParsed = JSON.parse(savedUser) as User;
+      } catch (err) {
+        console.warn(
+          'Session locale illisible (« dnd-inv-user ») — clé supprimée, reconnexion nécessaire.',
+          err instanceof Error ? err.message : err,
+        );
+        localStorage.removeItem('dnd-inv-user');
+        localStorage.removeItem('dnd-inv-token');
+        setToken(null);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
       setToken(savedToken);
-      setUser(JSON.parse(savedUser));
+      setUser(savedUserParsed);
       // Verify token is still valid
       api
         .get('/api/auth/me')
