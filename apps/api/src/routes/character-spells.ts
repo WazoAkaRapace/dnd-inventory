@@ -127,16 +127,16 @@ export async function characterSpellRoutes(app: FastifyInstance) {
       const prepared = body.prepared ? 1 : 0;
 
       // UPSERT: if the character already knows this spell, just toggle prepared.
-      const info = db
-        .prepare(`
+      db.prepare(`
         INSERT INTO character_spells (character_id, spell_id, prepared)
         VALUES (?, ?, ?)
         ON CONFLICT(character_id, spell_id) DO UPDATE SET
           prepared = excluded.prepared
-      `)
-        .run(char.id, body.spellId, prepared);
+      `).run(char.id, body.spellId, prepared);
 
-      const linkId = info.lastInsertRowid as number;
+      // Query by character_id + spell_id (not lastInsertRowid, which is
+      // unreliable on UPSERT: on the conflict path it still holds the rowid
+      // of the last INSERT on this connection — possibly another link row).
       const row = db
         .prepare(`
         SELECT
@@ -152,9 +152,9 @@ export async function characterSpellRoutes(app: FastifyInstance) {
           s.dc_json AS s_dc_json, s.classes_json AS s_classes_json
         FROM character_spells cs
         JOIN spells s ON s.id = cs.spell_id
-        WHERE cs.id = ?
+        WHERE cs.character_id = ? AND cs.spell_id = ?
       `)
-        .get(linkId);
+        .get(char.id, body.spellId);
 
       bus.emitChange({
         type: 'character:change',

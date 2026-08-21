@@ -1014,99 +1014,109 @@ export async function combatRoutes(app: FastifyInstance) {
         return reply.send({ encounter: mapEncounter(started) });
       }
 
-      // --- Condition expiry for ALL combatants whose turn is ending ---
-      // (grouped monsters share initiative, so they share a turn)
       const currentIdx = Math.min(enc.turn_index, sorted.length - 1);
       const currentCombatant = sorted[currentIdx];
-      if (currentCombatant) {
-        const currentGroup = currentCombatant.groupId;
-        // Find all combatants sharing this turn (same group, or same initiative
-        // for non-grouped combatants at the same position)
-        const sameTurn = sorted.filter(
-          (c) => (currentGroup && c.groupId === currentGroup) || c.id === currentCombatant.id,
-        );
-        for (const c of sameTurn) {
-          if (c.conditions.length === 0) continue;
-          let changed = false;
-          const expired: string[] = [];
-          const updated = c.conditions
-            .map((cond) => {
-              if (cond.duration === null) return cond; // until dispelled
-              if (cond.duration <= 1) {
+
+      // --- One atomic advance: condition expiry writes (and their sheet
+      // mirrors), any round-wrap status flip and the turn/round UPDATE are a
+      // single unit — a mid-failure must not expire conditions without
+      // advancing the turn (or vice-versa). The condition mirror may emit a
+      // sync event from inside the tx; events are best-effort refresh
+      // nudges, so a rollback just leaves clients on the pre-tx state.
+      const advanceTx = db.transaction(() => {
+        // --- Condition expiry for ALL combatants whose turn is ending ---
+        // (grouped monsters share initiative, so they share a turn)
+        if (currentCombatant) {
+          const currentGroup = currentCombatant.groupId;
+          // Find all combatants sharing this turn (same group, or same initiative
+          // for non-grouped combatants at the same position)
+          const sameTurn = sorted.filter(
+            (c) => (currentGroup && c.groupId === currentGroup) || c.id === currentCombatant.id,
+          );
+          for (const c of sameTurn) {
+            if (c.conditions.length === 0) continue;
+            let changed = false;
+            const expired: string[] = [];
+            const updated = c.conditions
+              .map((cond) => {
+                if (cond.duration === null) return cond; // until dispelled
+                if (cond.duration <= 1) {
+                  changed = true;
+                  expired.push(cond.name);
+                  return null;
+                } // expired
                 changed = true;
-                expired.push(cond.name);
-                return null;
-              } // expired
-              changed = true;
-              return { ...cond, duration: cond.duration - 1 };
-            })
-            .filter((cond): cond is CombatantCondition => cond !== null);
-          if (changed) {
-            db.prepare('UPDATE combatants SET conditions = ? WHERE id = ?').run(
-              JSON.stringify(updated),
-              c.id,
-            );
-            // Expired conditions leave the character sheet too
-            if (expired.length > 0 && c.type === 'player' && c.characterId) {
-              mirrorConditionsToCharacter(enc.party_id, c.characterId, [], expired, userId);
+                return { ...cond, duration: cond.duration - 1 };
+              })
+              .filter((cond): cond is CombatantCondition => cond !== null);
+            if (changed) {
+              db.prepare('UPDATE combatants SET conditions = ? WHERE id = ?').run(
+                JSON.stringify(updated),
+                c.id,
+              );
+              // Expired conditions leave the character sheet too
+              if (expired.length > 0 && c.type === 'player' && c.characterId) {
+                mirrorConditionsToCharacter(enc.party_id, c.characterId, [], expired, userId);
+              }
             }
           }
         }
-      }
 
-      // --- Advance turn: skip past the entire current group ---
-      // Grouped combatants are adjacent in sorted order. Find the next combatant
-      // that is NOT in the current group (or, for non-grouped, just +1).
-      let nextIndex = currentIdx + 1;
-      let round = enc.round;
-      const currentGroup = currentCombatant?.groupId;
+        // --- Advance turn: skip past the entire current group ---
+        // Grouped combatants are adjacent in sorted order. Find the next combatant
+        // that is NOT in the current group (or, for non-grouped, just +1).
+        let nextIndex = currentIdx + 1;
+        let round = enc.round;
+        const currentGroup = currentCombatant?.groupId;
 
-      // If current is part of a group, skip past all group members
-      if (currentGroup) {
-        while (nextIndex < sorted.length && sorted[nextIndex]?.groupId === currentGroup) {
-          nextIndex++;
-        }
-      }
-
-      // If we've passed the end, wrap to start and increment round
-      if (nextIndex >= sorted.length) {
-        nextIndex = 0;
-        round = round + 1;
-        if (round === 1) {
-          db.prepare('UPDATE encounters SET status = ? WHERE id = ?').run('active', enc.id);
-        }
-      }
-
-      // Skip defeated combatants (and their group members)
-      const refetchedRows = db
-        .prepare('SELECT * FROM combatants WHERE encounter_id = ?')
-        .all(enc.id);
-      const refetchedSorted = sortCombatants(refetchedRows.map(mapCombatant));
-      let guard = 0;
-      while (refetchedSorted[nextIndex]?.defeated && guard < refetchedSorted.length * 2) {
-        const skipGroup = refetchedSorted[nextIndex]?.groupId;
-        nextIndex++;
-        // Skip remaining group members too
-        if (skipGroup) {
-          while (
-            nextIndex < refetchedSorted.length &&
-            refetchedSorted[nextIndex]?.groupId === skipGroup
-          ) {
+        // If current is part of a group, skip past all group members
+        if (currentGroup) {
+          while (nextIndex < sorted.length && sorted[nextIndex]?.groupId === currentGroup) {
             nextIndex++;
           }
         }
-        if (nextIndex >= refetchedSorted.length) {
-          nextIndex = 0;
-          round++;
-        }
-        guard++;
-      }
 
-      db.prepare('UPDATE encounters SET turn_index = ?, round = ? WHERE id = ?').run(
-        nextIndex,
-        round,
-        enc.id,
-      );
+        // If we've passed the end, wrap to start and increment round
+        if (nextIndex >= sorted.length) {
+          nextIndex = 0;
+          round = round + 1;
+          if (round === 1) {
+            db.prepare('UPDATE encounters SET status = ? WHERE id = ?').run('active', enc.id);
+          }
+        }
+
+        // Skip defeated combatants (and their group members)
+        const refetchedRows = db
+          .prepare('SELECT * FROM combatants WHERE encounter_id = ?')
+          .all(enc.id);
+        const refetchedSorted = sortCombatants(refetchedRows.map(mapCombatant));
+        let guard = 0;
+        while (refetchedSorted[nextIndex]?.defeated && guard < refetchedSorted.length * 2) {
+          const skipGroup = refetchedSorted[nextIndex]?.groupId;
+          nextIndex++;
+          // Skip remaining group members too
+          if (skipGroup) {
+            while (
+              nextIndex < refetchedSorted.length &&
+              refetchedSorted[nextIndex]?.groupId === skipGroup
+            ) {
+              nextIndex++;
+            }
+          }
+          if (nextIndex >= refetchedSorted.length) {
+            nextIndex = 0;
+            round++;
+          }
+          guard++;
+        }
+
+        db.prepare('UPDATE encounters SET turn_index = ?, round = ? WHERE id = ?').run(
+          nextIndex,
+          round,
+          enc.id,
+        );
+      });
+      advanceTx();
 
       const row = db.prepare('SELECT * FROM encounters WHERE id = ?').get(enc.id);
       bus.emitChange({

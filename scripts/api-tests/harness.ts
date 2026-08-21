@@ -164,6 +164,11 @@ export async function startServer(): Promise<ServerHandle> {
       DATABASE_PATH: dbPath,
       JWT_SECRET,
       DB_SQL_TRACE: tracePath,
+      // The harness rotates a fake x-real-ip per request precisely so the
+      // error-scoped rate limiter never trips on deliberate 4xx probes —
+      // trust the header here (the default, direct-exposure mode would key
+      // every probe on 127.0.0.1 and 429 the suite).
+      TRUST_PROXY: 'true',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

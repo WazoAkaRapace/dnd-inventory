@@ -11,6 +11,11 @@ services:
       - PORT=4000
       - DATABASE_PATH=/app/data/db/inventory.sqlite
       - JWT_SECRET=${JWT_SECRET:-dev-only-change-me-in-production}
+      # Dev keeps the historical behavior: the web nginx proxies /api (and
+      # sets X-Real-IP from the real client), and the API port is published
+      # for direct access. TRUST_PROXY=true makes the rate limiter key on
+      # X-Real-IP again — only safe when you accept spoofable keys (dev).
+      - TRUST_PROXY=true
     restart: unless-stopped
 
   web:

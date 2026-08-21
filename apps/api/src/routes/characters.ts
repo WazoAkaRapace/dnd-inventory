@@ -350,56 +350,67 @@ export async function characterRoutes(app: FastifyInstance) {
           .all(char.id) as any[];
 
         if (shapeHp <= 0) {
-          // Auto-revert with carry-over
+          // Auto-revert with carry-over — atomic: the sheet write and the
+          // combatant HP mirrors must land together or the sheet/tracker
+          // state splits.
           const excess = -body.currentHp;
           const newHp = Math.max(0, (char.current_hp ?? 1) - excess);
-          db.prepare(`
-            UPDATE characters
-            SET wild_shape_slug = NULL, wild_shape_hp = NULL, wild_shape_max_hp = NULL, current_hp = ?
-            WHERE id = ?
-          `).run(newHp, char.id);
-          for (const combatant of combatants) {
-            const acRows = db
-              .prepare(`
-              SELECT i.category AS category, i.ac_base AS ac_base, i.str_min AS str_min,
-                     i.name_fr AS name_fr, i.name AS name
-              FROM inventory inv JOIN items i ON i.id = inv.item_id
-              WHERE inv.character_id = ? AND inv.equipped = 1
-            `)
-              .all(char.id) as any[];
-            const acResult = computeAC(
-              acRows.map((r) => ({
-                item: {
-                  category: r.category,
-                  acBase: r.ac_base,
-                  strMin: r.str_min,
-                  nameFr: r.name_fr,
-                  name: r.name,
-                },
-                equipped: true,
-              })),
-              abilityModifier(char.dexterity ?? 10),
-              char.fighting_style === 'defense',
-              char,
-            );
-            db.prepare(
-              'UPDATE combatants SET name = ?, hit_points = ?, max_hit_points = ?, armor_class = ?, defeated = ? WHERE id = ?',
-            ).run(
-              char.name,
-              newHp,
-              char.max_hp ?? 1,
-              char.armor_class_override ?? acResult.ac,
-              newHp <= 0 ? 1 : 0,
-              combatant.id,
-            );
-          }
+          const shapeTx = db.transaction(() => {
+            db.prepare(`
+              UPDATE characters
+              SET wild_shape_slug = NULL, wild_shape_hp = NULL, wild_shape_max_hp = NULL, current_hp = ?
+              WHERE id = ?
+            `).run(newHp, char.id);
+            for (const combatant of combatants) {
+              const acRows = db
+                .prepare(`
+                SELECT i.category AS category, i.ac_base AS ac_base, i.str_min AS str_min,
+                       i.name_fr AS name_fr, i.name AS name
+                FROM inventory inv JOIN items i ON i.id = inv.item_id
+                WHERE inv.character_id = ? AND inv.equipped = 1
+              `)
+                .all(char.id) as any[];
+              const acResult = computeAC(
+                acRows.map((r) => ({
+                  item: {
+                    category: r.category,
+                    acBase: r.ac_base,
+                    strMin: r.str_min,
+                    nameFr: r.name_fr,
+                    name: r.name,
+                  },
+                  equipped: true,
+                })),
+                abilityModifier(char.dexterity ?? 10),
+                char.fighting_style === 'defense',
+                char,
+              );
+              db.prepare(
+                'UPDATE combatants SET name = ?, hit_points = ?, max_hit_points = ?, armor_class = ?, defeated = ? WHERE id = ?',
+              ).run(
+                char.name,
+                newHp,
+                char.max_hp ?? 1,
+                char.armor_class_override ?? acResult.ac,
+                newHp <= 0 ? 1 : 0,
+                combatant.id,
+              );
+            }
+          });
+          shapeTx();
         } else {
-          db.prepare('UPDATE characters SET wild_shape_hp = ? WHERE id = ?').run(shapeHp, char.id);
-          for (const combatant of combatants) {
-            db.prepare(
-              'UPDATE combatants SET hit_points = ?, max_hit_points = ?, defeated = 0 WHERE id = ?',
-            ).run(shapeHp, char.wild_shape_max_hp ?? shapeHp, combatant.id);
-          }
+          const shapeTx = db.transaction(() => {
+            db.prepare('UPDATE characters SET wild_shape_hp = ? WHERE id = ?').run(
+              shapeHp,
+              char.id,
+            );
+            for (const combatant of combatants) {
+              db.prepare(
+                'UPDATE combatants SET hit_points = ?, max_hit_points = ?, defeated = 0 WHERE id = ?',
+              ).run(shapeHp, char.wild_shape_max_hp ?? shapeHp, combatant.id);
+            }
+          });
+          shapeTx();
         }
         if (combatants.length > 0) {
           bus.emitChange({
@@ -477,20 +488,32 @@ export async function characterRoutes(app: FastifyInstance) {
       }
 
       vals.push(char.id);
-      db.prepare(`UPDATE characters SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
 
       // --- HP sync: mirror PV/PV max changes to this character's combatants
       // in non-ended encounters, so the combat tracker shows the same HP
-      // (and defeated state) as the sheet.
-      if (body.currentHp !== undefined || body.maxHp !== undefined) {
-        const combatantRows = db
-          .prepare(`
-          SELECT c.id FROM combatants c
-          JOIN encounters e ON e.id = c.encounter_id
-          WHERE c.character_id = ? AND c.type = 'player' AND e.status != 'ended'
-        `)
-          .all(char.id) as any[];
-        for (const cr of combatantRows) {
+      // (and defeated state) as the sheet. Targets read up-front; the writes
+      // themselves join the atomic block below.
+      const hpMirrorTargets =
+        body.currentHp !== undefined || body.maxHp !== undefined
+          ? (db
+              .prepare(`
+              SELECT c.id FROM combatants c
+              JOIN encounters e ON e.id = c.encounter_id
+              WHERE c.character_id = ? AND c.type = 'player' AND e.status != 'ended'
+            `)
+              .all(char.id) as any[])
+          : [];
+
+      // --- One atomic write sequence: the sheet UPDATE, the HP/condition
+      // mirrors onto tracker combatants and the hidden-character roster
+      // cleanup are a single unit — a mid-failure must not split
+      // sheet/tracker state. (The condition mirror may emit a sync event
+      // from inside the tx; events are best-effort refresh nudges, so a
+      // rollback just leaves clients on the pre-tx state.)
+      const writeTx = db.transaction(() => {
+        db.prepare(`UPDATE characters SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+
+        for (const cr of hpMirrorTargets) {
           const setsC: string[] = [];
           const valsC: any[] = [];
           if (body.currentHp !== undefined) {
@@ -508,59 +531,62 @@ export async function characterRoutes(app: FastifyInstance) {
           valsC.push(cr.id);
           db.prepare(`UPDATE combatants SET ${setsC.join(', ')} WHERE id = ?`).run(...valsC);
         }
-        if (combatantRows.length > 0) {
-          bus.emitChange({
-            type: 'combat:change',
-            partyId: char.party_id,
-            action: 'hp',
-            actorUserId: userId,
-          });
-        }
-      }
 
-      // --- Condition sync: sheet condition changes mirror to the combat
-      // tracker (diff vs the previous list, durations left untouched).
-      if (body.conditions !== undefined) {
-        try {
-          const prev: string[] = char.conditions
-            ? typeof char.conditions === 'string'
-              ? JSON.parse(char.conditions)
-              : char.conditions
-            : [];
-          const nextList: string[] = body.conditions;
-          mirrorConditionsToCombatants(
-            char.party_id,
-            char.id,
-            nextList.filter((c) => !prev.includes(c)),
-            prev.filter((c) => !nextList.includes(c)),
-            userId,
-          );
-        } catch {
-          /* mirror is best-effort */
+        // --- Condition sync: sheet condition changes mirror to the combat
+        // tracker (diff vs the previous list, durations left untouched).
+        if (body.conditions !== undefined) {
+          try {
+            const prev: string[] = char.conditions
+              ? typeof char.conditions === 'string'
+                ? JSON.parse(char.conditions)
+                : char.conditions
+              : [];
+            const nextList: string[] = body.conditions;
+            mirrorConditionsToCombatants(
+              char.party_id,
+              char.id,
+              nextList.filter((c) => !prev.includes(c)),
+              prev.filter((c) => !nextList.includes(c)),
+              userId,
+            );
+          } catch {
+            /* mirror is best-effort */
+          }
         }
-      }
 
-      // --- Visibility: a hidden character is inactive everywhere — pull its
-      // player combatants out of non-ended encounters (ended fights keep
-      // their history) so rosters never leak its presence.
-      if (hiding) {
-        const removed = db
-          .prepare(`
-          DELETE FROM combatants
-          WHERE character_id = ? AND type = 'player'
-            AND encounter_id IN (
-              SELECT id FROM encounters WHERE party_id = ? AND status != 'ended'
-            )
-        `)
-          .run(char.id, char.party_id);
-        if (removed.changes > 0) {
-          bus.emitChange({
-            type: 'combat:change',
-            partyId: char.party_id,
-            action: 'remove',
-            actorUserId: userId,
-          });
+        // --- Visibility: a hidden character is inactive everywhere — pull its
+        // player combatants out of non-ended encounters (ended fights keep
+        // their history) so rosters never leak its presence.
+        if (hiding) {
+          return db
+            .prepare(`
+            DELETE FROM combatants
+            WHERE character_id = ? AND type = 'player'
+              AND encounter_id IN (
+                SELECT id FROM encounters WHERE party_id = ? AND status != 'ended'
+              )
+          `)
+            .run(char.id, char.party_id).changes;
         }
+        return 0;
+      });
+      const removedCount = writeTx();
+
+      if (hpMirrorTargets.length > 0) {
+        bus.emitChange({
+          type: 'combat:change',
+          partyId: char.party_id,
+          action: 'hp',
+          actorUserId: userId,
+        });
+      }
+      if (removedCount > 0) {
+        bus.emitChange({
+          type: 'combat:change',
+          partyId: char.party_id,
+          action: 'remove',
+          actorUserId: userId,
+        });
       }
 
       const row = db

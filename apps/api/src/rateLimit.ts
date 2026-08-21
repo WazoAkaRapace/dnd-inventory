@@ -6,10 +6,10 @@
  * request would block legitimate play. Only FAILED responses (>= 400,
  * excluding 429 itself) consume budget; successes are free.
  *
- * Two buckets per client key (real IP from X-Real-IP, set by our nginx):
- *  - 'err':  any /api error response            (brute force, broken loops)
- *  - 'auth': failed logins/registrations and    (credential / invite-code
- *            failed invite-code joins              guessing)
+ * Two buckets per client key (see clientKey below): 'err' (any /api error
+ * response — brute force, broken loops) and 'auth' (failed logins/
+ * registrations and failed invite-code joins — credential / invite-code
+ * guessing).
  *
  * When a bucket overflows, all /api calls from that key get 429 until the
  * window resets. Tunable via RATE_LIMIT_ERROR_MAX, RATE_LIMIT_AUTH_FAIL_MAX
@@ -21,6 +21,15 @@ const WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10);
 const ERROR_MAX = parseInt(process.env.RATE_LIMIT_ERROR_MAX || '40', 10);
 const AUTH_FAIL_MAX = parseInt(process.env.RATE_LIMIT_AUTH_FAIL_MAX || '5', 10);
 
+// Forwarded headers (X-Real-IP / X-Forwarded-For) are only trusted behind our
+// nginx proxy, which overwrites them from the actual TCP peer (unspoofable
+// from outside the proxy). When the API port is published directly, a client
+// can FORGE these headers and get a fresh bucket per request — evading every
+// limit, including the 5/min login brute-force bucket. So they are honored
+// only when TRUST_PROXY=true; the default (unset) keys on the socket address,
+// which is always safe for direct exposure.
+const TRUST_PROXY = process.env.TRUST_PROXY === 'true';
+
 // Routes whose FAILURES point at credential/invite guessing
 const TIGHT_ROUTES = new Set(['/api/auth/login', '/api/auth/register', '/api/parties/join']);
 
@@ -30,13 +39,18 @@ interface Bucket {
 }
 const buckets = new Map<string, Bucket>(); // "<kind>:<key>" -> bucket
 
-// nginx sets X-Real-IP from the actual TCP peer (unspoofable); fall back to
-// X-Forwarded-For (first hop) or the socket IP for direct dev access.
+// Behind nginx (TRUST_PROXY=true): X-Real-IP, set by our proxy from the
+// actual TCP peer; fall back to X-Forwarded-For (first hop). Otherwise the
+// forwarded headers are IGNORED (spoofable by any direct client) and we key
+// on req.ip — the socket address, since the server doesn't enable Fastify's
+// trustProxy.
 function clientKey(req: FastifyRequest): string {
-  const real = req.headers['x-real-ip'];
-  if (typeof real === 'string' && real) return real;
-  const xff = req.headers['x-forwarded-for'];
-  if (typeof xff === 'string' && xff) return xff.split(',')[0].trim();
+  if (TRUST_PROXY) {
+    const real = req.headers['x-real-ip'];
+    if (typeof real === 'string' && real) return real;
+    const xff = req.headers['x-forwarded-for'];
+    if (typeof xff === 'string' && xff) return xff.split(',')[0].trim();
+  }
   return req.ip;
 }
 

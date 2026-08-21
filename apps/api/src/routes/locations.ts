@@ -161,40 +161,47 @@ export async function locationRoutes(app: FastifyInstance) {
       if (!isOwnerOrGM(char, userId))
         return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
 
-      // Move items back to carried (merge with existing entries to avoid UNIQUE constraint)
-      const carriedId = ensureCarriedLocation(db, char.id);
+      // Move items back to carried (merge with existing entries to avoid UNIQUE constraint).
+      // One transaction: merge/move every entry, then drop the location — a
+      // mid-failure must not leave items pointing at a deleted (or
+      // half-emptied) storage location.
+      const tx = db.transaction(() => {
+        const carriedId = ensureCarriedLocation(db, char.id);
 
-      // For each item on this location, either add to existing carried entry or move
-      const itemsToMove = db
-        .prepare(
-          'SELECT id, item_id, quantity, equipped, notes FROM inventory WHERE storage_location_id = ?',
-        )
-        .all(loc.id) as any[];
-
-      for (const item of itemsToMove) {
-        const existing = db
+        // For each item on this location, either add to existing carried
+        // entry or move it
+        const itemsToMove = db
           .prepare(
-            'SELECT id, quantity FROM inventory WHERE character_id = ? AND item_id = ? AND storage_location_id = ?',
+            'SELECT id, item_id, quantity, equipped, notes FROM inventory WHERE storage_location_id = ?',
           )
-          .get(char.id, item.item_id, carriedId) as any;
+          .all(loc.id) as any[];
 
-        if (existing) {
-          // Merge: add quantity to existing entry, delete the moving one
-          db.prepare('UPDATE inventory SET quantity = quantity + ? WHERE id = ?').run(
-            item.quantity,
-            existing.id,
-          );
-          db.prepare('DELETE FROM inventory WHERE id = ?').run(item.id);
-        } else {
-          // Just move it
-          db.prepare('UPDATE inventory SET storage_location_id = ? WHERE id = ?').run(
-            carriedId,
-            item.id,
-          );
+        for (const item of itemsToMove) {
+          const existing = db
+            .prepare(
+              'SELECT id, quantity FROM inventory WHERE character_id = ? AND item_id = ? AND storage_location_id = ?',
+            )
+            .get(char.id, item.item_id, carriedId) as any;
+
+          if (existing) {
+            // Merge: add quantity to existing entry, delete the moving one
+            db.prepare('UPDATE inventory SET quantity = quantity + ? WHERE id = ?').run(
+              item.quantity,
+              existing.id,
+            );
+            db.prepare('DELETE FROM inventory WHERE id = ?').run(item.id);
+          } else {
+            // Just move it
+            db.prepare('UPDATE inventory SET storage_location_id = ? WHERE id = ?').run(
+              carriedId,
+              item.id,
+            );
+          }
         }
-      }
 
-      db.prepare('DELETE FROM storage_locations WHERE id = ?').run(loc.id);
+        db.prepare('DELETE FROM storage_locations WHERE id = ?').run(loc.id);
+      });
+      tx();
 
       bus.emitChange({
         type: 'inventory:change',

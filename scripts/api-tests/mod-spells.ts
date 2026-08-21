@@ -89,6 +89,43 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
     'single link row',
   );
 
+  // ---------- regression: UPSERT must return the ORIGINAL link ----------
+  // A different link inserted between learn and re-learn makes a naive
+  // lastInsertRowid stale (it would point at the newer row) — the route
+  // must re-query by (character_id, spell_id).
+  const missile = srv.query("SELECT id FROM spells WHERE srd_index = 'magic-missile'");
+  ok(missile, 'magic missile seeded');
+  const regChar = await createCharacter(base, fx.gm.token, fx.partyId, {
+    name: 'Bibliophile',
+    characterClass: 'Magicien',
+    level: 2,
+    maxHp: 10,
+  });
+  r = await api(base, 'POST', `/api/characters/${regChar.id}/spells`, {
+    token: fx.gm.token,
+    body: { spellId: fireball.id, prepared: true },
+  });
+  eq(r.status, 201, 'regression: learn fireball');
+  const regLinkId = r.data.spell.id;
+  r = await api(base, 'POST', `/api/characters/${regChar.id}/spells`, {
+    token: fx.gm.token,
+    body: { spellId: missile.id },
+  });
+  eq(r.status, 201, 'regression: learn a second spell in between');
+  r = await api(base, 'POST', `/api/characters/${regChar.id}/spells`, {
+    token: fx.gm.token,
+    body: { spellId: fireball.id, prepared: false },
+  });
+  eq(r.status, 201, 'regression: re-learn fireball (conflict path)');
+  eq(r.data.spell.id, regLinkId, 'upsert returns the ORIGINAL link id');
+  eq(r.data.spell.spell.id, fireball.id, 'upsert returns the requested spell');
+  eq(r.data.spell.prepared, false, 'upsert toggles prepared');
+  eq(
+    srv.query('SELECT COUNT(*) AS c FROM character_spells WHERE character_id = ?', regChar.id).c,
+    2,
+    'upsert created no duplicate row',
+  );
+
   r = await api(base, 'GET', `/api/characters/${A}/spells`, { token: fx.player.token });
   eq(r.status, 200, 'list character spells (party member)');
   eq(r.data.spells.length, 1, 'one known spell');

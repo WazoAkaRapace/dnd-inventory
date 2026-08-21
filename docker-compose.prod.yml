@@ -6,8 +6,14 @@
 services:
   api:
     image: ghcr.io/wazoakarapace/dnd-inventory-api:latest
-    ports:
-      - "${API_PORT:-4010}:4000"
+    # NOT published: the web nginx proxies /api and /ws to api:4000 over the
+    # internal compose network. Publishing the API port would let direct
+    # clients forge X-Real-IP / X-Forwarded-For and evade the rate limiter
+    # (which ignores those headers unless TRUST_PROXY=true). Re-enable only
+    # if you actually need direct API access, and then set TRUST_PROXY
+    # accordingly.
+    # ports:
+    #   - "${API_PORT:-4010}:4000"
     volumes:
       - db-data:/app/data/db
     environment:
