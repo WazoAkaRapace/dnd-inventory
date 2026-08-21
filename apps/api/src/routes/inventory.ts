@@ -10,8 +10,20 @@ import {
   type PatchInventoryPayload,
   type TransferPayload,
 } from '@dnd-inventory/shared';
+import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { getDrizzle } from '../db/drizzle.ts';
 import { getDb } from '../db/index.ts';
+import { cols } from '../db/projections.ts';
+import {
+  characters,
+  inventory,
+  items,
+  parties,
+  storageLocations,
+  transactions,
+  users,
+} from '../db/schema.ts';
 import { bus } from '../sync/bus.ts';
 import {
   attachCharacterClasses,
@@ -24,6 +36,79 @@ import {
   requireUser,
 } from './helpers.ts';
 
+/**
+ * inventory JOIN items with the item columns prefixed `i_` — the shape
+ * mapInventoryEntry expects (avoids collisions between the two tables'
+ * id/name/notes columns).
+ */
+const INVENTORY_WITH_ITEM = {
+  id: inventory.id,
+  character_id: inventory.characterId,
+  item_id: inventory.itemId,
+  quantity: inventory.quantity,
+  equipped: inventory.equipped,
+  notes: inventory.notes,
+  storage_location_id: inventory.storageLocationId,
+  added_at: inventory.addedAt,
+  i_id: items.id,
+  i_source: items.source,
+  i_party_id: items.partyId,
+  i_category: items.category,
+  i_srd_index: items.srdIndex,
+  i_name: items.name,
+  i_name_fr: items.nameFr,
+  i_rarity: items.rarity,
+  i_weight_kg: items.weightKg,
+  i_cost_qty: items.costQty,
+  i_cost_unit: items.costUnit,
+  i_description: items.description,
+  i_damage_dice: items.damageDice,
+  i_damage_type: items.damageType,
+  i_ac_base: items.acBase,
+  i_str_min: items.strMin,
+  i_stealth_disadvantage: items.stealthDisadvantage,
+  i_properties_json: items.propertiesJson,
+  i_survival_tags: items.survivalTags,
+  i_image_path: items.imagePath,
+};
+
+/** The entry row (with its item) for one inventory id. */
+function getEntryWithItem(invId: number): any {
+  return (
+    getDrizzle()
+      .select(INVENTORY_WITH_ITEM)
+      .from(inventory)
+      .innerJoin(items, eq(items.id, inventory.itemId))
+      .where(eq(inventory.id, invId))
+      .get() ?? null
+  );
+}
+
+/** French display name of an item ('item' fallback), for the transaction log. */
+function itemDisplayName(itemId: number): { name: string; nameFr: string | null } {
+  const row = getDrizzle()
+    .select({ name: sql<string>`COALESCE(${items.nameFr}, ${items.name})`, name_fr: items.nameFr })
+    .from(items)
+    .where(eq(items.id, itemId))
+    .get() as any;
+  return { name: row?.name ?? 'item', nameFr: row?.name_fr ?? null };
+}
+
+function getCharacter(drizzle: ReturnType<typeof getDrizzle>, id: number): any {
+  return drizzle
+    .select(cols(characters))
+    .from(characters)
+    .where(eq(characters.id, id))
+    .get() as any;
+}
+
+function logTransaction(
+  drizzle: ReturnType<typeof getDrizzle>,
+  values: typeof transactions.$inferInsert,
+): void {
+  drizzle.insert(transactions).values(values).run();
+}
+
 export async function inventoryRoutes(app: FastifyInstance) {
   // ---------- Get character inventory (with computed kg encumbrance) ----------
   app.get(
@@ -31,17 +116,19 @@ export async function inventoryRoutes(app: FastifyInstance) {
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
+      const drizzle = getDrizzle();
 
-      const char = db
-        .prepare(`
-        SELECT c.*, p.encumbrance_mode, u.display_name AS owner_name
-        FROM characters c
-        JOIN parties p ON p.id = c.party_id
-        JOIN users u ON u.id = c.owner_id
-        WHERE c.id = ?
-      `)
-        .get(Number(req.params.id)) as any;
+      const char = drizzle
+        .select({
+          ...cols(characters),
+          encumbrance_mode: parties.encumbranceMode,
+          owner_name: users.displayName,
+        })
+        .from(characters)
+        .innerJoin(parties, eq(parties.id, characters.partyId))
+        .innerJoin(users, eq(users.id, characters.ownerId))
+        .where(eq(characters.id, Number(req.params.id)))
+        .get() as any;
       if (!char) return reply.code(404).send({ error: 'character not found' });
       if (!isPartyMember(char.party_id, userId)) {
         return reply.code(403).send({ error: 'not a member' });
@@ -51,37 +138,25 @@ export async function inventoryRoutes(app: FastifyInstance) {
         return reply.code(404).send({ error: 'character not found' });
       }
 
-      // Re-fetch with explicit aliases to avoid column-name collisions from the JOIN.
-      const cleanRows = db
-        .prepare(`
-        SELECT
-          inv.id AS id, inv.character_id AS character_id, inv.item_id AS item_id,
-          inv.quantity AS quantity, inv.equipped AS equipped, inv.notes AS notes,
-          inv.storage_location_id AS storage_location_id, inv.added_at AS added_at,
-          i.id AS i_id, i.source AS i_source, i.party_id AS i_party_id, i.category AS i_category,
-          i.srd_index AS i_srd_index, i.name AS i_name, i.name_fr AS i_name_fr, i.rarity AS i_rarity,
-          i.weight_kg AS i_weight_kg, i.cost_qty AS i_cost_qty, i.cost_unit AS i_cost_unit,
-          i.description AS i_description, i.damage_dice AS i_damage_dice, i.damage_type AS i_damage_type,
-          i.ac_base AS i_ac_base, i.str_min AS i_str_min, i.stealth_disadvantage AS i_stealth_disadvantage,
-          i.properties_json AS i_properties_json,
-          i.survival_tags AS i_survival_tags, i.image_path AS i_image_path
-        FROM inventory inv
-        JOIN items i ON i.id = inv.item_id
-        WHERE inv.character_id = ?
-        ORDER BY inv.equipped DESC, i.name COLLATE NOCASE ASC
-      `)
-        .all(char.id);
+      const cleanRows = drizzle
+        .select(INVENTORY_WITH_ITEM)
+        .from(inventory)
+        .innerJoin(items, eq(items.id, inventory.itemId))
+        .where(eq(inventory.characterId, char.id))
+        .orderBy(desc(inventory.equipped), sql`${items.name} COLLATE NOCASE ASC`)
+        .all();
 
       // Ensure carried location exists
       const { ensureCarriedLocation } = await import('./locations.ts');
       const carriedLocId = ensureCarriedLocation(char.id);
 
       // Load all storage locations for this character
-      const locRows = db
-        .prepare(`
-        SELECT * FROM storage_locations WHERE character_id = ? ORDER BY sort_order, type, id
-      `)
-        .all(char.id) as any[];
+      const locRows = drizzle
+        .select(cols(storageLocations))
+        .from(storageLocations)
+        .where(eq(storageLocations.characterId, char.id))
+        .orderBy(storageLocations.sortOrder, storageLocations.type, storageLocations.id)
+        .all() as any[];
       const locations = locRows.map((r: any) => ({
         id: r.id,
         characterId: r.character_id,
@@ -240,10 +315,8 @@ export async function inventoryRoutes(app: FastifyInstance) {
     ) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const char = db
-        .prepare('SELECT * FROM characters WHERE id = ?')
-        .get(Number(req.params.id)) as any;
+      const drizzle = getDrizzle();
+      const char = getCharacter(drizzle, Number(req.params.id));
       if (!char) return reply.code(404).send({ error: 'character not found' });
       if (!isOwnerOrGM(char, userId))
         return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
@@ -259,48 +332,51 @@ export async function inventoryRoutes(app: FastifyInstance) {
       const carriedId = ensureCarriedLocation(char.id);
       const locId = body.storageLocationId ?? carriedId;
 
-      db.prepare(`
-        INSERT INTO inventory (character_id, item_id, quantity, equipped, notes, storage_location_id)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(character_id, item_id, storage_location_id) DO UPDATE SET
-          quantity = quantity + excluded.quantity,
-          equipped = excluded.equipped,
-          notes = excluded.notes
-      `).run(char.id, body.itemId, qty, equipped, notes, locId);
+      drizzle
+        .insert(inventory)
+        .values({
+          characterId: char.id,
+          itemId: body.itemId,
+          quantity: qty,
+          equipped,
+          notes,
+          storageLocationId: locId,
+        })
+        .onConflictDoUpdate({
+          target: [inventory.characterId, inventory.itemId, inventory.storageLocationId],
+          set: {
+            quantity: sql`${inventory.quantity} + excluded.quantity`,
+            equipped: sql`excluded.equipped`,
+            notes: sql`excluded.notes`,
+          },
+        })
+        .run();
 
       // Log transaction
-      const itemRow = db
-        .prepare('SELECT COALESCE(name_fr, name) AS name FROM items WHERE id = ?')
-        .get(body.itemId) as any;
-      db.prepare(`
-        INSERT INTO transactions (party_id, character_id, item_id, item_name, delta_qty, reason, actor_user_id)
-        VALUES (?, ?, ?, ?, ?, 'add', ?)
-      `).run(char.party_id, char.id, body.itemId, itemRow?.name || 'item', qty, userId);
+      const itemRow = itemDisplayName(body.itemId);
+      logTransaction(drizzle, {
+        partyId: char.party_id,
+        characterId: char.id,
+        itemId: body.itemId,
+        itemName: itemRow.name,
+        deltaQty: qty,
+        reason: 'add',
+        actorUserId: userId,
+      });
 
       // Query by character_id + item_id (not lastInsertRowid, which is unreliable on UPSERT)
-      const invRow = db
-        .prepare(`
-        SELECT
-          inv.id AS id, inv.character_id AS character_id, inv.item_id AS item_id,
-          inv.quantity AS quantity, inv.equipped AS equipped, inv.notes AS notes,
-          inv.storage_location_id AS storage_location_id, inv.added_at AS added_at,
-          i.id AS i_id, i.source AS i_source, i.party_id AS i_party_id, i.category AS i_category,
-          i.srd_index AS i_srd_index, i.name AS i_name, i.name_fr AS i_name_fr, i.rarity AS i_rarity,
-          i.weight_kg AS i_weight_kg, i.cost_qty AS i_cost_qty, i.cost_unit AS i_cost_unit,
-          i.description AS i_description, i.damage_dice AS i_damage_dice, i.damage_type AS i_damage_type,
-          i.ac_base AS i_ac_base, i.str_min AS i_str_min, i.stealth_disadvantage AS i_stealth_disadvantage,
-          i.properties_json AS i_properties_json,
-          i.survival_tags AS i_survival_tags, i.image_path AS i_image_path
-        FROM inventory inv JOIN items i ON i.id = inv.item_id
-        WHERE inv.character_id = ? AND inv.item_id = ?
-      `)
-        .get(char.id, body.itemId);
+      const invRow = drizzle
+        .select(INVENTORY_WITH_ITEM)
+        .from(inventory)
+        .innerJoin(items, eq(items.id, inventory.itemId))
+        .where(and(eq(inventory.characterId, char.id), eq(inventory.itemId, body.itemId)))
+        .get();
       bus.emitChange({
         type: 'inventory:change',
         partyId: char.party_id,
         characterId: char.id,
         action: 'add',
-        itemName: itemRow?.name_fr || itemRow?.name,
+        itemName: itemRow.nameFr || itemRow.name,
         actorUserId: userId,
       });
       return reply.code(201).send({ entry: mapInventoryEntry(invRow) });
@@ -316,57 +392,57 @@ export async function inventoryRoutes(app: FastifyInstance) {
     ) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const inv = db
-        .prepare('SELECT * FROM inventory WHERE id = ?')
-        .get(Number(req.params.invId)) as any;
+      const drizzle = getDrizzle();
+      const inv = drizzle
+        .select(cols(inventory))
+        .from(inventory)
+        .where(eq(inventory.id, Number(req.params.invId)))
+        .get() as any;
       if (!inv) return reply.code(404).send({ error: 'inventory entry not found' });
-      const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(inv.character_id) as any;
+      const char = getCharacter(drizzle, inv.character_id);
       if (!isOwnerOrGM(char, userId))
         return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
 
       const body = req.body || {};
-      const sets: string[] = [];
-      const vals: any[] = [];
+      const values: Record<string, unknown> = {};
       const oldQty = inv.quantity;
       if (body.quantity !== undefined) {
-        const q = Math.max(0, Math.floor(body.quantity));
-        sets.push('quantity = ?');
-        vals.push(q);
+        values.quantity = Math.max(0, Math.floor(body.quantity));
       }
       if (body.equipped !== undefined) {
-        sets.push('equipped = ?');
-        vals.push(body.equipped ? 1 : 0);
+        values.equipped = body.equipped ? 1 : 0;
       }
       if (body.notes !== undefined) {
-        sets.push('notes = ?');
-        vals.push(body.notes);
+        values.notes = body.notes;
       }
       if (body.storageLocationId !== undefined) {
-        sets.push('storage_location_id = ?');
-        vals.push(body.storageLocationId);
+        values.storageLocationId = body.storageLocationId;
       }
-      if (sets.length === 0) return reply.code(400).send({ error: 'no fields to update' });
-      vals.push(inv.id);
-      db.prepare(`UPDATE inventory SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+      if (Object.keys(values).length === 0) {
+        return reply.code(400).send({ error: 'no fields to update' });
+      }
+      drizzle.update(inventory).set(values).where(eq(inventory.id, inv.id)).run();
 
       // If quantity changed, log transaction
       if (body.quantity !== undefined) {
         const delta = body.quantity - oldQty;
         if (delta !== 0) {
-          const itemRow = db
-            .prepare('SELECT COALESCE(name_fr, name) AS name FROM items WHERE id = ?')
-            .get(inv.item_id) as any;
-          db.prepare(`
-            INSERT INTO transactions (party_id, character_id, item_id, item_name, delta_qty, reason, actor_user_id)
-            VALUES (?, ?, ?, ?, ?, 'adjust', ?)
-          `).run(char.party_id, char.id, inv.item_id, itemRow?.name || 'item', delta, userId);
+          const itemRow = itemDisplayName(inv.item_id);
+          logTransaction(drizzle, {
+            partyId: char.party_id,
+            characterId: char.id,
+            itemId: inv.item_id,
+            itemName: itemRow.name,
+            deltaQty: delta,
+            reason: 'adjust',
+            actorUserId: userId,
+          });
         }
       }
 
       // If quantity reached 0, delete the entry
       if (body.quantity === 0) {
-        db.prepare('DELETE FROM inventory WHERE id = ?').run(inv.id);
+        drizzle.delete(inventory).where(eq(inventory.id, inv.id)).run();
         bus.emitChange({
           type: 'inventory:change',
           partyId: char.party_id,
@@ -377,22 +453,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
         return reply.code(204).send();
       }
 
-      const row = db
-        .prepare(`
-        SELECT
-          inv.id AS id, inv.character_id AS character_id, inv.item_id AS item_id,
-          inv.quantity AS quantity, inv.equipped AS equipped, inv.notes AS notes,
-          inv.storage_location_id AS storage_location_id, inv.added_at AS added_at,
-          i.id AS i_id, i.source AS i_source, i.party_id AS i_party_id, i.category AS i_category,
-          i.srd_index AS i_srd_index, i.name AS i_name, i.name_fr AS i_name_fr, i.rarity AS i_rarity,
-          i.weight_kg AS i_weight_kg, i.cost_qty AS i_cost_qty, i.cost_unit AS i_cost_unit,
-          i.description AS i_description, i.damage_dice AS i_damage_dice, i.damage_type AS i_damage_type,
-          i.ac_base AS i_ac_base, i.str_min AS i_str_min, i.stealth_disadvantage AS i_stealth_disadvantage,
-          i.properties_json AS i_properties_json,
-          i.survival_tags AS i_survival_tags, i.image_path AS i_image_path
-        FROM inventory inv JOIN items i ON i.id = inv.item_id WHERE inv.id = ?
-      `)
-        .get(inv.id);
+      const row = getEntryWithItem(inv.id);
       bus.emitChange({
         type: 'inventory:change',
         partyId: char.party_id,
@@ -410,30 +471,35 @@ export async function inventoryRoutes(app: FastifyInstance) {
     async (req: FastifyRequest<{ Params: { invId: string } }>, reply: FastifyReply) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const inv = db
-        .prepare('SELECT * FROM inventory WHERE id = ?')
-        .get(Number(req.params.invId)) as any;
+      const drizzle = getDrizzle();
+      const inv = drizzle
+        .select(cols(inventory))
+        .from(inventory)
+        .where(eq(inventory.id, Number(req.params.invId)))
+        .get() as any;
       if (!inv) return reply.code(404).send({ error: 'inventory entry not found' });
-      const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(inv.character_id) as any;
+      const char = getCharacter(drizzle, inv.character_id);
       if (!isOwnerOrGM(char, userId))
         return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
 
-      const itemRow = db
-        .prepare('SELECT COALESCE(name_fr, name) AS name FROM items WHERE id = ?')
-        .get(inv.item_id) as any;
-      db.prepare(`
-        INSERT INTO transactions (party_id, character_id, item_id, item_name, delta_qty, reason, actor_user_id)
-        VALUES (?, ?, ?, ?, ?, 'remove', ?)
-      `).run(char.party_id, char.id, inv.item_id, itemRow?.name || 'item', -inv.quantity, userId);
+      const itemRow = itemDisplayName(inv.item_id);
+      logTransaction(drizzle, {
+        partyId: char.party_id,
+        characterId: char.id,
+        itemId: inv.item_id,
+        itemName: itemRow.name,
+        deltaQty: -inv.quantity,
+        reason: 'remove',
+        actorUserId: userId,
+      });
 
-      db.prepare('DELETE FROM inventory WHERE id = ?').run(inv.id);
+      drizzle.delete(inventory).where(eq(inventory.id, inv.id)).run();
       bus.emitChange({
         type: 'inventory:change',
         partyId: char.party_id,
         characterId: char.id,
         action: 'remove',
-        itemName: itemRow?.name_fr || itemRow?.name,
+        itemName: itemRow.nameFr || itemRow.name,
         actorUserId: userId,
       });
       return reply.code(204).send();
@@ -453,9 +519,9 @@ export async function inventoryRoutes(app: FastifyInstance) {
       const { toCharacterId, inventoryId, quantity } = req.body || {};
       const qty = Math.max(1, Math.floor(quantity ?? 1));
 
-      const db = getDb();
-      const fromChar = db.prepare('SELECT * FROM characters WHERE id = ?').get(fromCharId) as any;
-      const toChar = db.prepare('SELECT * FROM characters WHERE id = ?').get(toCharacterId) as any;
+      const drizzle = getDrizzle();
+      const fromChar = getCharacter(drizzle, fromCharId);
+      const toChar = getCharacter(drizzle, toCharacterId);
       if (!fromChar || !toChar) return reply.code(404).send({ error: 'character not found' });
       if (fromChar.party_id !== toChar.party_id) {
         return reply.code(400).send({ error: 'characters must be in the same party' });
@@ -466,47 +532,71 @@ export async function inventoryRoutes(app: FastifyInstance) {
           .send({ error: 'only the owner or GM can transfer from this character' });
       }
 
-      const inv = db.prepare('SELECT * FROM inventory WHERE id = ?').get(inventoryId) as any;
+      const inv = drizzle
+        .select(cols(inventory))
+        .from(inventory)
+        .where(eq(inventory.id, inventoryId))
+        .get() as any;
       if (!inv || inv.character_id !== fromCharId) {
         return reply.code(404).send({ error: 'inventory entry not found for this character' });
       }
       if (qty > inv.quantity)
         return reply.code(400).send({ error: 'not enough quantity to transfer' });
 
-      const itemRow = db
-        .prepare('SELECT COALESCE(name_fr, name) AS name FROM items WHERE id = ?')
-        .get(inv.item_id) as any;
-      const itemName = itemRow?.name || 'item';
+      const itemName = itemDisplayName(inv.item_id).name;
 
       // Destination upsert must target the carried location to match the
       // UNIQUE(character_id, item_id, storage_location_id) constraint.
       const { ensureCarriedLocation } = await import('./locations.ts');
       const destLocId = ensureCarriedLocation(toCharacterId);
 
-      const tx = db.transaction(() => {
+      getDb().transaction(() => {
         // Remove from source
         if (qty >= inv.quantity) {
-          db.prepare('DELETE FROM inventory WHERE id = ?').run(inv.id);
+          drizzle.delete(inventory).where(eq(inventory.id, inv.id)).run();
         } else {
-          db.prepare('UPDATE inventory SET quantity = quantity - ? WHERE id = ?').run(qty, inv.id);
+          drizzle
+            .update(inventory)
+            .set({ quantity: sql`${inventory.quantity} - ${qty}` })
+            .where(eq(inventory.id, inv.id))
+            .run();
         }
         // Add to destination (lands in carried, merging with an existing stack)
-        db.prepare(`
-          INSERT INTO inventory (character_id, item_id, quantity, equipped, notes, storage_location_id)
-          VALUES (?, ?, ?, 0, NULL, ?)
-          ON CONFLICT(character_id, item_id, storage_location_id) DO UPDATE SET quantity = quantity + excluded.quantity
-        `).run(toCharacterId, inv.item_id, qty, destLocId);
+        drizzle
+          .insert(inventory)
+          .values({
+            characterId: toCharacterId,
+            itemId: inv.item_id,
+            quantity: qty,
+            equipped: 0,
+            notes: null,
+            storageLocationId: destLocId,
+          })
+          .onConflictDoUpdate({
+            target: [inventory.characterId, inventory.itemId, inventory.storageLocationId],
+            set: { quantity: sql`${inventory.quantity} + excluded.quantity` },
+          })
+          .run();
 
-        db.prepare(`
-          INSERT INTO transactions (party_id, character_id, item_id, item_name, delta_qty, reason, actor_user_id)
-          VALUES (?, ?, ?, ?, ?, 'transfer-out', ?)
-        `).run(fromChar.party_id, fromCharId, inv.item_id, itemName, -qty, userId);
-        db.prepare(`
-          INSERT INTO transactions (party_id, character_id, item_id, item_name, delta_qty, reason, actor_user_id)
-          VALUES (?, ?, ?, ?, ?, 'transfer-in', ?)
-        `).run(toChar.party_id, toCharacterId, inv.item_id, itemName, qty, userId);
-      });
-      tx();
+        logTransaction(drizzle, {
+          partyId: fromChar.party_id,
+          characterId: fromCharId,
+          itemId: inv.item_id,
+          itemName,
+          deltaQty: -qty,
+          reason: 'transfer-out',
+          actorUserId: userId,
+        });
+        logTransaction(drizzle, {
+          partyId: toChar.party_id,
+          characterId: toCharacterId,
+          itemId: inv.item_id,
+          itemName,
+          deltaQty: qty,
+          reason: 'transfer-in',
+          actorUserId: userId,
+        });
+      })();
 
       // Emit events for both source and destination characters
       bus.emitChange({
@@ -532,10 +622,8 @@ export async function inventoryRoutes(app: FastifyInstance) {
     ) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const char = db
-        .prepare('SELECT * FROM characters WHERE id = ?')
-        .get(Number(req.params.id)) as any;
+      const drizzle = getDrizzle();
+      const char = getCharacter(drizzle, Number(req.params.id));
       if (!char) return reply.code(404).send({ error: 'character not found' });
       if (!isOwnerOrGM(char, userId))
         return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
@@ -546,22 +634,28 @@ export async function inventoryRoutes(app: FastifyInstance) {
 
       // Find a tagged inventory item
       // For water: skip items with notes containing 'empty' (already drunk)
-      const notEmptyFilter =
+      const notEmpty =
         type === 'water'
-          ? "AND (inv.notes IS NULL OR inv.notes = '' OR inv.notes NOT LIKE '%empty%')"
-          : '';
+          ? sql`AND (${inventory.notes} IS NULL OR ${inventory.notes} = '' OR ${inventory.notes} NOT LIKE '%empty%')`
+          : sql``;
 
-      const entry = db
-        .prepare(`
-        SELECT inv.id AS inv_id, inv.quantity, inv.item_id, inv.notes, i.name_fr, i.name
-        FROM inventory inv
-        JOIN items i ON i.id = inv.item_id
-        WHERE inv.character_id = ? AND i.survival_tags LIKE ?
-        ${notEmptyFilter}
-        ORDER BY inv.quantity DESC
-        LIMIT 1
-      `)
-        .get(char.id, `%"${type}"%`) as any;
+      const entry = drizzle
+        .select({
+          inv_id: inventory.id,
+          quantity: inventory.quantity,
+          item_id: inventory.itemId,
+          notes: inventory.notes,
+          name_fr: items.nameFr,
+          name: items.name,
+        })
+        .from(inventory)
+        .innerJoin(items, eq(items.id, inventory.itemId))
+        .where(
+          sql`${inventory.characterId} = ${char.id} AND ${items.survivalTags} LIKE ${`%"${type}"%`} ${notEmpty}`,
+        )
+        .orderBy(desc(inventory.quantity))
+        .limit(1)
+        .get() as any;
 
       if (!entry || entry.quantity < 1) {
         const msg =
@@ -575,62 +669,89 @@ export async function inventoryRoutes(app: FastifyInstance) {
 
       if (type === 'food') {
         // Food is consumed (destroyed)
-        const tx = db.transaction(() => {
+        getDb().transaction(() => {
           if (entry.quantity <= 1) {
-            db.prepare('DELETE FROM inventory WHERE id = ?').run(entry.inv_id);
+            drizzle.delete(inventory).where(eq(inventory.id, entry.inv_id)).run();
           } else {
-            db.prepare('UPDATE inventory SET quantity = quantity - 1 WHERE id = ?').run(
-              entry.inv_id,
-            );
+            drizzle
+              .update(inventory)
+              .set({ quantity: sql`${inventory.quantity} - 1` })
+              .where(eq(inventory.id, entry.inv_id))
+              .run();
           }
-          db.prepare('UPDATE characters SET food_days = 0 WHERE id = ?').run(char.id);
-          db.prepare(`
-            INSERT INTO transactions (party_id, character_id, item_id, item_name, delta_qty, reason, actor_user_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-          `).run(char.party_id, char.id, entry.item_id, itemName, -1, 'consume-food', userId);
-        });
-        tx();
+          drizzle.update(characters).set({ foodDays: 0 }).where(eq(characters.id, char.id)).run();
+          logTransaction(drizzle, {
+            partyId: char.party_id,
+            characterId: char.id,
+            itemId: entry.item_id,
+            itemName,
+            deltaQty: -1,
+            reason: 'consume-food',
+            actorUserId: userId,
+          });
+        })();
       } else {
         // Water: decrement full waterskins, increment empty ones
         // The entry found is a "full" waterskin (not marked empty in notes)
-        const tx = db.transaction(() => {
+        getDb().transaction(() => {
           // Decrement the full entry
           if (entry.quantity <= 1) {
-            db.prepare('DELETE FROM inventory WHERE id = ?').run(entry.inv_id);
+            drizzle.delete(inventory).where(eq(inventory.id, entry.inv_id)).run();
           } else {
-            db.prepare('UPDATE inventory SET quantity = quantity - 1 WHERE id = ?').run(
-              entry.inv_id,
-            );
+            drizzle
+              .update(inventory)
+              .set({ quantity: sql`${inventory.quantity} - 1` })
+              .where(eq(inventory.id, entry.inv_id))
+              .run();
           }
 
           // Check if an "empty" entry already exists for this item+character
           // Empty entries are stored with storage_location_id = NULL to avoid UNIQUE collision
-          const emptyEntry = db
-            .prepare(`
-            SELECT id, quantity FROM inventory
-            WHERE character_id = ? AND item_id = ? AND notes LIKE '%empty%' AND storage_location_id IS NULL
-            LIMIT 1
-          `)
-            .get(char.id, entry.item_id) as any;
+          const emptyEntry = drizzle
+            .select({ id: inventory.id, quantity: inventory.quantity })
+            .from(inventory)
+            .where(
+              and(
+                eq(inventory.characterId, char.id),
+                eq(inventory.itemId, entry.item_id),
+                sql`${inventory.notes} LIKE '%empty%'`,
+                isNull(inventory.storageLocationId),
+              ),
+            )
+            .limit(1)
+            .get() as any;
 
           if (emptyEntry) {
-            db.prepare('UPDATE inventory SET quantity = quantity + 1 WHERE id = ?').run(
-              emptyEntry.id,
-            );
+            drizzle
+              .update(inventory)
+              .set({ quantity: sql`${inventory.quantity} + 1` })
+              .where(eq(inventory.id, emptyEntry.id))
+              .run();
           } else {
-            db.prepare(`
-              INSERT INTO inventory (character_id, item_id, quantity, equipped, notes, storage_location_id)
-              VALUES (?, ?, 1, 0, 'empty', NULL)
-            `).run(char.id, entry.item_id);
+            drizzle
+              .insert(inventory)
+              .values({
+                characterId: char.id,
+                itemId: entry.item_id,
+                quantity: 1,
+                equipped: 0,
+                notes: 'empty',
+                storageLocationId: null,
+              })
+              .run();
           }
 
-          db.prepare('UPDATE characters SET water_days = 0 WHERE id = ?').run(char.id);
-          db.prepare(`
-            INSERT INTO transactions (party_id, character_id, item_id, item_name, delta_qty, reason, actor_user_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-          `).run(char.party_id, char.id, entry.item_id, itemName, -1, 'consume-water', userId);
-        });
-        tx();
+          drizzle.update(characters).set({ waterDays: 0 }).where(eq(characters.id, char.id)).run();
+          logTransaction(drizzle, {
+            partyId: char.party_id,
+            characterId: char.id,
+            itemId: entry.item_id,
+            itemName,
+            deltaQty: -1,
+            reason: 'consume-water',
+            actorUserId: userId,
+          });
+        })();
       }
 
       bus.emitChange({
@@ -652,24 +773,32 @@ export async function inventoryRoutes(app: FastifyInstance) {
       // No body expected — this endpoint just refills all empty waterskins
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const char = db
-        .prepare('SELECT * FROM characters WHERE id = ?')
-        .get(Number(req.params.id)) as any;
+      const drizzle = getDrizzle();
+      const char = getCharacter(drizzle, Number(req.params.id));
       if (!char) return reply.code(404).send({ error: 'character not found' });
       if (!isOwnerOrGM(char, userId))
         return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
 
       // Find all empty waterskins
-      const empties = db
-        .prepare(`
-        SELECT inv.id AS inv_id, inv.quantity, inv.notes, inv.item_id, inv.storage_location_id, i.name_fr
-        FROM inventory inv
-        JOIN items i ON i.id = inv.item_id
-        WHERE inv.character_id = ? AND i.survival_tags LIKE '%water%'
-        AND inv.notes LIKE '%empty%'
-      `)
-        .all(char.id) as any[];
+      const empties = drizzle
+        .select({
+          inv_id: inventory.id,
+          quantity: inventory.quantity,
+          notes: inventory.notes,
+          item_id: inventory.itemId,
+          storage_location_id: inventory.storageLocationId,
+          name_fr: items.nameFr,
+        })
+        .from(inventory)
+        .innerJoin(items, eq(items.id, inventory.itemId))
+        .where(
+          and(
+            eq(inventory.characterId, char.id),
+            sql`${items.survivalTags} LIKE '%water%'`,
+            sql`${inventory.notes} LIKE '%empty%'`,
+          ),
+        )
+        .all() as any[];
 
       if (!empties.length) {
         return reply.code(400).send({ error: 'Aucune gourde vide à remplir' });
@@ -678,36 +807,46 @@ export async function inventoryRoutes(app: FastifyInstance) {
       const { ensureCarriedLocation } = await import('./locations.ts');
       const carriedId = ensureCarriedLocation(char.id);
 
-      const tx = db.transaction(() => {
+      getDb().transaction(() => {
         for (const e of empties) {
           const emptyQty = e.quantity;
           // Find the corresponding full entry (any location, no 'empty' note)
-          const fullEntry = db
-            .prepare(`
-            SELECT id, quantity FROM inventory
-            WHERE character_id = ? AND item_id = ?
-            AND (notes IS NULL OR notes = '' OR notes NOT LIKE '%empty%')
-            LIMIT 1
-          `)
-            .get(char.id, e.item_id) as any;
+          const fullEntry = drizzle
+            .select({ id: inventory.id, quantity: inventory.quantity })
+            .from(inventory)
+            .where(
+              and(
+                eq(inventory.characterId, char.id),
+                eq(inventory.itemId, e.item_id),
+                or(
+                  isNull(inventory.notes),
+                  eq(inventory.notes, ''),
+                  sql`${inventory.notes} NOT LIKE '%empty%'`,
+                ),
+              ),
+            )
+            .limit(1)
+            .get() as any;
 
           if (fullEntry) {
             // Merge into existing full stack
-            db.prepare('UPDATE inventory SET quantity = quantity + ? WHERE id = ?').run(
-              emptyQty,
-              fullEntry.id,
-            );
+            drizzle
+              .update(inventory)
+              .set({ quantity: sql`${inventory.quantity} + ${emptyQty}` })
+              .where(eq(inventory.id, fullEntry.id))
+              .run();
             // Delete the empty entry
-            db.prepare('DELETE FROM inventory WHERE id = ?').run(e.inv_id);
+            drizzle.delete(inventory).where(eq(inventory.id, e.inv_id)).run();
           } else {
             // No full entry exists — just clear the empty note and assign to carried
-            db.prepare(
-              'UPDATE inventory SET notes = NULL, storage_location_id = ? WHERE id = ?',
-            ).run(carriedId, e.inv_id);
+            drizzle
+              .update(inventory)
+              .set({ notes: null, storageLocationId: carriedId })
+              .where(eq(inventory.id, e.inv_id))
+              .run();
           }
         }
-      });
-      tx();
+      })();
 
       bus.emitChange({
         type: 'inventory:change',
@@ -730,16 +869,14 @@ export async function inventoryRoutes(app: FastifyInstance) {
       const partyId = Number(req.params.partyId);
       if (!isPartyGM(partyId, userId)) return reply.code(403).send({ error: 'GM only' });
 
-      const db = getDb();
-      const rows = db
-        .prepare(`
-        SELECT t.*, u.display_name AS actor_name
-        FROM transactions t LEFT JOIN users u ON u.id = t.actor_user_id
-        WHERE t.party_id = ?
-        ORDER BY t.at DESC, t.id DESC
-        LIMIT 200
-      `)
-        .all(partyId);
+      const rows = getDrizzle()
+        .select({ ...cols(transactions), actor_name: users.displayName })
+        .from(transactions)
+        .leftJoin(users, eq(users.id, transactions.actorUserId))
+        .where(eq(transactions.partyId, partyId))
+        .orderBy(desc(transactions.at), desc(transactions.id))
+        .limit(200)
+        .all();
       return reply.send({
         transactions: rows.map((r: any) => ({
           id: r.id,
