@@ -19,6 +19,8 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    // Production sourcemaps off: a 2.6 MB .map was shipping in dist/assets.
+    // Dev sourcemaps come from the dev server and are unaffected by this flag.
+    sourcemap: false,
   },
 });

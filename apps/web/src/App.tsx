@@ -1,20 +1,25 @@
 import type { ConcentrationCheck } from '@dnd-inventory/shared';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth';
 import CombatWidget from './components/CombatWidget';
 import ConcentrationAlert from './components/ConcentrationAlert';
 import { HeaderProvider, useHeaderState } from './headerContext';
-import CharacterCreatePage from './pages/CharacterCreatePage';
-import CharacterInventoryPage from './pages/CharacterInventoryPage';
-import CombatPage from './pages/CombatPage';
-import GmDashboardPage from './pages/GmDashboardPage';
-import LoginPage from './pages/LoginPage';
-import NpcPage from './pages/NpcPage';
-import PartiesPage from './pages/PartiesPage';
-import PartyPage from './pages/PartyPage';
-import RegisterPage from './pages/RegisterPage';
 import { useSync, useSyncEvent } from './sync';
+
+// Route pages are code-split: each lazy() becomes its own chunk so the login
+// screen doesn't pay for the GM dashboard / combat tracker / spell catalog.
+// The dynamic-import paths MUST stay stable (wave-2 keeps every page's default
+// export at the same path).
+const CharacterCreatePage = lazy(() => import('./pages/CharacterCreatePage'));
+const CharacterInventoryPage = lazy(() => import('./pages/CharacterInventoryPage'));
+const CombatPage = lazy(() => import('./pages/CombatPage'));
+const GmDashboardPage = lazy(() => import('./pages/GmDashboardPage'));
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const NpcPage = lazy(() => import('./pages/NpcPage'));
+const PartiesPage = lazy(() => import('./pages/PartiesPage'));
+const PartyPage = lazy(() => import('./pages/PartyPage'));
+const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 
 function SyncIndicator() {
   const { status } = useSync();
@@ -196,72 +201,83 @@ function ConcentrationWatcher() {
   return <ConcentrationAlert check={check} onDone={() => setCheck(null)} />;
 }
 
+/** Suspense fallback shown while a lazy route chunk downloads. */
+function RouteFallback() {
+  return (
+    <div className="card max-w-xs mx-auto mt-16 p-6 text-center" role="status" aria-live="polite">
+      <span className="text-ink-400 animate-pulse">Chargement…</span>
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <HeaderProvider>
       <Nav />
       <main className="max-w-6xl mx-auto px-4 py-6 pb-[calc(6rem+env(safe-area-inset-bottom))]">
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route
-            path="/parties"
-            element={
-              <ProtectedRoute>
-                <PartiesPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/party/:partyId"
-            element={
-              <ProtectedRoute>
-                <PartyPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/party/:partyId/create"
-            element={
-              <ProtectedRoute>
-                <CharacterCreatePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/party/:partyId/character/:charId"
-            element={
-              <ProtectedRoute>
-                <CharacterInventoryPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/party/:partyId/gm"
-            element={
-              <ProtectedRoute>
-                <GmDashboardPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/party/:partyId/npcs"
-            element={
-              <ProtectedRoute>
-                <NpcPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/party/:partyId/combat"
-            element={
-              <ProtectedRoute>
-                <CombatPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="*" element={<Navigate to="/parties" replace />} />
-        </Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route
+              path="/parties"
+              element={
+                <ProtectedRoute>
+                  <PartiesPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/party/:partyId"
+              element={
+                <ProtectedRoute>
+                  <PartyPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/party/:partyId/create"
+              element={
+                <ProtectedRoute>
+                  <CharacterCreatePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/party/:partyId/character/:charId"
+              element={
+                <ProtectedRoute>
+                  <CharacterInventoryPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/party/:partyId/gm"
+              element={
+                <ProtectedRoute>
+                  <GmDashboardPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/party/:partyId/npcs"
+              element={
+                <ProtectedRoute>
+                  <NpcPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/party/:partyId/combat"
+              element={
+                <ProtectedRoute>
+                  <CombatPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="*" element={<Navigate to="/parties" replace />} />
+          </Routes>
+        </Suspense>
       </main>
       <CombatWidget />
       <ConcentrationWatcher />
