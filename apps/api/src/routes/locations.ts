@@ -4,25 +4,58 @@
  */
 
 import type { CreateStorageLocationPayload } from '@dnd-inventory/shared';
+import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { getDrizzle } from '../db/drizzle.ts';
 import { getDb } from '../db/index.ts';
+import { cols } from '../db/projections.ts';
+import { characters, inventory, storageLocations } from '../db/schema.ts';
 import { bus } from '../sync/bus.ts';
 import { characterVisibleTo, isOwnerOrGM, isPartyMember, requireUser } from './helpers.ts';
 
-/** Ensure a character has a default "carried" location. Returns its ID. */
-export function ensureCarriedLocation(db: any, characterId: number): number {
-  const existing = db
-    .prepare("SELECT id FROM storage_locations WHERE character_id = ? AND type = 'carried'")
-    .get(characterId);
+/**
+ * Ensure a character has a default "carried" location. Returns its ID.
+ * Queries through Drizzle on the shared connection — inside a native
+ * better-sqlite3 transaction it joins that transaction like any raw statement.
+ */
+export function ensureCarriedLocation(characterId: number): number {
+  const drizzle = getDrizzle();
+  const existing = drizzle
+    .select({ id: storageLocations.id })
+    .from(storageLocations)
+    .where(and(eq(storageLocations.characterId, characterId), eq(storageLocations.type, 'carried')))
+    .get();
   if (existing) return existing.id;
 
-  const info = db
-    .prepare(`
-    INSERT INTO storage_locations (character_id, name, type, sort_order)
-    VALUES (?, 'Sur moi', 'carried', 0)
-  `)
-    .run(characterId);
-  return info.lastInsertRowid as number;
+  const { id } = drizzle
+    .insert(storageLocations)
+    .values({ characterId, name: 'Sur moi', type: 'carried', sortOrder: 0 })
+    .returning({ id: storageLocations.id })
+    .get();
+  return id;
+}
+
+function getCharacter(drizzle: ReturnType<typeof getDrizzle>, id: number): any {
+  return drizzle
+    .select(cols(characters))
+    .from(characters)
+    .where(eq(characters.id, id))
+    .get() as any;
+}
+
+function mapLocation(r: any) {
+  return {
+    id: r.id,
+    characterId: r.character_id,
+    name: r.name,
+    type: r.type,
+    strength: r.strength,
+    multiplier: r.multiplier,
+    capacityKg: r.capacity_kg,
+    ownWeightKg: r.own_weight_kg,
+    itemId: r.item_id,
+    sortOrder: r.sort_order,
+  };
 }
 
 export async function locationRoutes(app: FastifyInstance) {
@@ -32,10 +65,8 @@ export async function locationRoutes(app: FastifyInstance) {
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const char = db
-        .prepare('SELECT * FROM characters WHERE id = ?')
-        .get(Number(req.params.id)) as any;
+      const drizzle = getDrizzle();
+      const char = getCharacter(drizzle, Number(req.params.id));
       if (!char) return reply.code(404).send({ error: 'character not found' });
       if (!isPartyMember(char.party_id, userId))
         return reply.code(403).send({ error: 'not a member' });
@@ -44,28 +75,16 @@ export async function locationRoutes(app: FastifyInstance) {
         return reply.code(404).send({ error: 'character not found' });
 
       // Ensure carried exists
-      ensureCarriedLocation(db, char.id);
+      ensureCarriedLocation(char.id);
 
-      const rows = db
-        .prepare(`
-        SELECT * FROM storage_locations WHERE character_id = ? ORDER BY sort_order, type, id
-      `)
-        .all(char.id);
+      const rows = drizzle
+        .select(cols(storageLocations))
+        .from(storageLocations)
+        .where(eq(storageLocations.characterId, char.id))
+        .orderBy(storageLocations.sortOrder, storageLocations.type, storageLocations.id)
+        .all();
 
-      return reply.send({
-        locations: rows.map((r: any) => ({
-          id: r.id,
-          characterId: r.character_id,
-          name: r.name,
-          type: r.type,
-          strength: r.strength,
-          multiplier: r.multiplier,
-          capacityKg: r.capacity_kg,
-          ownWeightKg: r.own_weight_kg,
-          itemId: r.item_id,
-          sortOrder: r.sort_order,
-        })),
-      });
+      return reply.send({ locations: rows.map(mapLocation) });
     },
   );
 
@@ -78,10 +97,8 @@ export async function locationRoutes(app: FastifyInstance) {
     ) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const char = db
-        .prepare('SELECT * FROM characters WHERE id = ?')
-        .get(Number(req.params.id)) as any;
+      const drizzle = getDrizzle();
+      const char = getCharacter(drizzle, Number(req.params.id));
       if (!char) return reply.code(404).send({ error: 'character not found' });
       if (!isOwnerOrGM(char, userId))
         return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
@@ -91,31 +108,28 @@ export async function locationRoutes(app: FastifyInstance) {
 
       const maxOrder =
         (
-          db
-            .prepare('SELECT MAX(sort_order) as m FROM storage_locations WHERE character_id = ?')
-            .get(char.id) as any
+          drizzle
+            .select({ m: sql<number | null>`max(${storageLocations.sortOrder})` })
+            .from(storageLocations)
+            .where(eq(storageLocations.characterId, char.id))
+            .get() as any
         )?.m ?? 0;
 
-      const info = db
-        .prepare(`
-        INSERT INTO storage_locations (character_id, name, type, strength, multiplier, capacity_kg, own_weight_kg, item_id, sort_order)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `)
-        .run(
-          char.id,
-          body.name.trim(),
-          body.type || 'mount',
-          body.strength ?? null,
-          body.multiplier ?? 1,
-          body.capacityKg ?? null,
-          body.ownWeightKg ?? 0,
-          body.itemId ?? null,
-          maxOrder + 1,
-        );
-
-      const row = db
-        .prepare('SELECT * FROM storage_locations WHERE id = ?')
-        .get(info.lastInsertRowid) as any;
+      const row = drizzle
+        .insert(storageLocations)
+        .values({
+          characterId: char.id,
+          name: body.name.trim(),
+          type: body.type || 'mount',
+          strength: body.strength ?? null,
+          multiplier: body.multiplier ?? 1,
+          capacityKg: body.capacityKg ?? null,
+          ownWeightKg: body.ownWeightKg ?? 0,
+          itemId: body.itemId ?? null,
+          sortOrder: maxOrder + 1,
+        })
+        .returning(cols(storageLocations))
+        .get() as any;
 
       bus.emitChange({
         type: 'inventory:change',
@@ -124,20 +138,7 @@ export async function locationRoutes(app: FastifyInstance) {
         action: 'adjust',
       });
 
-      return reply.code(201).send({
-        location: {
-          id: row.id,
-          characterId: row.character_id,
-          name: row.name,
-          type: row.type,
-          strength: row.strength,
-          multiplier: row.multiplier,
-          capacityKg: row.capacity_kg,
-          ownWeightKg: row.own_weight_kg,
-          itemId: row.item_id,
-          sortOrder: row.sort_order,
-        },
-      });
+      return reply.code(201).send({ location: mapLocation(row) });
     },
   );
 
@@ -147,17 +148,19 @@ export async function locationRoutes(app: FastifyInstance) {
     async (req: FastifyRequest<{ Params: { locId: string } }>, reply: FastifyReply) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const loc = db
-        .prepare('SELECT * FROM storage_locations WHERE id = ?')
-        .get(Number(req.params.locId)) as any;
+      const drizzle = getDrizzle();
+      const loc = drizzle
+        .select(cols(storageLocations))
+        .from(storageLocations)
+        .where(eq(storageLocations.id, Number(req.params.locId)))
+        .get() as any;
       if (!loc) return reply.code(404).send({ error: 'location not found' });
 
       // Don't allow deleting the carried location
       if (loc.type === 'carried')
         return reply.code(400).send({ error: 'cannot delete carried location' });
 
-      const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(loc.character_id) as any;
+      const char = getCharacter(drizzle, loc.character_id);
       if (!isOwnerOrGM(char, userId))
         return reply.code(403).send({ error: 'only the owner or GM can edit this inventory' });
 
@@ -165,43 +168,57 @@ export async function locationRoutes(app: FastifyInstance) {
       // One transaction: merge/move every entry, then drop the location — a
       // mid-failure must not leave items pointing at a deleted (or
       // half-emptied) storage location.
-      const tx = db.transaction(() => {
-        const carriedId = ensureCarriedLocation(db, char.id);
+      const db = getDb();
+      db.transaction(() => {
+        const carriedId = ensureCarriedLocation(char.id);
 
         // For each item on this location, either add to existing carried
         // entry or move it
-        const itemsToMove = db
-          .prepare(
-            'SELECT id, item_id, quantity, equipped, notes FROM inventory WHERE storage_location_id = ?',
-          )
-          .all(loc.id) as any[];
+        const itemsToMove = drizzle
+          .select({
+            id: inventory.id,
+            item_id: inventory.itemId,
+            quantity: inventory.quantity,
+            equipped: inventory.equipped,
+            notes: inventory.notes,
+          })
+          .from(inventory)
+          .where(eq(inventory.storageLocationId, loc.id))
+          .all();
 
         for (const item of itemsToMove) {
-          const existing = db
-            .prepare(
-              'SELECT id, quantity FROM inventory WHERE character_id = ? AND item_id = ? AND storage_location_id = ?',
+          const existing = drizzle
+            .select({ id: inventory.id, quantity: inventory.quantity })
+            .from(inventory)
+            .where(
+              and(
+                eq(inventory.characterId, char.id),
+                eq(inventory.itemId, item.item_id),
+                eq(inventory.storageLocationId, carriedId),
+              ),
             )
-            .get(char.id, item.item_id, carriedId) as any;
+            .get();
 
           if (existing) {
             // Merge: add quantity to existing entry, delete the moving one
-            db.prepare('UPDATE inventory SET quantity = quantity + ? WHERE id = ?').run(
-              item.quantity,
-              existing.id,
-            );
-            db.prepare('DELETE FROM inventory WHERE id = ?').run(item.id);
+            drizzle
+              .update(inventory)
+              .set({ quantity: sql`${inventory.quantity} + ${item.quantity}` })
+              .where(eq(inventory.id, existing.id))
+              .run();
+            drizzle.delete(inventory).where(eq(inventory.id, item.id)).run();
           } else {
             // Just move it
-            db.prepare('UPDATE inventory SET storage_location_id = ? WHERE id = ?').run(
-              carriedId,
-              item.id,
-            );
+            drizzle
+              .update(inventory)
+              .set({ storageLocationId: carriedId })
+              .where(eq(inventory.id, item.id))
+              .run();
           }
         }
 
-        db.prepare('DELETE FROM storage_locations WHERE id = ?').run(loc.id);
-      });
-      tx();
+        drizzle.delete(storageLocations).where(eq(storageLocations.id, loc.id)).run();
+      })();
 
       bus.emitChange({
         type: 'inventory:change',

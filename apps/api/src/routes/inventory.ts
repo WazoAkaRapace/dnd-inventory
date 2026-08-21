@@ -74,7 +74,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
 
       // Ensure carried location exists
       const { ensureCarriedLocation } = await import('./locations.ts');
-      const carriedLocId = ensureCarriedLocation(db, char.id);
+      const carriedLocId = ensureCarriedLocation(char.id);
 
       // Load all storage locations for this character
       const locRows = db
@@ -256,7 +256,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
 
       // Resolve storage location (default to carried)
       const { ensureCarriedLocation } = await import('./locations.ts');
-      const carriedId = ensureCarriedLocation(db, char.id);
+      const carriedId = ensureCarriedLocation(char.id);
       const locId = body.storageLocationId ?? carriedId;
 
       db.prepare(`
@@ -481,7 +481,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
       // Destination upsert must target the carried location to match the
       // UNIQUE(character_id, item_id, storage_location_id) constraint.
       const { ensureCarriedLocation } = await import('./locations.ts');
-      const destLocId = ensureCarriedLocation(db, toCharacterId);
+      const destLocId = ensureCarriedLocation(toCharacterId);
 
       const tx = db.transaction(() => {
         // Remove from source
@@ -676,7 +676,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
       }
 
       const { ensureCarriedLocation } = await import('./locations.ts');
-      const carriedId = ensureCarriedLocation(db, char.id);
+      const carriedId = ensureCarriedLocation(char.id);
 
       const tx = db.transaction(() => {
         for (const e of empties) {

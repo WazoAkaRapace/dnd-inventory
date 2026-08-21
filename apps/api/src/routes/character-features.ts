@@ -17,8 +17,11 @@ import type {
   PatchCharacterFeaturePayload,
 } from '@dnd-inventory/shared';
 import { classFeatureResourceMax, findClassFeature } from '@dnd-inventory/shared';
+import { eq, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { getDb } from '../db/index.ts';
+import { getDrizzle } from '../db/drizzle.ts';
+import { cols } from '../db/projections.ts';
+import { characterFeatures, characters } from '../db/schema.ts';
 import { bus } from '../sync/bus.ts';
 import {
   attachCharacterClasses,
@@ -36,10 +39,18 @@ import {
  * Returns null if the feature row doesn't exist.
  */
 function getFeatureWithCharacter(featureId: number): { feature: any; char: any } | null {
-  const db = getDb();
-  const feature = db.prepare('SELECT * FROM character_features WHERE id = ?').get(featureId) as any;
+  const drizzle = getDrizzle();
+  const feature = drizzle
+    .select(cols(characterFeatures))
+    .from(characterFeatures)
+    .where(eq(characterFeatures.id, featureId))
+    .get() as any;
   if (!feature) return null;
-  const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(feature.character_id) as any;
+  const char = drizzle
+    .select(cols(characters))
+    .from(characters)
+    .where(eq(characters.id, feature.character_id))
+    .get() as any;
   if (!char) return null;
   return { feature, char };
 }
@@ -49,6 +60,14 @@ function isOwnerOrGM(char: any, userId: number): boolean {
   return char.owner_id === userId || isPartyGM(char.party_id, userId);
 }
 
+function getCharacter(drizzle: ReturnType<typeof getDrizzle>, id: number): any {
+  return drizzle
+    .select(cols(characters))
+    .from(characters)
+    .where(eq(characters.id, id))
+    .get() as any;
+}
+
 export async function characterFeatureRoutes(app: FastifyInstance) {
   // ---------- List a character's features ----------
   app.get(
@@ -56,10 +75,8 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const char = db
-        .prepare('SELECT * FROM characters WHERE id = ?')
-        .get(Number(req.params.id)) as any;
+      const drizzle = getDrizzle();
+      const char = getCharacter(drizzle, Number(req.params.id));
       if (!char) return reply.code(404).send({ error: 'character not found' });
       if (!isPartyMember(char.party_id, userId)) {
         return reply.code(403).send({ error: 'not a member' });
@@ -69,13 +86,12 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
         return reply.code(404).send({ error: 'character not found' });
       }
 
-      const rows = db
-        .prepare(`
-        SELECT * FROM character_features
-        WHERE character_id = ?
-        ORDER BY sort_order ASC, created_at ASC
-      `)
-        .all(char.id);
+      const rows = drizzle
+        .select(cols(characterFeatures))
+        .from(characterFeatures)
+        .where(eq(characterFeatures.characterId, char.id))
+        .orderBy(characterFeatures.sortOrder, characterFeatures.createdAt)
+        .all();
 
       return reply.send({ features: rows.map(mapFeature) });
     },
@@ -90,10 +106,8 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
     ) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const char = db
-        .prepare('SELECT * FROM characters WHERE id = ?')
-        .get(Number(req.params.id)) as any;
+      const drizzle = getDrizzle();
+      const char = getCharacter(drizzle, Number(req.params.id));
       if (!char) return reply.code(404).send({ error: 'character not found' });
       if (!isPartyMember(char.party_id, userId)) {
         return reply.code(403).send({ error: 'not a member' });
@@ -126,21 +140,22 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
       const resetType = body.resetType ?? null;
 
       // Compute sort_order as MAX(sort_order)+1 for this character (0 if none yet).
-      const maxRow = db
-        .prepare(
-          'SELECT COALESCE(MAX(sort_order), -1) AS max_sort FROM character_features WHERE character_id = ?',
-        )
-        .get(char.id) as any;
-      const sortOrder = (maxRow?.max_sort ?? -1) + 1;
+      const maxSort = (
+        drizzle
+          .select({
+            max_sort: sql<number>`coalesce(max(${characterFeatures.sortOrder}), -1)`,
+          })
+          .from(characterFeatures)
+          .where(eq(characterFeatures.characterId, char.id))
+          .get() as any
+      ).max_sort;
+      const sortOrder = maxSort + 1;
 
-      const info = db
-        .prepare(`
-        INSERT INTO character_features (character_id, title, category, description, catalog_id, reset_type, counter_max, counter_current, sort_order)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `)
-        .run(
-          char.id,
-          body.title.trim(),
+      const { id } = drizzle
+        .insert(characterFeatures)
+        .values({
+          characterId: char.id,
+          title: body.title.trim(),
           category,
           description,
           catalogId,
@@ -148,10 +163,15 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
           counterMax,
           counterCurrent,
           sortOrder,
-        );
+        })
+        .returning({ id: characterFeatures.id })
+        .get();
 
-      const featureId = info.lastInsertRowid as number;
-      const row = db.prepare('SELECT * FROM character_features WHERE id = ?').get(featureId);
+      const row = drizzle
+        .select(cols(characterFeatures))
+        .from(characterFeatures)
+        .where(eq(characterFeatures.id, id))
+        .get();
 
       bus.emitChange({
         type: 'character:change',
@@ -173,7 +193,7 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
     ) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
+      const drizzle = getDrizzle();
       const resolved = getFeatureWithCharacter(Number(req.params.featureId));
       if (!resolved) return reply.code(404).send({ error: 'feature not found' });
       const { feature, char } = resolved;
@@ -185,54 +205,41 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
       }
 
       const body = req.body || {};
-      const sets: string[] = [];
-      const vals: any[] = [];
-      if (body.title !== undefined) {
-        sets.push('title = ?');
-        vals.push(body.title);
-      }
-      if (body.category !== undefined) {
-        sets.push('category = ?');
-        vals.push(body.category);
-      }
-      if (body.description !== undefined) {
-        sets.push('description = ?');
-        vals.push(body.description);
-      }
-      if (body.catalogId !== undefined) {
-        sets.push('catalog_id = ?');
-        vals.push(body.catalogId);
-      }
-      if (body.resetType !== undefined) {
-        sets.push('reset_type = ?');
-        vals.push(body.resetType);
-      }
+      const values: Record<string, unknown> = {};
+      if (body.title !== undefined) values.title = body.title;
+      if (body.category !== undefined) values.category = body.category;
+      if (body.description !== undefined) values.description = body.description;
+      if (body.catalogId !== undefined) values.catalogId = body.catalogId;
+      if (body.resetType !== undefined) values.resetType = body.resetType;
       if (body.counterMax !== undefined) {
-        sets.push('counter_max = ?');
-        vals.push(body.counterMax);
+        values.counterMax = body.counterMax;
         // If setting a new max and current is null or exceeds new max, reset to max
         if (
           body.counterMax !== null &&
           (feature.counter_current === null || feature.counter_current > body.counterMax)
         ) {
-          sets.push('counter_current = ?');
-          vals.push(body.counterMax);
+          values.counterCurrent = body.counterMax;
         }
         // If removing the counter (null), also clear current
         if (body.counterMax === null) {
-          sets.push('counter_current = ?');
-          vals.push(null);
+          values.counterCurrent = null;
         }
       }
-      if (body.counterCurrent !== undefined) {
-        sets.push('counter_current = ?');
-        vals.push(body.counterCurrent);
+      if (body.counterCurrent !== undefined) values.counterCurrent = body.counterCurrent;
+      if (Object.keys(values).length === 0) {
+        return reply.code(400).send({ error: 'no fields to update' });
       }
-      if (sets.length === 0) return reply.code(400).send({ error: 'no fields to update' });
-      vals.push(feature.id);
-      db.prepare(`UPDATE character_features SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+      drizzle
+        .update(characterFeatures)
+        .set(values)
+        .where(eq(characterFeatures.id, feature.id))
+        .run();
 
-      const row = db.prepare('SELECT * FROM character_features WHERE id = ?').get(feature.id);
+      const row = drizzle
+        .select(cols(characterFeatures))
+        .from(characterFeatures)
+        .where(eq(characterFeatures.id, feature.id))
+        .get();
 
       bus.emitChange({
         type: 'character:change',
@@ -251,7 +258,7 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
     async (req: FastifyRequest<{ Params: { featureId: string } }>, reply: FastifyReply) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
+      const drizzle = getDrizzle();
       const resolved = getFeatureWithCharacter(Number(req.params.featureId));
       if (!resolved) return reply.code(404).send({ error: 'feature not found' });
       const { feature, char } = resolved;
@@ -262,7 +269,7 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
         return reply.code(403).send({ error: 'only the owner or GM can modify features' });
       }
 
-      db.prepare('DELETE FROM character_features WHERE id = ?').run(feature.id);
+      drizzle.delete(characterFeatures).where(eq(characterFeatures.id, feature.id)).run();
       bus.emitChange({
         type: 'character:change',
         partyId: char.party_id,

@@ -8,8 +8,11 @@ import type {
   CreateCharacterNotePayload,
   PatchCharacterNotePayload,
 } from '@dnd-inventory/shared';
+import { eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { getDb } from '../db/index.ts';
+import { getDrizzle } from '../db/drizzle.ts';
+import { cols } from '../db/projections.ts';
+import { characterNotes, characters } from '../db/schema.ts';
 import { bus } from '../sync/bus.ts';
 import { characterVisibleTo, isPartyGM, isPartyMember, requireUser } from './helpers.ts';
 
@@ -26,12 +29,28 @@ function mapNote(row: any): CharacterNote {
 }
 
 function getNoteWithCharacter(noteId: number): { note: any; char: any } | null {
-  const db = getDb();
-  const note = db.prepare('SELECT * FROM character_notes WHERE id = ?').get(noteId) as any;
+  const drizzle = getDrizzle();
+  const note = drizzle
+    .select(cols(characterNotes))
+    .from(characterNotes)
+    .where(eq(characterNotes.id, noteId))
+    .get() as any;
   if (!note) return null;
-  const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(note.character_id) as any;
+  const char = drizzle
+    .select(cols(characters))
+    .from(characters)
+    .where(eq(characters.id, note.character_id))
+    .get() as any;
   if (!char) return null;
   return { note, char };
+}
+
+function getCharacter(drizzle: ReturnType<typeof getDrizzle>, id: number): any {
+  return drizzle
+    .select(cols(characters))
+    .from(characters)
+    .where(eq(characters.id, id))
+    .get() as any;
 }
 
 function isOwnerOrGM(char: any, userId: number): boolean {
@@ -43,8 +62,8 @@ export async function characterNoteRoutes(app: FastifyInstance) {
     const userId = await requireUser(req, reply);
     if (!userId) return;
     const charId = Number((req.params as any).id);
-    const db = getDb();
-    const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(charId) as any;
+    const drizzle = getDrizzle();
+    const char = getCharacter(drizzle, charId);
     if (!char) return reply.code(404).send({ error: 'Character not found' });
     if (!isPartyMember(char.party_id, userId))
       return reply.code(403).send({ error: 'Not a party member' });
@@ -52,11 +71,12 @@ export async function characterNoteRoutes(app: FastifyInstance) {
     if (!characterVisibleTo(char, userId))
       return reply.code(404).send({ error: 'Character not found' });
 
-    const rows = db
-      .prepare(
-        'SELECT * FROM character_notes WHERE character_id = ? ORDER BY sort_order ASC, created_at ASC',
-      )
-      .all(charId);
+    const rows = drizzle
+      .select(cols(characterNotes))
+      .from(characterNotes)
+      .where(eq(characterNotes.characterId, charId))
+      .orderBy(characterNotes.sortOrder, characterNotes.createdAt)
+      .all();
     return { notes: rows.map(mapNote) };
   });
 
@@ -64,8 +84,8 @@ export async function characterNoteRoutes(app: FastifyInstance) {
     const userId = await requireUser(req, reply);
     if (!userId) return;
     const charId = Number((req.params as any).id);
-    const db = getDb();
-    const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(charId) as any;
+    const drizzle = getDrizzle();
+    const char = getCharacter(drizzle, charId);
     if (!char) return reply.code(404).send({ error: 'Character not found' });
     if (!isPartyMember(char.party_id, userId))
       return reply.code(403).send({ error: 'Not a party member' });
@@ -76,23 +96,27 @@ export async function characterNoteRoutes(app: FastifyInstance) {
     const title = body?.title?.trim();
     if (!title) return reply.code(400).send({ error: 'Title is required' });
 
-    const sortOrder = (
-      db
-        .prepare(
-          'SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM character_notes WHERE character_id = ?',
-        )
-        .get(charId) as any
+    const nextSort = (
+      drizzle
+        .select({
+          next: sql<number>`coalesce(max(${characterNotes.sortOrder}), -1) + 1`,
+        })
+        .from(characterNotes)
+        .where(eq(characterNotes.characterId, charId))
+        .get() as any
     ).next;
 
-    const result = db
-      .prepare(
-        `INSERT INTO character_notes (character_id, title, content, sort_order) VALUES (?, ?, ?, ?)`,
-      )
-      .run(charId, title, body.content?.trim() || null, sortOrder);
-
-    const note = mapNote(
-      db.prepare('SELECT * FROM character_notes WHERE id = ?').get(result.lastInsertRowid),
-    );
+    const row = drizzle
+      .insert(characterNotes)
+      .values({
+        characterId: charId,
+        title,
+        content: body.content?.trim() || null,
+        sortOrder: nextSort,
+      })
+      .returning(cols(characterNotes))
+      .get();
+    const note = mapNote(row);
     bus.emitChange({
       type: 'character:change',
       partyId: char.party_id,
@@ -116,23 +140,23 @@ export async function characterNoteRoutes(app: FastifyInstance) {
       return reply.code(403).send({ error: 'Only the owner or GM can modify' });
 
     const body = req.body as PatchCharacterNotePayload;
-    const sets: string[] = [];
-    const vals: any[] = [];
-    if (body.title !== undefined) {
-      sets.push('title = ?');
-      vals.push(body.title.trim());
+    const values: Record<string, unknown> = {};
+    if (body.title !== undefined) values.title = body.title.trim();
+    if (body.content !== undefined) values.content = body.content;
+    if (Object.keys(values).length === 0) {
+      return reply.code(400).send({ error: 'No fields to update' });
     }
-    if (body.content !== undefined) {
-      sets.push('content = ?');
-      vals.push(body.content);
-    }
-    if (sets.length === 0) return reply.code(400).send({ error: 'No fields to update' });
-    sets.push("updated_at = datetime('now')");
-    vals.push(noteId);
+    values.updatedAt = sql`datetime('now')`;
 
-    const db = getDb();
-    db.prepare(`UPDATE character_notes SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
-    const updated = mapNote(db.prepare('SELECT * FROM character_notes WHERE id = ?').get(noteId));
+    const drizzle = getDrizzle();
+    drizzle.update(characterNotes).set(values).where(eq(characterNotes.id, noteId)).run();
+    const updated = mapNote(
+      drizzle
+        .select(cols(characterNotes))
+        .from(characterNotes)
+        .where(eq(characterNotes.id, noteId))
+        .get(),
+    );
     bus.emitChange({
       type: 'character:change',
       partyId: char.party_id,
@@ -155,8 +179,7 @@ export async function characterNoteRoutes(app: FastifyInstance) {
     if (!isOwnerOrGM(char, userId))
       return reply.code(403).send({ error: 'Only the owner or GM can modify' });
 
-    const db = getDb();
-    db.prepare('DELETE FROM character_notes WHERE id = ?').run(noteId);
+    getDrizzle().delete(characterNotes).where(eq(characterNotes.id, noteId)).run();
     bus.emitChange({
       type: 'character:change',
       partyId: char.party_id,

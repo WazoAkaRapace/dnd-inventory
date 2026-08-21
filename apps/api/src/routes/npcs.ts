@@ -5,8 +5,11 @@
  */
 
 import type { CreateNpcPayload, PatchNpcPayload } from '@dnd-inventory/shared';
+import { and, eq, or, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { getDb } from '../db/index.ts';
+import { getDrizzle } from '../db/drizzle.ts';
+import { cols } from '../db/projections.ts';
+import { npcs, users } from '../db/schema.ts';
 import { bus } from '../sync/bus.ts';
 import { isPartyGM, isPartyMember, requireUser } from './helpers.ts';
 
@@ -27,6 +30,9 @@ export interface NpcRow {
   sortOrder: number;
 }
 
+/** npcs.* + the creator's display_name (JOIN users) — the shape mapNpc reads. */
+const NPC_WITH_CREATOR = { ...cols(npcs), creator_name: users.displayName };
+
 function mapNpc(row: any, includeSecret: boolean): NpcRow {
   return {
     id: row.id,
@@ -46,6 +52,16 @@ function mapNpc(row: any, includeSecret: boolean): NpcRow {
   };
 }
 
+/** NPC by id with creator name — used by PATCH/DELETE to resolve ownership. */
+function getNpcWithCreator(drizzle: ReturnType<typeof getDrizzle>, npcId: number): any {
+  return drizzle
+    .select(NPC_WITH_CREATOR)
+    .from(npcs)
+    .innerJoin(users, eq(npcs.createdBy, users.id))
+    .where(eq(npcs.id, npcId))
+    .get();
+}
+
 export async function npcRoutes(app: FastifyInstance) {
   // ---------- List NPCs visible to the requesting user ----------
   app.get(
@@ -57,28 +73,28 @@ export async function npcRoutes(app: FastifyInstance) {
       if (!isPartyMember(partyId, userId)) return reply.code(403).send({ error: 'not a member' });
 
       const gm = isPartyGM(partyId, userId);
-      const db = getDb();
+      const drizzle = getDrizzle();
 
       // GM sees all; players see shared + their own private
-      const where = gm ? 'party_id = ?' : '(party_id = ? AND (is_shared = 1 OR created_by = ?))';
-      const params = gm ? [partyId] : [partyId, userId];
+      const visibility = gm
+        ? eq(npcs.partyId, partyId)
+        : and(eq(npcs.partyId, partyId), or(eq(npcs.isShared, 1), eq(npcs.createdBy, userId)));
 
-      const rows = db
-        .prepare(`
-        SELECT n.*, u.display_name AS creator_name
-        FROM npcs n JOIN users u ON u.id = n.created_by
-        WHERE ${where}
-        ORDER BY n.sort_order, n.name COLLATE NOCASE ASC
-      `)
-        .all(...params);
+      const rows = drizzle
+        .select(NPC_WITH_CREATOR)
+        .from(npcs)
+        .innerJoin(users, eq(npcs.createdBy, users.id))
+        .where(visibility)
+        .orderBy(npcs.sortOrder, sql`${npcs.name} COLLATE NOCASE ASC`)
+        .all();
 
-      const npcs = rows.map((r: any) => {
+      const npcsOut = rows.map((r: any) => {
         // Secret visible to creator + GM
         const canSeeSecret = gm || r.created_by === userId;
         return mapNpc(r, canSeeSecret);
       });
 
-      return reply.send({ npcs });
+      return reply.send({ npcs: npcsOut });
     },
   );
 
@@ -97,38 +113,36 @@ export async function npcRoutes(app: FastifyInstance) {
       const body = req.body || ({} as CreateNpcPayload);
       if (!body.name?.trim()) return reply.code(400).send({ error: 'name is required' });
 
-      const db = getDb();
+      const drizzle = getDrizzle();
       const maxOrder =
-        (db.prepare('SELECT MAX(sort_order) as m FROM npcs WHERE party_id = ?').get(partyId) as any)
-          ?.m ?? 0;
+        (
+          drizzle
+            .select({ m: sql<number | null>`max(${npcs.sortOrder})` })
+            .from(npcs)
+            .where(eq(npcs.partyId, partyId))
+            .get() as any
+        )?.m ?? 0;
 
-      const info = db
-        .prepare(`
-        INSERT INTO npcs (party_id, created_by, name, role, location, faction, disposition, status, description, secret, is_shared, sort_order)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `)
-        .run(
+      const { id } = drizzle
+        .insert(npcs)
+        .values({
           partyId,
-          userId,
-          body.name.trim(),
-          body.role || null,
-          body.location || null,
-          body.faction || null,
-          body.disposition || 'neutral',
-          body.status || 'alive',
-          body.description || null,
-          body.secret || null,
-          body.isShared === false ? 0 : 1,
-          maxOrder + 1,
-        );
+          createdBy: userId,
+          name: body.name.trim(),
+          role: body.role || null,
+          location: body.location || null,
+          faction: body.faction || null,
+          disposition: body.disposition || 'neutral',
+          status: body.status || 'alive',
+          description: body.description || null,
+          secret: body.secret || null,
+          isShared: body.isShared === false ? 0 : 1,
+          sortOrder: maxOrder + 1,
+        })
+        .returning({ id: npcs.id })
+        .get();
 
-      const row = db
-        .prepare(`
-        SELECT n.*, u.display_name AS creator_name
-        FROM npcs n JOIN users u ON u.id = n.created_by
-        WHERE n.id = ?
-      `)
-        .get(info.lastInsertRowid);
+      const row = getNpcWithCreator(drizzle, id);
 
       bus.emitChange({ type: 'party:change', partyId, action: 'custom-item', actorUserId: userId });
 
@@ -145,10 +159,12 @@ export async function npcRoutes(app: FastifyInstance) {
     ) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const npc = db
-        .prepare('SELECT * FROM npcs WHERE id = ?')
-        .get(Number(req.params.npcId)) as any;
+      const drizzle = getDrizzle();
+      const npc = drizzle
+        .select(cols(npcs))
+        .from(npcs)
+        .where(eq(npcs.id, Number(req.params.npcId)))
+        .get() as any;
       if (!npc) return reply.code(404).send({ error: 'NPC not found' });
 
       const gm = isPartyGM(npc.party_id, userId);
@@ -157,9 +173,8 @@ export async function npcRoutes(app: FastifyInstance) {
       }
 
       const body = req.body || {};
-      const sets: string[] = [];
-      const vals: any[] = [];
-      const editable: Array<[keyof PatchNpcPayload, string]> = [
+      const values: Record<string, unknown> = {};
+      const editable: Array<[keyof PatchNpcPayload, keyof typeof npcs.$inferInsert]> = [
         ['name', 'name'],
         ['role', 'role'],
         ['location', 'location'],
@@ -169,28 +184,21 @@ export async function npcRoutes(app: FastifyInstance) {
         ['description', 'description'],
         ['secret', 'secret'],
       ];
-      for (const [key, col] of editable) {
+      for (const [key, column] of editable) {
         const val = (body as Record<string, unknown>)[key];
         if (val === undefined) continue;
-        sets.push(`${col} = ?`);
-        vals.push(val);
+        values[column] = val;
       }
       if (body.isShared !== undefined) {
-        sets.push('is_shared = ?');
-        vals.push(body.isShared ? 1 : 0);
+        values.isShared = body.isShared ? 1 : 0;
       }
 
-      if (sets.length === 0) return reply.code(400).send({ error: 'no fields to update' });
-      vals.push(npc.id);
-      db.prepare(`UPDATE npcs SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+      if (Object.keys(values).length === 0) {
+        return reply.code(400).send({ error: 'no fields to update' });
+      }
+      drizzle.update(npcs).set(values).where(eq(npcs.id, npc.id)).run();
 
-      const row = db
-        .prepare(`
-        SELECT n.*, u.display_name AS creator_name
-        FROM npcs n JOIN users u ON u.id = n.created_by
-        WHERE n.id = ?
-      `)
-        .get(npc.id);
+      const row = getNpcWithCreator(drizzle, npc.id);
 
       bus.emitChange({
         type: 'party:change',
@@ -209,10 +217,12 @@ export async function npcRoutes(app: FastifyInstance) {
     async (req: FastifyRequest<{ Params: { npcId: string } }>, reply: FastifyReply) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const npc = db
-        .prepare('SELECT * FROM npcs WHERE id = ?')
-        .get(Number(req.params.npcId)) as any;
+      const drizzle = getDrizzle();
+      const npc = drizzle
+        .select(cols(npcs))
+        .from(npcs)
+        .where(eq(npcs.id, Number(req.params.npcId)))
+        .get() as any;
       if (!npc) return reply.code(404).send({ error: 'NPC not found' });
 
       const gm = isPartyGM(npc.party_id, userId);
@@ -220,7 +230,7 @@ export async function npcRoutes(app: FastifyInstance) {
         return reply.code(403).send({ error: 'only the creator or GM can delete' });
       }
 
-      db.prepare('DELETE FROM npcs WHERE id = ?').run(npc.id);
+      drizzle.delete(npcs).where(eq(npcs.id, npc.id)).run();
       bus.emitChange({
         type: 'party:change',
         partyId: npc.party_id,

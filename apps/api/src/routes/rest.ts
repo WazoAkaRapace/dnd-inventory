@@ -11,8 +11,17 @@
  */
 
 import { applyRest, type FeatureResetType } from '@dnd-inventory/shared';
+import { and, eq, ne } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { getDb } from '../db/index.ts';
+import { getDrizzle } from '../db/drizzle.ts';
+import { cols } from '../db/projections.ts';
+import {
+  characterClasses,
+  characterFeatures,
+  characters,
+  combatants,
+  encounters,
+} from '../db/schema.ts';
 import { bus } from '../sync/bus.ts';
 import {
   attachCharacterClasses,
@@ -34,10 +43,12 @@ export async function restRoutes(app: FastifyInstance) {
     ) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const char = db
-        .prepare('SELECT * FROM characters WHERE id = ?')
-        .get(Number(req.params.id)) as any;
+      const drizzle = getDrizzle();
+      const char = drizzle
+        .select(cols(characters))
+        .from(characters)
+        .where(eq(characters.id, Number(req.params.id)))
+        .get() as any;
       if (!char) return reply.code(404).send({ error: 'character not found' });
       const isGM = isPartyGM(char.party_id, userId);
       if (!isPartyMember(char.party_id, userId)) {
@@ -61,11 +72,17 @@ export async function restRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'healedHp doit être un nombre positif' });
       }
 
-      const featureRows = db
-        .prepare(
-          'SELECT id, catalog_id, reset_type, counter_max, counter_current FROM character_features WHERE character_id = ?',
-        )
-        .all(char.id) as any[];
+      const featureRows = drizzle
+        .select({
+          id: characterFeatures.id,
+          catalog_id: characterFeatures.catalogId,
+          reset_type: characterFeatures.resetType,
+          counter_max: characterFeatures.counterMax,
+          counter_current: characterFeatures.counterCurrent,
+        })
+        .from(characterFeatures)
+        .where(eq(characterFeatures.characterId, char.id))
+        .all();
       // snake_case rows → the camelCase shape applyRest expects
       const features = featureRows.map((r) => ({
         id: r.id as number,
@@ -85,75 +102,85 @@ export async function restRoutes(app: FastifyInstance) {
       });
 
       // --- Persist the character patch (known subset of PatchCharacterPayload)
-      const colMap: Record<string, string> = {
-        currentHp: 'current_hp',
-        tempHp: 'temp_hp',
-        spellSlotsUsed: 'spell_slots_used',
-        pactSlotsUsed: 'pact_slots_used',
-        hitDiceUsed: 'hit_dice_used',
-        exhaustion: 'exhaustion',
-        deathSaveSuccesses: 'death_save_successes',
-        deathSaveFailures: 'death_save_failures',
-        concentrating: 'concentrating',
-        wildShapeUses: 'wild_shape_uses',
-      };
       const patch = result.characterPatch as Record<string, any>;
-      const sets: string[] = [];
-      const vals: any[] = [];
-      for (const [key, col] of Object.entries(colMap)) {
+      const values: Record<string, unknown> = {};
+      const patchable: Array<[string, keyof typeof characters.$inferInsert]> = [
+        ['currentHp', 'currentHp'],
+        ['tempHp', 'tempHp'],
+        ['spellSlotsUsed', 'spellSlotsUsed'],
+        ['pactSlotsUsed', 'pactSlotsUsed'],
+        ['hitDiceUsed', 'hitDiceUsed'],
+        ['exhaustion', 'exhaustion'],
+        ['deathSaveSuccesses', 'deathSaveSuccesses'],
+        ['deathSaveFailures', 'deathSaveFailures'],
+        ['concentrating', 'concentrating'],
+        ['wildShapeUses', 'wildShapeUses'],
+      ];
+      for (const [key, column] of patchable) {
         if (patch[key] === undefined) continue;
-        sets.push(`${col} = ?`);
         if (key === 'spellSlotsUsed' || key === 'pactSlotsUsed')
-          vals.push(JSON.stringify(patch[key]));
-        else if (typeof patch[key] === 'boolean') vals.push(patch[key] ? 1 : 0);
-        else vals.push(patch[key]);
+          values[column] = JSON.stringify(patch[key]);
+        else if (typeof patch[key] === 'boolean') values[column] = patch[key] ? 1 : 0;
+        else values[column] = patch[key];
       }
       // Long rest: the shape never outlasts 8 hours — revert to normal form.
       if (body.type === 'long' && char.wild_shape_slug) {
-        sets.push('wild_shape_slug = NULL', 'wild_shape_hp = NULL', 'wild_shape_max_hp = NULL');
+        values.wildShapeSlug = null;
+        values.wildShapeHp = null;
+        values.wildShapeMaxHp = null;
       }
-      if (sets.length > 0) {
-        vals.push(char.id);
-        db.prepare(`UPDATE characters SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+      if (Object.keys(values).length > 0) {
+        drizzle.update(characters).set(values).where(eq(characters.id, char.id)).run();
       }
 
       // --- Multiclassage : dés de vie par ligne de classe (pool par type de dé)
-      if (result.classHitDice.length > 0) {
-        const diceStmt = db.prepare(
-          'UPDATE character_classes SET hit_dice_used = ? WHERE character_id = ? AND class_key = ?',
-        );
-        for (const p of result.classHitDice) {
-          diceStmt.run(Math.max(0, p.hitDiceUsed), char.id, p.classKey);
-        }
+      for (const p of result.classHitDice) {
+        drizzle
+          .update(characterClasses)
+          .set({ hitDiceUsed: Math.max(0, p.hitDiceUsed) })
+          .where(
+            and(
+              eq(characterClasses.characterId, char.id),
+              eq(characterClasses.classKey, p.classKey),
+            ),
+          )
+          .run();
       }
 
       // --- Persist catalog counter resets (max recomputed by applyRest)
-      const resetStmt = db.prepare(
-        'UPDATE character_features SET counter_max = ?, counter_current = ? WHERE id = ?',
-      );
       for (const reset of result.featureResets) {
-        resetStmt.run(reset.counterMax, reset.counterCurrent, reset.featureId);
+        drizzle
+          .update(characterFeatures)
+          .set({ counterMax: reset.counterMax, counterCurrent: reset.counterCurrent })
+          .where(eq(characterFeatures.id, reset.featureId))
+          .run();
       }
 
       // --- HP sync: mirror PV changes to active combatants (like a sheet PATCH)
       if (patch.currentHp !== undefined) {
-        const combatants = db
-          .prepare(
-            `
-          SELECT c.id FROM combatants c
-          JOIN encounters e ON e.id = c.encounter_id
-          WHERE c.character_id = ? AND c.type = 'player' AND e.status != 'ended'
-        `,
+        const activeCombatants = drizzle
+          .select({ id: combatants.id })
+          .from(combatants)
+          .innerJoin(encounters, eq(combatants.encounterId, encounters.id))
+          .where(
+            and(
+              eq(combatants.characterId, char.id),
+              eq(combatants.type, 'player'),
+              ne(encounters.status, 'ended'),
+            ),
           )
-          .all(char.id) as any[];
-        for (const cr of combatants) {
-          db.prepare('UPDATE combatants SET hit_points = ?, defeated = ? WHERE id = ?').run(
-            Math.max(0, patch.currentHp),
-            patch.currentHp <= 0 ? 1 : 0,
-            cr.id,
-          );
+          .all();
+        for (const cr of activeCombatants) {
+          drizzle
+            .update(combatants)
+            .set({
+              hitPoints: Math.max(0, patch.currentHp),
+              defeated: patch.currentHp <= 0 ? 1 : 0,
+            })
+            .where(eq(combatants.id, cr.id))
+            .run();
         }
-        if (combatants.length > 0) {
+        if (activeCombatants.length > 0) {
           bus.emitChange({
             type: 'combat:change',
             partyId: char.party_id,
@@ -171,7 +198,11 @@ export async function restRoutes(app: FastifyInstance) {
         actorUserId: userId,
       });
 
-      const row = db.prepare('SELECT * FROM characters WHERE id = ?').get(char.id) as any;
+      const row = drizzle
+        .select(cols(characters))
+        .from(characters)
+        .where(eq(characters.id, char.id))
+        .get() as any;
       attachCharacterClasses([row]);
       return reply.send({
         character: mapCharacter(row),

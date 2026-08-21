@@ -3,8 +3,11 @@
  */
 
 import type { CreateCustomItem } from '@dnd-inventory/shared';
+import { and, eq, inArray, isNull, or, type SQL, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { getDb } from '../db/index.ts';
+import { getDrizzle } from '../db/drizzle.ts';
+import { cols } from '../db/projections.ts';
+import { items, partyMembers } from '../db/schema.ts';
 import { bus } from '../sync/bus.ts';
 import { isPartyGM, isPartyMember, mapItem, requireUser } from './helpers.ts';
 
@@ -38,9 +41,8 @@ export async function itemRoutes(app: FastifyInstance) {
       const lim = Math.min(parseInt(limit || '50', 10) || 50, 200);
       const off = Math.max(parseInt(offset || '0', 10) || 0, 0);
 
-      const db = getDb();
-      const where: string[] = [];
-      const params: any[] = [];
+      const drizzle = getDrizzle();
+      const where: Array<SQL | undefined> = [];
 
       // If filtering by a specific party (e.g. GM dashboard custom items),
       // return only that party's items — no SRD items.
@@ -48,69 +50,60 @@ export async function itemRoutes(app: FastifyInstance) {
         if (!isPartyMember(Number(partyIdFilter), userId)) {
           return reply.code(403).send({ error: 'not a member' });
         }
-        where.push('party_id = ?');
-        params.push(Number(partyIdFilter));
+        where.push(eq(items.partyId, Number(partyIdFilter)));
       } else {
         // Default: show global SRD items + custom items from the user's parties
         const userPartyIds = (
-          db.prepare('SELECT party_id FROM party_members WHERE user_id = ?').all(userId) as any[]
+          drizzle
+            .select({ party_id: partyMembers.partyId })
+            .from(partyMembers)
+            .where(eq(partyMembers.userId, userId))
+            .all() as any[]
         ).map((r) => r.party_id);
-        if (userPartyIds.length > 0) {
-          const placeholders = userPartyIds.map(() => '?').join(',');
-          where.push(`(party_id IS NULL OR party_id IN (${placeholders}))`);
-          params.push(...userPartyIds);
-        } else {
-          where.push('(party_id IS NULL)');
-        }
+        where.push(
+          userPartyIds.length > 0
+            ? or(isNull(items.partyId), inArray(items.partyId, userPartyIds))
+            : isNull(items.partyId),
+        );
       }
 
       if (search) {
         // Accent-insensitive search using a custom SQLite function registered in server.ts.
         // normalize() strips diacritics (é→e, è→e) and lowercases.
         const norm = search.replace(/-/g, ' ');
-        where.push(`(
-        name LIKE ? ESCAPE '\\' OR
-        name_fr LIKE ? ESCAPE '\\' OR
-        srd_index LIKE ? ESCAPE '\\' OR
-        normalize(name) LIKE normalize(?) OR
-        normalize(name_fr) LIKE normalize(?) OR
-        normalize(REPLACE(name, '-', ' ')) LIKE normalize(?) OR
-        normalize(COALESCE(aliases, '')) LIKE normalize(?)
-      )`);
-        params.push(
-          `%${search}%`,
-          `%${search}%`,
-          `%${search}%`,
-          `%${norm}%`,
-          `%${norm}%`,
-          `%${norm}%`,
-          `%${norm}%`,
+        where.push(
+          or(
+            sql`${items.name} LIKE ${`%${search}%`} ESCAPE '\\'`,
+            sql`${items.nameFr} LIKE ${`%${search}%`} ESCAPE '\\'`,
+            sql`${items.srdIndex} LIKE ${`%${search}%`} ESCAPE '\\'`,
+            sql`normalize(${items.name}) LIKE normalize(${`%${norm}%`})`,
+            sql`normalize(${items.nameFr}) LIKE normalize(${`%${norm}%`})`,
+            sql`normalize(REPLACE(${items.name}, '-', ' ')) LIKE normalize(${`%${norm}%`})`,
+            sql`normalize(COALESCE(${items.aliases}, '')) LIKE normalize(${`%${norm}%`})`,
+          ),
         );
       }
       if (category) {
-        where.push('category = ?');
-        params.push(category);
+        where.push(eq(items.category, category));
       }
       if (rarity && rarity !== 'none') {
-        where.push('rarity = ?');
-        params.push(rarity);
+        where.push(eq(items.rarity, rarity));
       }
       if (source) {
-        where.push('source = ?');
-        params.push(source);
+        where.push(eq(items.source, source));
       }
 
-      const sql = `
-      SELECT * FROM items
-      WHERE ${where.join(' AND ')}
-      ORDER BY name COLLATE NOCASE ASC
-      LIMIT ? OFFSET ?
-    `;
-      const rows = db.prepare(sql).all(...params, lim, off);
+      const filter = and(...where);
+      const rows = drizzle
+        .select(cols(items))
+        .from(items)
+        .where(filter)
+        .orderBy(sql`${items.name} COLLATE NOCASE ASC`)
+        .limit(lim)
+        .offset(off)
+        .all() as any[];
       const total = (
-        db
-          .prepare(`SELECT COUNT(*) as n FROM items WHERE ${where.join(' AND ')}`)
-          .get(...params) as any
+        drizzle.select({ n: sql<number>`count(*)` }).from(items).where(filter).get() as any
       ).n;
 
       return reply.send({
@@ -129,8 +122,11 @@ export async function itemRoutes(app: FastifyInstance) {
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const row = db.prepare('SELECT * FROM items WHERE id = ?').get(Number(req.params.id)) as any;
+      const row = getDrizzle()
+        .select(cols(items))
+        .from(items)
+        .where(eq(items.id, Number(req.params.id)))
+        .get() as any;
       if (!row) return reply.code(404).send({ error: 'item not found' });
       // Custom items are only visible to members of the owning party (SRD items have party_id NULL).
       if (row.party_id != null && !isPartyMember(row.party_id, userId)) {
@@ -160,26 +156,23 @@ export async function itemRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'name is required' });
       }
 
-      const info = getDb()
-        .prepare(`
-        INSERT INTO items (
-          source, party_id, category, name, name_fr, rarity,
-          weight_kg, cost_qty, cost_unit, description
-        ) VALUES ('custom', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `)
-        .run(
+      const drizzle = getDrizzle();
+      const row = drizzle
+        .insert(items)
+        .values({
+          source: 'custom',
           partyId,
-          body.category || 'custom',
-          body.name.trim(),
-          body.nameFr || null,
-          body.rarity || 'none',
-          body.weightKg ?? null,
-          body.costQty ?? null,
-          body.costUnit ?? null,
-          body.description || null,
-        );
-
-      const row = getDb().prepare('SELECT * FROM items WHERE id = ?').get(info.lastInsertRowid);
+          category: body.category || 'custom',
+          name: body.name.trim(),
+          nameFr: body.nameFr || null,
+          rarity: body.rarity || 'none',
+          weightKg: body.weightKg ?? null,
+          costQty: body.costQty ?? null,
+          costUnit: body.costUnit || null,
+          description: body.description || null,
+        })
+        .returning(cols(items))
+        .get() as any;
       bus.emitChange({ type: 'party:change', partyId, action: 'custom-item', actorUserId: userId });
       return reply.code(201).send({ item: mapItem(row) });
     },
@@ -192,9 +185,9 @@ export async function itemRoutes(app: FastifyInstance) {
     async (req: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
+      const drizzle = getDrizzle();
       const itemId = Number(req.params.id);
-      const item = db.prepare('SELECT * FROM items WHERE id = ?').get(itemId) as any;
+      const item = drizzle.select(cols(items)).from(items).where(eq(items.id, itemId)).get() as any;
       if (!item) return reply.code(404).send({ error: 'item not found' });
       if (item.source !== 'custom')
         return reply.code(403).send({ error: 'can only modify custom items' });
@@ -205,41 +198,20 @@ export async function itemRoutes(app: FastifyInstance) {
       }
 
       const body = req.body || {};
-      const sets: string[] = [];
-      const vals: any[] = [];
-      if (body.name !== undefined) {
-        sets.push('name = ?');
-        vals.push(body.name.trim());
+      const values: Record<string, unknown> = {};
+      if (body.name !== undefined) values.name = body.name.trim();
+      if (body.category !== undefined) values.category = body.category;
+      if (body.rarity !== undefined) values.rarity = body.rarity;
+      if (body.weightKg !== undefined) values.weightKg = body.weightKg;
+      if (body.costQty !== undefined) values.costQty = body.costQty;
+      if (body.costUnit !== undefined) values.costUnit = body.costUnit;
+      if (body.description !== undefined) values.description = body.description;
+      if (Object.keys(values).length === 0) {
+        return reply.code(400).send({ error: 'no fields to update' });
       }
-      if (body.category !== undefined) {
-        sets.push('category = ?');
-        vals.push(body.category);
-      }
-      if (body.rarity !== undefined) {
-        sets.push('rarity = ?');
-        vals.push(body.rarity);
-      }
-      if (body.weightKg !== undefined) {
-        sets.push('weight_kg = ?');
-        vals.push(body.weightKg);
-      }
-      if (body.costQty !== undefined) {
-        sets.push('cost_qty = ?');
-        vals.push(body.costQty);
-      }
-      if (body.costUnit !== undefined) {
-        sets.push('cost_unit = ?');
-        vals.push(body.costUnit);
-      }
-      if (body.description !== undefined) {
-        sets.push('description = ?');
-        vals.push(body.description);
-      }
-      if (sets.length === 0) return reply.code(400).send({ error: 'no fields to update' });
 
-      vals.push(itemId);
-      db.prepare(`UPDATE items SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
-      const row = db.prepare('SELECT * FROM items WHERE id = ?').get(itemId);
+      drizzle.update(items).set(values).where(eq(items.id, itemId)).run();
+      const row = drizzle.select(cols(items)).from(items).where(eq(items.id, itemId)).get() as any;
       bus.emitChange({
         type: 'party:change',
         partyId: item.party_id,
@@ -257,9 +229,9 @@ export async function itemRoutes(app: FastifyInstance) {
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
+      const drizzle = getDrizzle();
       const itemId = Number(req.params.id);
-      const item = db.prepare('SELECT * FROM items WHERE id = ?').get(itemId) as any;
+      const item = drizzle.select(cols(items)).from(items).where(eq(items.id, itemId)).get() as any;
       if (!item) return reply.code(404).send({ error: 'item not found' });
       if (item.source !== 'custom')
         return reply.code(403).send({ error: 'can only delete custom items' });
@@ -269,7 +241,7 @@ export async function itemRoutes(app: FastifyInstance) {
         return reply.code(403).send({ error: 'only the GM can delete items' });
       }
 
-      db.prepare('DELETE FROM items WHERE id = ?').run(itemId);
+      drizzle.delete(items).where(eq(items.id, itemId)).run();
       bus.emitChange({
         type: 'party:change',
         partyId: item.party_id,
