@@ -21,6 +21,7 @@ import { run as combat } from './api-tests/mod-combat.ts';
 import { run as featuresNotes } from './api-tests/mod-features-notes.ts';
 import { run as inventory } from './api-tests/mod-inventory.ts';
 import { run as items } from './api-tests/mod-items.ts';
+import { run as multiclass } from './api-tests/mod-multiclass.ts';
 import { run as npcsMonsters } from './api-tests/mod-npcs-monsters.ts';
 import { run as spells } from './api-tests/mod-spells.ts';
 import { run as syncWs } from './api-tests/mod-sync-ws.ts';
@@ -38,6 +39,7 @@ const MODULES: Array<{
   { name: 'features + notes', run: featuresNotes },
   { name: 'npcs + monsters', run: npcsMonsters },
   { name: 'combat', run: combat },
+  { name: 'multiclassage', run: multiclass },
   { name: 'wild shape + rests', run: wildshapeRest },
   { name: 'websocket sync', run: syncWs },
 ];

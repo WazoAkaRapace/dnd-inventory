@@ -1,21 +1,29 @@
 /**
- * Description tab — identity & class, physical description, portrait, and
- * personality traits.
+ * Description tab — identity & class lines (multiclassage SRD 5.1), physical
+ * description, portrait, and personality traits.
+ *
+ * Une fiche mono-classe voit un seul stepper de niveau, comme avant ; la
+ * complexité multiclassée (feuille guidée, prérequis, styles par classe)
+ * n'apparaît qu'avec une deuxième ligne de classe.
  */
 
 import {
   type Character,
+  type CharacterClassEntry,
   CLASS_SUBCLASSES,
-  DIVINE_DOMAINS,
-  DND_CLASSES,
+  classesOf,
+  FIGHTING_STYLE_CLASSES,
+  FIGHTING_STYLE_LABELS_FR,
+  type FightingStyle,
   findClass,
   LAND_CIRCLES,
+  multiclassPrereqStatuses,
   type PatchCharacterPayload,
-  SACRED_OATHS,
 } from '@dnd-inventory/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '../api';
 import { useAuth } from '../auth';
+import AddClassSheet from '../components/AddClassSheet';
 import { BottomSheet } from '../components/ui';
 
 interface Props {
@@ -48,26 +56,20 @@ const PERSONALITY_FIELDS: Array<{ key: keyof Character; label: string; placehold
   { key: 'flaws', label: 'Défauts', placeholder: 'Je suis incapable de résister à un mystère.' },
 ];
 
-/** Classes using the generic `subclass` column, with their French picker label.
- *  Clerc/Druide/Paladin keep their dedicated columns (domaine/cercle/serment). */
-const GENERIC_SUBCLASS_LABELS: Record<string, string> = {
-  Barbare: 'Voie primordiale',
-  Barde: 'Collège bardique',
-  Ensorceleur: 'Origine de sorcellerie',
-  Guerrier: 'Archétype martial',
-  Magicien: 'École de magie',
-  Moine: 'Tradition monastique',
-  Occultiste: 'Patron surnaturel',
-  Rôdeur: 'Archétype de rôdeur',
-  Roublard: 'Archétype roublard',
+/** Niveau d'acquisition du style de combat par classe (SRD). */
+const STYLE_UNLOCK: Record<string, number> = {
+  Guerrier: 1,
+  Paladin: 2,
+  Rôdeur: 2,
 };
 
-/** Niveau RAW d'acquisition des sous-classes à colonne dédiée. */
-const DEDICATED_SUBCLASS_LEVELS: Record<string, number> = {
-  cercle: 2, // Druide — Cercle druidique
-  terrain: 2, // Druide — Terrain du cercle (cercle de la Terre)
-  serment: 3, // Paladin — Serment sacré
-};
+/** Libellé de la voie de sous-classe d'une ligne. */
+function subclassLabel(entry: CharacterClassEntry): string | null {
+  if (!entry.subclassKey) return null;
+  if (entry.classKey === 'Druide' && entry.subclassKey === 'terre') return 'Cercle de la Terre';
+  const def = (CLASS_SUBCLASSES[entry.classKey] ?? []).find((s) => s.key === entry.subclassKey);
+  return def?.label ?? null;
+}
 
 export default function CharacterDescriptionTab({ character, charId, onSaved, onError }: Props) {
   const { user } = useAuth();
@@ -75,13 +77,14 @@ export default function CharacterDescriptionTab({ character, charId, onSaved, on
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Identité & classe — brouillons committés au blur, et à la fermeture de la
-  // feuille (fermer par le scrim ne déclenche pas le blur)
-  const [classDraft, setClassDraft] = useState(character.characterClass ?? '');
   const [raceDraft, setRaceDraft] = useState(character.race ?? '');
   const [bgDraft, setBgDraft] = useState(character.background ?? '');
-  const [levelDraft, setLevelDraft] = useState(String(character.level ?? 1));
   const [identityOpen, setIdentityOpen] = useState(false);
+  const [addClassOpen, setAddClassOpen] = useState(false);
+
+  const classLines = classesOf(character);
+  const totalLevel = classLines.reduce((sum, c) => sum + c.level, 0);
+  const prereqIssues = multiclassPrereqStatuses(character);
 
   useEffect(() => {
     const d: Record<string, string> = {};
@@ -89,10 +92,8 @@ export default function CharacterDescriptionTab({ character, charId, onSaved, on
     for (const f of PERSONALITY_FIELDS) d[f.key] = (character[f.key] as string) ?? '';
     d.appearance = character.appearance ?? '';
     setDrafts(d);
-    setClassDraft(character.characterClass ?? '');
     setRaceDraft(character.race ?? '');
     setBgDraft(character.background ?? '');
-    setLevelDraft(String(character.level ?? 1));
   }, [character]);
 
   const patchCharacter = useCallback(
@@ -106,6 +107,48 @@ export default function CharacterDescriptionTab({ character, charId, onSaved, on
     },
     [charId, onSaved, onError],
   );
+
+  /** Remplace l'ensemble des lignes de classe (PATCH atomique côté API). */
+  const patchClasses = useCallback(
+    (entries: CharacterClassEntry[]) => {
+      patchCharacter({ classes: entries }, 'Impossible de mettre à jour les classes');
+    },
+    [patchCharacter],
+  );
+
+  const bumpLevel = (classKey: string, delta: number) => {
+    const entries = classLines.map((c) => ({ ...c }));
+    const target = entries.find((c) => c.classKey === classKey);
+    if (!target) return;
+    const next = target.level + delta;
+    if (next < 1) return;
+    const newTotal = entries.reduce(
+      (sum, c) => sum + (c.classKey === classKey ? next : c.level),
+      0,
+    );
+    if (newTotal > 20) return; // somme plafonnée — l'erreur inline reste visible
+    target.level = next;
+    patchClasses(entries);
+  };
+
+  const setSubclass = (classKey: string, key: string | null) => {
+    patchClasses(classLines.map((c) => (c.classKey === classKey ? { ...c, subclassKey: key } : c)));
+  };
+
+  const setStyle = (classKey: string, style: FightingStyle | null) => {
+    patchClasses(
+      classLines.map((c) => (c.classKey === classKey ? { ...c, fightingStyle: style } : c)),
+    );
+  };
+
+  const removeClass = (classKey: string) => {
+    if (classLines.length <= 1) return;
+    patchClasses(classLines.filter((c) => c.classKey !== classKey));
+  };
+
+  const handleAddClass = (entry: CharacterClassEntry) => {
+    patchClasses([...classLines, entry]);
+  };
 
   const commitField = (key: string) => {
     const draftVal = drafts[key];
@@ -150,11 +193,6 @@ export default function CharacterDescriptionTab({ character, charId, onSaved, on
     patchCharacter({ portraitUrl: null }, 'Erreur de mise à jour');
   };
 
-  const commitClass = () => {
-    if (classDraft === (character.characterClass ?? '')) return;
-    patchCharacter({ characterClass: classDraft.trim() || null }, 'Erreur de mise à jour');
-  };
-
   const commitRace = () => {
     if (raceDraft === (character.race ?? '')) return;
     patchCharacter({ race: raceDraft.trim() || null }, 'Erreur de mise à jour');
@@ -165,55 +203,28 @@ export default function CharacterDescriptionTab({ character, charId, onSaved, on
     patchCharacter({ background: bgDraft.trim() || null }, 'Erreur de mise à jour');
   };
 
-  const commitLevel = () => {
-    const val = Number(levelDraft);
-    const current = character.level ?? 1;
-    if (!Number.isFinite(val) || val === current) {
-      setLevelDraft(String(current));
-      return;
-    }
-    const clamped = Math.max(1, Math.min(20, Math.round(val)));
-    patchCharacter({ level: clamped }, 'Erreur de mise à jour');
-  };
-
   const closeIdentity = () => {
-    commitClass();
-    commitLevel();
     commitRace();
     commitBackground();
     setIdentityOpen(false);
   };
 
-  // Sous-classes choisies, pour la ligne résumé de la carte identité
-  const level = character.level ?? 1;
-  const clsName = findClass(character.characterClass)?.name ?? '';
-  const subclassLines: string[] = [];
-  if (clsName === 'Clerc' && character.divineDomain) {
-    const label = DIVINE_DOMAINS.find((d) => d.key === character.divineDomain)?.label;
-    if (label) subclassLines.push(label);
-  }
-  if (clsName === 'Druide' && character.druidCircle) {
-    subclassLines.push(
-      character.druidCircle === 'terre' ? 'Cercle de la Terre' : 'Cercle de la Lune',
-    );
-    if (character.druidCircle === 'terre' && character.landCircle) {
-      const label = LAND_CIRCLES.find((t) => t.key === character.landCircle)?.label;
-      if (label) subclassLines.push(label);
-    }
-  }
-  if (clsName === 'Paladin' && character.sacredOath) {
-    const label = SACRED_OATHS.find((o) => o.key === character.sacredOath)?.label;
-    if (label) subclassLines.push(label);
-  }
-  if (character.subclass && CLASS_SUBCLASSES[clsName]) {
-    const label = CLASS_SUBCLASSES[clsName].find((s) => s.key === character.subclass)?.label;
-    if (label) subclassLines.push(label);
-  }
-  const hasSubclassPicker =
-    clsName === 'Clerc' ||
-    clsName === 'Druide' ||
-    clsName === 'Paladin' ||
-    Boolean(GENERIC_SUBCLASS_LABELS[clsName]);
+  // Ligne résumé : « Guerrier 5 / Magicien 3 » + sous-classes
+  const summaryClass =
+    classLines.length > 0
+      ? classLines.map((c) => `${c.classKey} ${c.level}`).join(' / ')
+      : `Niveau ${character.level ?? 1} · classe non définie`;
+  const subclassLine = classLines
+    .map((c) => {
+      const label = subclassLabel(c);
+      if (c.classKey === 'Druide' && c.subclassKey === 'terre' && character.landCircle) {
+        const terrain = LAND_CIRCLES.find((t) => t.key === character.landCircle)?.label;
+        return [label, terrain].filter(Boolean).join(' · ');
+      }
+      return label;
+    })
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <div className="space-y-4">
@@ -231,13 +242,16 @@ export default function CharacterDescriptionTab({ character, charId, onSaved, on
         </div>
         <div className="space-y-1">
           <p className="font-display text-lg font-semibold text-ink-800">
-            {character.characterClass
-              ? `${character.characterClass} · niv. ${level}`
-              : `Niveau ${level} · classe non définie`}
+            {classLines.length > 1
+              ? classLines.map((c) => (
+                  <span key={c.classKey}>
+                    {c.classKey} <span className="font-mono">{c.level}</span>
+                    {c !== classLines[classLines.length - 1] ? ' / ' : ''}
+                  </span>
+                ))
+              : summaryClass}
           </p>
-          {subclassLines.length > 0 && (
-            <p className="text-sm text-ink-700">{subclassLines.join(' · ')}</p>
-          )}
+          {subclassLine && <p className="text-sm text-ink-700">{subclassLine}</p>}
           <p className="text-sm text-ink-500">
             {[character.race, character.background].filter(Boolean).join(' · ') ||
               'Race et historique non définies'}
@@ -253,36 +267,162 @@ export default function CharacterDescriptionTab({ character, charId, onSaved, on
         mobileOnly={false}
       >
         <div className="space-y-4">
+          {/* Lignes de classe (multiclassage SRD) */}
+          <section className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide">
+                Lignes de classe
+              </p>
+              <p className="text-xs text-ink-500">
+                Niveau total&nbsp;<span className="font-mono">{totalLevel}</span>/20
+              </p>
+            </div>
+            {totalLevel >= 20 && (
+              <p className="text-sm text-orange-600">Niveau total maximal atteint (20).</p>
+            )}
+            <div className="space-y-3">
+              {classLines.map((entry, index) => {
+                const name = entry.classKey;
+                const info = findClass(name);
+                const subclassOptions = CLASS_SUBCLASSES[name] ?? [];
+                const issue = prereqIssues.find((p) => p.classKey === name);
+                const styleUnlock = STYLE_UNLOCK[name];
+                const styleEligible =
+                  FIGHTING_STYLE_CLASSES.includes(name) && entry.level >= (styleUnlock ?? 99);
+                return (
+                  <div
+                    key={name}
+                    className="rounded-xl border border-parchment-300 bg-parchment-50 p-3 space-y-2"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-ink-800 truncate">
+                          {name}
+                          {index === 0 && (
+                            <span className="text-xs font-normal text-ink-400"> · départ</span>
+                          )}
+                          <span className="text-xs font-normal text-ink-400">
+                            {' '}
+                            · d{info?.hitDie ?? 8}
+                          </span>
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          className="btn-secondary w-11 h-11 text-lg"
+                          aria-label={`Retirer un niveau de ${name}`}
+                          onClick={() => bumpLevel(name, -1)}
+                        >
+                          −
+                        </button>
+                        <span className="font-mono text-lg w-8 text-center">{entry.level}</span>
+                        <button
+                          type="button"
+                          className="btn-secondary w-11 h-11 text-lg"
+                          aria-label={`Ajouter un niveau de ${name}`}
+                          onClick={() => bumpLevel(name, 1)}
+                        >
+                          +
+                        </button>
+                        {classLines.length > 1 && (
+                          <button
+                            type="button"
+                            className="text-xs text-red-500 hover:text-red-700 px-2 h-11"
+                            aria-label={`Retirer la classe ${name}`}
+                            onClick={() => removeClass(name)}
+                          >
+                            Retirer
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {issue && !issue.satisfied && (
+                      <p className="text-xs text-orange-600">
+                        ⚠ Prérequis ({issue.details.join(' / ')}) — à valider avec le MD.
+                      </p>
+                    )}
+                    {subclassOptions.length > 0 && (
+                      <label className="flex items-center justify-between gap-3">
+                        <span className="label mb-0 text-xs">Voie de classe</span>
+                        <select
+                          className="input py-1.5 text-sm w-auto max-w-[60%]"
+                          value={entry.subclassKey ?? ''}
+                          onChange={(e) =>
+                            setSubclass(name, e.target.value === '' ? null : e.target.value)
+                          }
+                          aria-label={`Voie de classe de ${name}`}
+                        >
+                          <option value="">—</option>
+                          {subclassOptions.map((s) => (
+                            <option key={s.key} value={s.key} disabled={s.level > entry.level}>
+                              {s.label}
+                              {s.level > entry.level ? ` (niv. ${s.level})` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                    {name === 'Druide' && entry.subclassKey === 'terre' && (
+                      <label className="flex items-center justify-between gap-3">
+                        <span className="label mb-0 text-xs">Terrain du cercle</span>
+                        <select
+                          className="input py-1.5 text-sm w-auto max-w-[60%]"
+                          value={character.landCircle ?? ''}
+                          onChange={(e) =>
+                            patchCharacter(
+                              { landCircle: e.target.value === '' ? null : e.target.value },
+                              'Erreur de mise à jour',
+                            )
+                          }
+                          aria-label="Terrain du cercle"
+                        >
+                          <option value="">—</option>
+                          {LAND_CIRCLES.map((t) => (
+                            <option key={t.key} value={t.key}>
+                              {t.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                    {styleEligible && (
+                      <label className="flex items-center justify-between gap-3">
+                        <span className="label mb-0 text-xs">Style de combat</span>
+                        <select
+                          className="input py-1.5 text-sm w-auto max-w-[60%]"
+                          value={entry.fightingStyle ?? ''}
+                          onChange={(e) =>
+                            setStyle(
+                              name,
+                              e.target.value === '' ? null : (e.target.value as FightingStyle),
+                            )
+                          }
+                          aria-label={`Style de combat de ${name}`}
+                        >
+                          <option value="">—</option>
+                          {(Object.keys(FIGHTING_STYLE_LABELS_FR) as FightingStyle[]).map((s) => (
+                            <option key={s} value={s}>
+                              {FIGHTING_STYLE_LABELS_FR[s]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              className="btn-ghost text-sm px-3 py-2"
+              onClick={() => setAddClassOpen(true)}
+            >
+              ＋ Ajouter une classe
+            </button>
+          </section>
+
           <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="label">Classe</span>
-              <input
-                type="text"
-                list="dnd-classes"
-                className="input"
-                value={classDraft}
-                onChange={(e) => setClassDraft(e.target.value)}
-                onBlur={commitClass}
-                placeholder="Magicien"
-              />
-              <datalist id="dnd-classes">
-                {DND_CLASSES.map((c) => (
-                  <option key={c.name} value={c.name} />
-                ))}
-              </datalist>
-            </label>
-            <label className="block">
-              <span className="label">Niveau</span>
-              <input
-                type="number"
-                min={1}
-                max={20}
-                className="input"
-                value={levelDraft}
-                onChange={(e) => setLevelDraft(e.target.value)}
-                onBlur={commitLevel}
-              />
-            </label>
             <label className="block">
               <span className="label">Race</span>
               <input
@@ -306,170 +446,17 @@ export default function CharacterDescriptionTab({ character, charId, onSaved, on
               />
             </label>
           </div>
-          {hasSubclassPicker && (
-            <div className="space-y-3">
-              <p className="text-xs font-semibold text-ink-400 uppercase tracking-wide">
-                Voie de classe
-              </p>
-              {clsName === 'Clerc' && (
-                <label className="flex items-center justify-between gap-3">
-                  <span className="label mb-0">Domaine divin</span>
-                  <select
-                    className="input py-1.5 text-sm w-auto max-w-[60%]"
-                    value={character.divineDomain ?? ''}
-                    onChange={(e) =>
-                      patchCharacter(
-                        { divineDomain: e.target.value === '' ? null : e.target.value },
-                        'Erreur de mise à jour',
-                      )
-                    }
-                    aria-label="Domaine divin"
-                  >
-                    <option value="">—</option>
-                    {DIVINE_DOMAINS.map((d) => (
-                      <option key={d.key} value={d.key}>
-                        {d.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              {clsName === 'Druide' && (
-                <label className="flex items-center justify-between gap-3">
-                  <span className="label mb-0">
-                    Cercle druidique
-                    {level < DEDICATED_SUBCLASS_LEVELS.cercle && (
-                      <span className="text-ink-400 font-normal">
-                        {' '}
-                        (niv. {DEDICATED_SUBCLASS_LEVELS.cercle})
-                      </span>
-                    )}
-                  </span>
-                  <select
-                    className="input py-1.5 text-sm w-auto max-w-[60%]"
-                    value={character.druidCircle ?? ''}
-                    disabled={level < DEDICATED_SUBCLASS_LEVELS.cercle}
-                    onChange={(e) =>
-                      patchCharacter(
-                        { druidCircle: e.target.value === '' ? null : e.target.value },
-                        'Erreur de mise à jour',
-                      )
-                    }
-                    aria-label="Cercle druidique"
-                  >
-                    <option value="">—</option>
-                    <option value="terre">Cercle de la Terre</option>
-                    <option value="lune">Cercle de la Lune</option>
-                  </select>
-                </label>
-              )}
-              {clsName === 'Druide' && character.druidCircle === 'terre' && (
-                <label className="flex items-center justify-between gap-3">
-                  <span className="label mb-0">
-                    Terrain du cercle
-                    {level < DEDICATED_SUBCLASS_LEVELS.terrain && (
-                      <span className="text-ink-400 font-normal">
-                        {' '}
-                        (niv. {DEDICATED_SUBCLASS_LEVELS.terrain})
-                      </span>
-                    )}
-                  </span>
-                  <select
-                    className="input py-1.5 text-sm w-auto max-w-[60%]"
-                    value={character.landCircle ?? ''}
-                    disabled={level < DEDICATED_SUBCLASS_LEVELS.terrain}
-                    onChange={(e) =>
-                      patchCharacter(
-                        { landCircle: e.target.value === '' ? null : e.target.value },
-                        'Erreur de mise à jour',
-                      )
-                    }
-                    aria-label="Terrain du cercle"
-                  >
-                    <option value="">—</option>
-                    {LAND_CIRCLES.map((t) => (
-                      <option key={t.key} value={t.key}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              {clsName === 'Paladin' && (
-                <label className="flex items-center justify-between gap-3">
-                  <span className="label mb-0">
-                    Serment sacré
-                    {level < DEDICATED_SUBCLASS_LEVELS.serment && (
-                      <span className="text-ink-400 font-normal">
-                        {' '}
-                        (niv. {DEDICATED_SUBCLASS_LEVELS.serment})
-                      </span>
-                    )}
-                  </span>
-                  <select
-                    className="input py-1.5 text-sm w-auto max-w-[60%]"
-                    value={character.sacredOath ?? ''}
-                    disabled={level < DEDICATED_SUBCLASS_LEVELS.serment}
-                    onChange={(e) =>
-                      patchCharacter(
-                        { sacredOath: e.target.value === '' ? null : e.target.value },
-                        'Erreur de mise à jour',
-                      )
-                    }
-                    aria-label="Serment sacré"
-                  >
-                    <option value="">—</option>
-                    {SACRED_OATHS.map((o) => (
-                      <option key={o.key} value={o.key}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              {(() => {
-                // Sous-classe générique (SRD 5.1) — remplit la colonne `subclass`.
-                // Verrouillé tant que le niveau d'acquisition de la classe n'est pas
-                // atteint (1 : Ensorceleur/Occultiste — 2 : Magicien — 3 : le reste).
-                const label = GENERIC_SUBCLASS_LABELS[clsName];
-                const options = CLASS_SUBCLASSES[clsName];
-                if (!label || !options) return null;
-                const unlockLevel = Math.min(...options.map((s) => s.level));
-                const locked = level < unlockLevel;
-                return (
-                  <label className="flex items-center justify-between gap-3">
-                    <span className="label mb-0">
-                      {label}
-                      {locked && (
-                        <span className="text-ink-400 font-normal"> (niv. {unlockLevel})</span>
-                      )}
-                    </span>
-                    <select
-                      className="input py-1.5 text-sm w-auto max-w-[60%]"
-                      value={character.subclass ?? ''}
-                      disabled={locked}
-                      onChange={(e) =>
-                        patchCharacter(
-                          { subclass: e.target.value === '' ? null : e.target.value },
-                          'Erreur de mise à jour',
-                        )
-                      }
-                      aria-label={label}
-                    >
-                      <option value="">—</option>
-                      {options.map((s) => (
-                        <option key={s.key} value={s.key}>
-                          {s.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                );
-              })()}
-            </div>
-          )}
         </div>
       </BottomSheet>
+
+      {/* Feuille guidée d'ajout de classe (multiclassage) */}
+      <AddClassSheet
+        open={addClassOpen}
+        onClose={() => setAddClassOpen(false)}
+        character={character}
+        currentClasses={classLines}
+        onAdd={handleAddClass}
+      />
 
       {/* Portrait + physical attributes */}
       <section className="card p-4 sm:p-5 space-y-3">

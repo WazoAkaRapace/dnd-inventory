@@ -9,15 +9,15 @@ import {
   abilityModifier,
   type Character,
   type CharacterSpell,
-  computePreparedSpellsLimit,
+  classesOf,
+  computeSpellcastingPools,
   DND_CLASSES,
   findClass,
   formatModifier,
-  maxSpellSlots,
+  preparedLimits,
   proficiencyBonus,
   SPELL_SCHOOL_LABELS_FR,
   type Spell,
-  type SpellcastingType,
   type SpellSchool,
   spellDamageAtLevel,
   spellHealingAtLevel,
@@ -75,7 +75,12 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [catalogLevel, setCatalogLevel] = useState<string>('');
   const [catalogSchool, setCatalogSchool] = useState<string>('');
-  const [catalogClass, setCatalogClass] = useState<string>(character.characterClass ?? '');
+  const [catalogClass, setCatalogClass] = useState<string>(
+    // Multiclassage : UNION des listes de sorts des classes de la fiche.
+    classesOf(character)
+      .map((c) => c.classKey)
+      .join(','),
+  );
   const [catalogSpells, setCatalogSpells] = useState<Spell[]>([]);
   const [catalogTotal, setCatalogTotal] = useState(0);
   const [catalogLoading, setCatalogLoading] = useState(false);
@@ -92,7 +97,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
   const [castingRowId, setCastingRowId] = useState<number | null>(null);
 
   // List filter for prepared-spell classes: all spells or the combat-ready set
-  const [listFilter, setListFilter] = useState<'all' | 'prepared'>('all');
+  const [listFilter, setListFilter] = useState<string>('all');
 
   // Post-cast feedback: row flash (row-flash animation, cleared after 1.3 s)
   const [flashRowId, setFlashRowId] = useState<number | null>(null);
@@ -128,36 +133,56 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
     if (forgetTimer.current) clearTimeout(forgetTimer.current);
   };
 
-  const classInfo = findClass(character.characterClass);
-  const castingType: SpellcastingType = classInfo?.spellcasting ?? 'none';
-  const isCaster = castingType !== 'none';
+  // Multiclassage (SRD 5.1) : deux pools — Incantation (table de
+  // l'incantateur multiclassé) et Magie de pacte (Occultiste, recharge au
+  // repos court). Une fiche mono-classe garde UN rail, sans étiquette.
+  const pools = computeSpellcastingPools(character);
+  const slots = pools.spellcasting;
+  const pactSlots = pools.pact;
+  const showSpellRail = slots.some((n) => n > 0);
+  const showPactRail = pools.hasPact;
+  const railsLabeled = showSpellRail && showPactRail;
+  const isCaster = showSpellRail || showPactRail;
 
   const level = character.level ?? 1;
   const profBonus = proficiencyBonus(level);
-  const castingAbility = classInfo?.spellcastingAbility;
-  const castingMod =
-    isCaster && castingAbility
-      ? abilityModifier((character[castingAbility as keyof Character] as number) ?? 10)
-      : 0;
-
-  const slots = isCaster ? maxSpellSlots(level, castingType) : [0, 0, 0, 0, 0, 0, 0, 0, 0];
   const slotsUsed = character.spellSlotsUsed ?? [0, 0, 0, 0, 0, 0, 0, 0, 0];
+  const pactUsed = character.pactSlotsUsed ?? [0, 0, 0, 0, 0, 0, 0, 0, 0];
 
-  // Spell preparation limit (classes that prepare: Magicien, Clerc, Druide, Paladin, Rôdeur, Artificier)
-  const preparedLimit =
-    classInfo && castingAbility
-      ? computePreparedSpellsLimit(
-          classInfo,
-          level,
-          (character[castingAbility as keyof Character] as number) ?? 10,
-        )
-      : null;
-  // Domain spells are always prepared and don't count against the limit
+  // Une ligne de lanceur par classe incantatrice : DD et attaque par classe
+  // (chaque sort suit la caractéristique de SA classe — SRD multiclassage).
+  const castingLines = classesOf(character)
+    .map((entry) => {
+      const info = findClass(entry.classKey);
+      if (!info?.spellcastingAbility) return null;
+      const score = (character[info.spellcastingAbility as keyof Character] as number) ?? 10;
+      const mod = abilityModifier(score);
+      return {
+        name: info.name,
+        ability: info.spellcastingAbility,
+        mod,
+        dc: spellSaveDC(mod, profBonus),
+        atk: formatModifier(mod + profBonus),
+      };
+    })
+    .filter((l): l is NonNullable<typeof l> => l !== null);
+  const firstCasting = castingLines[0] ?? null;
+  const castingMod = firstCasting?.mod ?? 0;
+  const modForSpell = (classSource: string | null): number => {
+    if (!classSource) return castingMod;
+    return castingLines.find((l) => l.name === classSource)?.mod ?? castingMod;
+  };
+  const isMultiClass = classesOf(character).length > 1;
+
+  // Limites de préparation PAR CLASSE (chacune comme si mono-classe — SRD
+  // multiclassage) ; les sorts de domaine restent toujours préparés et hors
+  // limite. Chaque segment du filtre porte le compteur de sa classe.
+  const limits = preparedLimits(character);
   const domainIds = new Set(domainSpells.map((sp) => sp.id));
-  const preparedCount = charSpells.filter(
-    (cs) => cs.prepared && !domainIds.has(cs.spell.id),
-  ).length;
-  const overPrepared = preparedLimit !== null && preparedCount > preparedLimit;
+  const preparedCountFor = (classKey: string) =>
+    charSpells.filter(
+      (cs) => cs.prepared && !domainIds.has(cs.spell.id) && cs.classSource === classKey,
+    ).length;
 
   // Fetch character's known spells
   const fetchCharSpells = useCallback(async () => {
@@ -180,11 +205,12 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
 
   // Always-prepared bonus spells: cleric domain, druid circle terrain,
   // paladin oath (derived — refetched with the character)
-  const clsName = findClass(character.characterClass)?.name ?? null;
-  const hasBonusSource =
-    (clsName === 'Clerc' && !!character.divineDomain) ||
-    (clsName === 'Druide' && character.druidCircle === 'terre' && !!character.landCircle) ||
-    (clsName === 'Paladin' && !!character.sacredOath);
+  const hasBonusSource = classesOf(character).some((c) => {
+    if (c.classKey === 'Clerc') return !!c.subclassKey;
+    if (c.classKey === 'Druide') return c.subclassKey === 'terre' && !!character.landCircle;
+    if (c.classKey === 'Paladin') return !!c.subclassKey;
+    return false;
+  });
   // biome-ignore lint/correctness/useExhaustiveDependencies: character.level is a deliberate extra dep — domain spells are refetched on level-up.
   useEffect(() => {
     if (!hasBonusSource) {
@@ -256,8 +282,17 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
 
   const addSpell = async (spellId: number) => {
     setAddingSpellId(spellId);
+    // Classe d'origine : le filtre actif du grimoire s'il désigne UNE classe
+    // de la fiche, sinon la première classe incantatrice (multiclassage).
+    const own = classesOf(character);
+    const source =
+      own.length === 1
+        ? own[0].classKey
+        : catalogClass && own.some((c) => c.classKey === catalogClass)
+          ? catalogClass
+          : (firstCasting?.name ?? own[0]?.classKey ?? null);
     try {
-      await api.post(`/api/characters/${charId}/spells`, { spellId });
+      await api.post(`/api/characters/${charId}/spells`, { spellId, classSource: source });
       await fetchCharSpells();
       await onSaved();
     } catch (err) {
@@ -319,9 +354,38 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
     }
   };
 
+  const spendPact = async (level: number) => {
+    const idx = level - 1;
+    const used = [...pactUsed];
+    if (used[idx] >= pactSlots[idx]) return;
+    used[idx] = used[idx] + 1;
+    try {
+      await api.patch(`/api/characters/${charId}`, { pactSlotsUsed: used });
+      await onSaved();
+    } catch {
+      onError('Erreur de mise à jour');
+    }
+  };
+
+  const restorePact = async (level: number) => {
+    const idx = level - 1;
+    const used = [...pactUsed];
+    if (used[idx] <= 0) return;
+    used[idx] = used[idx] - 1;
+    try {
+      await api.patch(`/api/characters/${charId}`, { pactSlotsUsed: used });
+      await onSaved();
+    } catch {
+      onError('Erreur de mise à jour');
+    }
+  };
+
   const restoreAll = async () => {
     try {
-      await api.patch(`/api/characters/${charId}`, { spellSlotsUsed: [0, 0, 0, 0, 0, 0, 0, 0, 0] });
+      await api.patch(`/api/characters/${charId}`, {
+        spellSlotsUsed: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+        pactSlotsUsed: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+      });
       await onSaved();
     } catch {
       onError('Erreur de mise à jour');
@@ -339,10 +403,20 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
     const rowId = castingRowId;
     const fields: Record<string, unknown> = {};
     if (castLevel > 0 && !ritual) {
-      const used = [...slotsUsed];
-      if (used[castLevel - 1] >= (slots[castLevel - 1] ?? 0)) return;
-      used[castLevel - 1] = used[castLevel - 1] + 1;
-      fields.spellSlotsUsed = used;
+      // SRD magie de pacte : les emplacements des DEUX pools sont
+      // interchangeables — on puise d'abord dans l'incantation, puis dans le
+      // plus petit emplacement de pacte utilisable (de niveau ≥ sort lancé).
+      if (slotsUsed[castLevel - 1] < (slots[castLevel - 1] ?? 0)) {
+        const used = [...slotsUsed];
+        used[castLevel - 1] = used[castLevel - 1] + 1;
+        fields.spellSlotsUsed = used;
+      } else {
+        const pi = pactSlots.findIndex((max, i) => i + 1 >= castLevel && pactUsed[i] < max);
+        if (pi < 0) return;
+        const used = [...pactUsed];
+        used[pi] = used[pi] + 1;
+        fields.pactSlotsUsed = used;
+      }
     }
     if (castingSpell.concentration) fields.concentrating = true;
     let ok = true;
@@ -378,13 +452,22 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
       characterId: Number(charId),
       spell: sp,
       prepared: true,
+      classSource: null,
       sortOrder: 0,
       addedAt: '',
     }));
   const allRows = [...charSpells, ...domainOnly];
+  // Filtre « Préparés » PAR CLASSE (multiclassage) : tours de magie, sorts de
+  // domaine et sorts préparés de la classe choisie.
+  const prepFilterClass = listFilter.startsWith('prep:') ? listFilter.slice(5) : null;
   const visibleRows =
-    listFilter === 'prepared'
-      ? allRows.filter((cs) => cs.spell.level === 0 || cs.prepared)
+    prepFilterClass !== null
+      ? allRows.filter(
+          (cs) =>
+            cs.spell.level === 0 ||
+            domainIds.has(cs.spell.id) ||
+            (cs.prepared && (cs.classSource ?? firstCasting?.name) === prepFilterClass),
+        )
       : allRows;
   const spellsByLevel = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     .map((lvl) => ({
@@ -438,9 +521,6 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
     onLoadMore: () => fetchCatalog(catalogOffset + PAGE_SIZE),
   };
 
-  const saveDC = spellSaveDC(castingMod, profBonus);
-  const attackBonus = formatModifier(castingMod + profBonus);
-
   return (
     <div className="space-y-4">
       {/* Caster resources: save DC line + slot rail */}
@@ -456,19 +536,43 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
               ↻ Restaurer tout
             </button>
           </div>
-          {castingAbility && (
-            <p className="text-xs text-ink-500">
-              DD <span className="font-mono font-semibold">{saveDC}</span> · Attaque{' '}
-              <span className="font-mono font-semibold">{attackBonus}</span> ·{' '}
-              {ABILITY_SHORT_FR[castingAbility]}
-            </p>
+          {castingLines.length > 0 &&
+            (castingLines.length === 1 ? (
+              <p className="text-xs text-ink-500">
+                DD <span className="font-mono font-semibold">{castingLines[0].dc}</span> · Attaque{' '}
+                <span className="font-mono font-semibold">{castingLines[0].atk}</span> ·{' '}
+                {ABILITY_SHORT_FR[castingLines[0].ability]}
+              </p>
+            ) : (
+              <p className="text-xs text-ink-500 leading-relaxed">
+                {castingLines
+                  .map(
+                    (l) =>
+                      `${l.name} : DD ${l.dc} · att. ${l.atk} · ${ABILITY_SHORT_FR[l.ability]}`,
+                  )
+                  .join(' — ')}
+              </p>
+            ))}
+          {showSpellRail && (
+            <SlotRail
+              slots={slots}
+              slotsUsed={slotsUsed}
+              onSpend={spendSlot}
+              onRestore={restoreSlot}
+              label={railsLabeled ? 'Incantation' : null}
+            />
           )}
-          <SlotRail
-            slots={slots}
-            slotsUsed={slotsUsed}
-            onSpend={spendSlot}
-            onRestore={restoreSlot}
-          />
+          {showPactRail && (
+            <SlotRail
+              slots={pactSlots}
+              slotsUsed={pactUsed}
+              onSpend={spendPact}
+              onRestore={restorePact}
+              label={railsLabeled ? 'Magie de pacte' : null}
+              tone="gold"
+              note="recharge au repos court"
+            />
+          )}
         </section>
       )}
 
@@ -491,8 +595,8 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
             </button>
           </div>
 
-          {preparedLimit !== null && (
-            <div className="flex gap-1.5">
+          {limits.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
               <button
                 type="button"
                 onClick={() => setListFilter('all')}
@@ -505,23 +609,31 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
               >
                 Tous
               </button>
-              <button
-                type="button"
-                onClick={() => setListFilter('prepared')}
-                aria-pressed={listFilter === 'prepared'}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium tabular-nums transition-colors ${
-                  listFilter === 'prepared'
-                    ? overPrepared
-                      ? 'bg-red-600 text-white'
-                      : 'bg-blood-600 text-white'
-                    : overPrepared
-                      ? 'bg-red-50 text-red-700 border border-red-300'
-                      : 'bg-parchment-100 text-ink-600 hover:bg-parchment-200'
-                }`}
-                title="Sorts préparés — les tours de magie sont toujours disponibles"
-              >
-                Préparés {preparedCount} / {preparedLimit}
-              </button>
+              {limits.map((l) => {
+                const count = preparedCountFor(l.classKey);
+                const over = count > l.limit;
+                const active = listFilter === `prep:${l.classKey}`;
+                return (
+                  <button
+                    key={l.classKey}
+                    type="button"
+                    onClick={() => setListFilter(active ? 'all' : `prep:${l.classKey}`)}
+                    aria-pressed={active}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium tabular-nums transition-colors ${
+                      active
+                        ? over
+                          ? 'bg-red-600 text-white'
+                          : 'bg-blood-600 text-white'
+                        : over
+                          ? 'bg-red-50 text-red-700 border border-red-300'
+                          : 'bg-parchment-100 text-ink-600 hover:bg-parchment-200'
+                    }`}
+                    title={`Sorts préparés de ${l.classKey} — les tours de magie sont toujours disponibles`}
+                  >
+                    {limits.length > 1 ? `${l.classKey} ` : ''}Préparés {count} / {l.limit}
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -640,6 +752,11 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                                     {name}
                                   </span>
                                   <span className="flex items-center gap-1.5 text-xs text-ink-400 min-w-0">
+                                    {isMultiClass && cs.classSource && (
+                                      <span className="shrink-0 text-[10px] uppercase tracking-wide text-ink-300">
+                                        {cs.classSource}
+                                      </span>
+                                    )}
                                     {spell.castingTime && (
                                       <span
                                         className={`truncate ${
@@ -688,7 +805,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                                   )}
                                   <SpellStatBadges
                                     spell={spell}
-                                    castingMod={castingMod}
+                                    castingMod={modForSpell(cs.classSource)}
                                     profBonus={profBonus}
                                     isCaster={isCaster}
                                     charLevel={level}
@@ -758,7 +875,11 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
           spell={castingSpell}
           slots={slots}
           slotsUsed={slotsUsed}
-          castingMod={castingMod}
+          pactSlots={pactSlots}
+          pactUsed={pactUsed}
+          castingMod={modForSpell(
+            charSpells.find((cs) => cs.id === castingRowId)?.classSource ?? null,
+          )}
           profBonus={profBonus}
           charLevel={level}
           concentrating={!!character.concentrating}
@@ -806,12 +927,20 @@ function SlotRail({
   slotsUsed,
   onSpend,
   onRestore,
+  label = null,
+  note = null,
+  tone = 'default',
 }: {
   /** Max slots per level 1-9 (index 0 = level 1). */
   slots: number[];
   slotsUsed: number[];
   onSpend: (level: number) => void;
   onRestore: (level: number) => void;
+  /** Rail caption — shown only when the two pools coexist (multiclassage). */
+  label?: string | null;
+  note?: string | null;
+  /** Pact pool rides the gold accent (or = magie). */
+  tone?: 'default' | 'gold';
 }) {
   const [openLevel, setOpenLevel] = useState<number | null>(null);
   const levels = slots
@@ -821,6 +950,16 @@ function SlotRail({
 
   return (
     <div className="space-y-2">
+      {(label || note) && (
+        <div className="flex items-baseline justify-between gap-2">
+          {label && (
+            <span className="text-xs font-semibold text-ink-500 uppercase tracking-wide">
+              {label}
+            </span>
+          )}
+          {note && <span className="text-[11px] text-gold-600">{note}</span>}
+        </div>
+      )}
       <div className="flex gap-1.5 overflow-x-auto pb-0.5 scroll-smooth-touch">
         {levels.map(({ level: lvl, max, used }) => {
           const remaining = max - used;
@@ -833,6 +972,8 @@ function SlotRail({
               aria-pressed={openLevel === lvl}
               aria-label={`Niveau ${lvl} : ${remaining} emplacement${remaining > 1 ? 's' : ''} disponible${remaining > 1 ? 's' : ''} sur ${max} — corriger`}
               className={`shrink-0 min-w-[56px] min-h-[48px] px-2.5 py-1.5 rounded-xl flex flex-col items-center justify-center gap-1.5 transition-colors ${
+                tone === 'gold' ? 'ring-1 ring-gold-300' : ''
+              } ${
                 openLevel === lvl
                   ? 'bg-parchment-200 ring-1 ring-parchment-400'
                   : 'bg-parchment-100 hover:bg-parchment-200'

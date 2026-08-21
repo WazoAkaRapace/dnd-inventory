@@ -297,7 +297,7 @@ async function addSpell(api: Api, charId: number, nameFr: string, prepared: bool
 interface SeedRefs {
   partyId: number;
   encounterId: number;
-  chars: { lyra: number; kael: number; mira: number };
+  chars: { lyra: number; kael: number; mira: number; vesper: number };
 }
 
 async function seed(apiPort: number): Promise<SeedRefs & { sessions: Session[] }> {
@@ -470,6 +470,47 @@ async function seed(apiPort: number): Promise<SeedRefs & { sessions: Session[] }
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const ogre = cbs.find((c) => c.monsterSlug === 'ogre');
 
+  // — Vesper, Occultiste 5 (fielon) / Magicien 3 (évocation) : la fiche
+  // multiclassée de la capture 14 — DEUX pools d'emplacements (incantation
+  // + magie de pacte), DD par classe lancante, sorts à classe d'origine.
+  const { character: vesper } = await baCall<{ character: { id: number } }>(
+    'POST',
+    `/api/parties/${party.id}/characters`,
+    {
+      name: 'Vesper Ducroc',
+      maxHp: 34,
+      classes: [
+        { classKey: 'Occultiste', level: 5, subclassKey: 'fielon' },
+        { classKey: 'Magicien', level: 3, subclassKey: 'evocation' },
+      ],
+    },
+  );
+  await baCall('PATCH', `/api/characters/${vesper.id}`, {
+    strength: 8,
+    dexterity: 14,
+    constitution: 12,
+    intelligence: 16,
+    wisdom: 10,
+    charisma: 16,
+    currentHp: 27,
+    spellSlotsUsed: [2, 1, 0, 0, 0, 0, 0, 0, 0],
+    pactSlotsUsed: [0, 1, 0, 0, 0, 0, 0, 0, 0],
+  });
+  for (const [nameFr, classSource] of [
+    ['Décharge occulte', 'Occultiste'],
+    ['Maléfice', 'Occultiste'],
+    ['Trait de feu', 'Magicien'],
+    ['Flèche acide de Melf', 'Magicien'],
+    ['Boule de feu', 'Magicien'],
+  ] as const) {
+    const id = await catalogId(baCall, 'spells', nameFr);
+    await baCall('POST', `/api/characters/${vesper.id}/spells`, {
+      spellId: id,
+      classSource,
+      prepared: true,
+    });
+  }
+
   // Initiatives (le MD peut tout saisir) : Lyra 18, gobelins 14, Kael 12,
   // Mira 10, ogre 8 — puis premier next-turn : round 1, tour de Lyra.
   const setInit = (cid: number, initiative: number) =>
@@ -496,7 +537,7 @@ async function seed(apiPort: number): Promise<SeedRefs & { sessions: Session[] }
   return {
     partyId: party.id,
     encounterId: enc,
-    chars: { lyra: lyra.id, kael: kael.id, mira: mira.id },
+    chars: { lyra: lyra.id, kael: kael.id, mira: mira.id, vesper: vesper.id },
     sessions: [md, aurore, bastien],
   };
 }
@@ -805,6 +846,23 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
       });
       await page.waitForTimeout(600);
       await shoot(page, '13-bloc-stats.png');
+      await page.close();
+    },
+  },
+  {
+    file: '14-multiclasse.png',
+    async run(c) {
+      // Sorts de Vesper (Occultiste 5 / Magicien 3) : deux rails étiquetés —
+      // Incantation (4/2, 2+1 dépensés) et Magie de pacte en or (2× niv. 2,
+      // 1 dépensé), bandeau DD par classe, sorts à classe d'origine.
+      const page = await openSheet(c.bastien, c.webPort, c.refs.partyId, c.refs.chars.vesper);
+      await openTab(page, 'Sorts');
+      await page.getByText('Magie de pacte', { exact: true }).waitFor({ timeout: 10_000 });
+      const rail = page.getByRole('heading', { name: 'Emplacements de sort' });
+      await rail.waitFor({ timeout: 10_000 });
+      await rail.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(250);
+      await shoot(page, '14-multiclasse.png');
       await page.close();
     },
   },

@@ -21,8 +21,15 @@
  * ou illimitée (Rage au niveau 20) — la description l'explique alors.
  */
 
-// Types seulement (import effacé à l'exécution — pas de dépendance circulaire runtime).
-import type { Character } from './index.ts';
+// Import runtime SÛR malgré le cycle index.ts ⇄ classFeatures.ts : les appels
+// (classesOf) n'ont lieu qu'à l'exécution des fonctions, jamais à l'évaluation
+// du module — pas d'accès TDZ dans le cycle ESM. Les types voyagent avec.
+import {
+  type Character,
+  type CharacterClassEntry,
+  classesOf,
+  type FightingStyle,
+} from './index.ts';
 
 /** Modificateurs courts (str/dex/con/int/wis/cha) passés aux formules de ressources. */
 export type AbilityMods = Record<'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha', number>;
@@ -2643,6 +2650,65 @@ export const CLASS_SUBCLASSES: Record<string, SubclassDef[]> = {
 
 // ---------- Aides ----------
 
+/** La classe propriétaire d'une capacité du catalogue ('guerrier-…' → 'Guerrier'). */
+export function findClassFeatureClass(catalogId: string): string | null {
+  for (const [className, list] of Object.entries(CLASS_FEATURES)) {
+    if (list.some((f) => f.id === catalogId)) return className;
+  }
+  for (const [className, subs] of Object.entries(CLASS_SUBCLASSES)) {
+    if (subs.some((s) => s.features.some((f) => f.id === catalogId))) return className;
+  }
+  return null;
+}
+
+/** Une ligne de classe avec ses capacités acquises (multiclassage). */
+export interface FeaturesByClass {
+  classKey: string;
+  classLevel: number;
+  /** Subclass key active on this line, if any. */
+  subclassKey: string | null;
+  /** Acquired features (class level gate applied), sorted by level. */
+  features: ClassFeatureDef[];
+  /** Full catalog (base + subclass) for browsing, unfiltered by level. */
+  catalog: ClassFeatureDef[];
+}
+
+/**
+ * Capacités par ligne de classe (multiclassage SRD) : chaque classe est
+ * évaluée à SON niveau — une capacité de Guerrier 4 n'est pas acquise par un
+ * Guerrier 3/Magicien 17. `catalog` reste complet pour la navigation.
+ */
+export function featuresByClassFor(character: {
+  classes?: CharacterClassEntry[] | null;
+  characterClass?: string | null;
+  level?: number | null;
+  subclass?: string | null;
+  druidCircle?: string | null;
+  divineDomain?: string | null;
+  landCircle?: string | null;
+  sacredOath?: string | null;
+  fightingStyle?: FightingStyle | null;
+  hitDiceUsed?: number | null;
+}): FeaturesByClass[] {
+  const entries = classesOf(character);
+  return entries.map((entry) => {
+    const base = CLASS_FEATURES[entry.classKey] ?? [];
+    const sub =
+      entry.subclassKey && CLASS_SUBCLASSES[entry.classKey]
+        ? (CLASS_SUBCLASSES[entry.classKey].find((s) => s.key === entry.subclassKey)?.features ??
+          [])
+        : [];
+    const all = [...base, ...sub];
+    return {
+      classKey: entry.classKey,
+      classLevel: entry.level,
+      subclassKey: entry.subclassKey ?? null,
+      features: all.filter((f) => f.level <= entry.level).sort((a, b) => a.level - b.level),
+      catalog: all.sort((a, b) => a.level - b.level),
+    };
+  });
+}
+
 /** Capacités de base + celles de la sous-classe active du personnage, triées par niveau. */
 export function featuresForCharacter(character: {
   characterClass?: string | null;
@@ -2698,10 +2764,55 @@ export function nextClassFeatureGain(character: {
   return null;
 }
 
+/** Prochain palier d'UNE ligne de classe (multiclassage : une entrée par classe). */
+export interface NextClassFeatureGain {
+  classKey: string;
+  nextLevel: number;
+  features: ClassFeatureDef[];
+}
+
+/** Prochaine acquisition par ligne de classe, chacune évaluée à son propre niveau. */
+export function nextClassFeatureGains(character: {
+  classes?: CharacterClassEntry[] | null;
+  characterClass?: string | null;
+  subclass?: string | null;
+  druidCircle?: string | null;
+  divineDomain?: string | null;
+  landCircle?: string | null;
+  sacredOath?: string | null;
+  level?: number | null;
+}): NextClassFeatureGain[] {
+  const out: NextClassFeatureGain[] = [];
+  for (const entry of classesOf(character)) {
+    const base = CLASS_FEATURES[entry.classKey] ?? [];
+    const sub =
+      entry.subclassKey && CLASS_SUBCLASSES[entry.classKey]
+        ? (CLASS_SUBCLASSES[entry.classKey].find((s) => s.key === entry.subclassKey)?.features ??
+          [])
+        : [];
+    const all = [...base, ...sub];
+    for (let l = entry.level + 1; l <= 20; l++) {
+      const features = all.filter((f) => f.level === l);
+      if (features.length > 0) {
+        out.push({ classKey: entry.classKey, nextLevel: l, features });
+        break;
+      }
+    }
+  }
+  return out;
+}
+
 /** Taille actuelle de la ressource d'une capacité pour ce personnage (null = pas de compteur). */
 export function classFeatureResourceMax(def: ClassFeatureDef, character: Character): number | null {
   if (!def.resource) return null;
-  return def.resource.max(character.level ?? 1, modsFrom(character));
+  // SRD multiclassage : la ressource évolue au niveau de la classe qui ACCORDE
+  // la capacité (Rage d'un Barbare 3/Magicien 17 = 3 utilisations), jamais au
+  // niveau total du personnage.
+  const owner = findClassFeatureClass(def.id);
+  const level = owner
+    ? (classesOf(character).find((c) => c.classKey === owner)?.level ?? character.level ?? 1)
+    : (character.level ?? 1);
+  return def.resource.max(level, modsFrom(character));
 }
 
 /** Choix de recharge d'un trait : 'short' (court ou long), 'long' (long

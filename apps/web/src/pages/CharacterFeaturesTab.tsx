@@ -9,6 +9,7 @@ import {
   CLASS_FEATURES,
   CLASS_SUBCLASSES,
   type ClassFeatureDef,
+  classesOf,
   DND_CLASSES,
   effectiveFeatureReset,
   FEATURE_CATEGORY_LABELS_FR,
@@ -16,7 +17,8 @@ import {
   type FeatureResetType,
   findClass,
   findClassFeature,
-  nextClassFeatureGain,
+  findClassFeatureClass,
+  nextClassFeatureGains,
   renderFeatureTemplate,
   TEMPLATE_VARIABLES,
 } from '@dnd-inventory/shared';
@@ -103,6 +105,18 @@ export default function CharacterFeaturesTab({
     setShowModal(true);
   };
 
+  // Niveau de la classe qui accorde une capacité du catalogue (multiclassage :
+  // chaque classe est évaluée à SON niveau — jamais le niveau total).
+  const ownLines = classesOf(character);
+  const ownerLevelOf = (catalogId: string | null | undefined): number => {
+    const fallback = character.level ?? 1;
+    if (!catalogId) return fallback;
+    const owner = findClassFeatureClass(catalogId);
+    if (!owner) return fallback;
+    const line = ownLines.find((c) => findClass(c.classKey)?.name === owner);
+    return line?.level ?? fallback;
+  };
+
   const openEdit = (feature: CharacterFeature) => {
     setEditing(feature);
     setTitle(feature.title);
@@ -110,8 +124,9 @@ export default function CharacterFeaturesTab({
     setDescription(feature.description ?? '');
     setCounterMax(feature.counterMax ? String(feature.counterMax) : '');
     // Cases initialisées sur la recharge EFFECTIVE : choix du joueur s'il y en a
-    // un, sinon la règle SRD du catalogue au niveau actuel
-    const eff = effectiveFeatureReset(feature, character.level ?? 1);
+    // un, sinon la règle SRD du catalogue au niveau de la classe qui accorde
+    // la capacité (multiclassage)
+    const eff = effectiveFeatureReset(feature, ownerLevelOf(feature.catalogId));
     setResetShort(eff === 'short');
     setResetLong(eff === 'short' || eff === 'long');
     setShowTemplateHelp(false);
@@ -141,7 +156,7 @@ export default function CharacterFeaturesTab({
       if (def?.resource) {
         const catalogReset = effectiveFeatureReset(
           { catalogId: editing.catalogId, resetType: null },
-          character.level ?? 1,
+          ownerLevelOf(editing.catalogId),
         );
         if (resetType === catalogReset) resetType = null;
       }
@@ -341,7 +356,10 @@ export default function CharacterFeaturesTab({
                       {/* Badge de recharge effective : choix du joueur, sinon règle SRD du catalogue */}
                       {(feature.counterMax ?? 0) > 0 &&
                         (() => {
-                          const eff = effectiveFeatureReset(feature, character.level ?? 1);
+                          const eff = effectiveFeatureReset(
+                            feature,
+                            ownerLevelOf(feature.catalogId),
+                          );
                           if (eff !== 'short' && eff !== 'long') return null;
                           return (
                             <span
@@ -562,10 +580,15 @@ export default function CharacterFeaturesTab({
 
 function resetLabel(def: ClassFeatureDef, character: Character): string | null {
   if (!def.resource) return null;
+  const owner = findClassFeatureClass(def.id);
+  const ownerLevel = owner
+    ? (classesOf(character).find((c) => findClass(c.classKey)?.name === owner)?.level ??
+      character.level ??
+      1)
+    : (character.level ?? 1);
   const short =
     def.resource.reset === 'short' ||
-    (def.resource.shortFromLevel !== undefined &&
-      (character.level ?? 1) >= def.resource.shortFromLevel);
+    (def.resource.shortFromLevel !== undefined && ownerLevel >= def.resource.shortFromLevel);
   const unit = def.resource.unit === 'PV' ? ' PV' : '';
   return short ? `${unit || 'util.'} / repos court*` : `${unit || 'util.'} / repos long`;
 }
@@ -580,7 +603,9 @@ function CatalogCard({
   onAdd: (def: ClassFeatureDef) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
-  const charClassName = findClass(character.characterClass)?.name ?? 'Guerrier';
+  const ownLines = classesOf(character);
+  const charClassName =
+    findClass(character.characterClass)?.name ?? ownLines[0]?.classKey ?? 'Guerrier';
   const [cls, setCls] = useState(charClassName);
   const [subFilter, setSubFilter] = useState('base');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -591,8 +616,11 @@ function CatalogCard({
     setSubFilter('base');
   }, [charClassName]);
 
-  const level = character.level ?? 1;
-  const isOwnClass = cls === charClassName;
+  // Multiclassage : le verrou « acquis » se juge au niveau de LA ligne de
+  // classe parcourue, pas au niveau total du personnage.
+  const ownLine = ownLines.find((c) => findClass(c.classKey)?.name === cls);
+  const level = ownLine?.level ?? 0;
+  const isOwnClass = level > 0;
   const subclasses = CLASS_SUBCLASSES[cls] ?? [];
   const defs: ClassFeatureDef[] =
     subFilter === 'base'
@@ -600,8 +628,8 @@ function CatalogCard({
       : (subclasses.find((s) => s.key === subFilter)?.features ?? []);
   const sorted = [...defs].sort((a, b) => a.level - b.level);
 
-  // Prochaine acquisition (base + sous-classe active du perso)
-  const nextGain = nextClassFeatureGain(character);
+  // Prochaines acquisitions : une par ligne de classe (multiclassage)
+  const nextGains = nextClassFeatureGains(character);
 
   const add = async (def: ClassFeatureDef) => {
     setAddingId(def.id);
@@ -624,9 +652,16 @@ function CatalogCard({
           <span aria-hidden="true">📚</span> Catalogue de classe
           <span className="text-xs font-normal text-ink-400">{open ? '▼' : '▶'}</span>
         </button>
-        {nextGain && (
+        {nextGains.length > 0 && (
           <span className="text-[11px] text-ink-500 text-right">
-            Au niveau {nextGain.level} : {nextGain.features.map((f) => f.name).join(', ')}
+            {nextGains
+              .map(
+                (g) =>
+                  `${ownLines.length > 1 ? `${g.classKey} ` : ''}niv. ${g.nextLevel} : ${g.features
+                    .map((f) => f.name)
+                    .join(', ')}`,
+              )
+              .join(' — ')}
           </span>
         )}
       </div>

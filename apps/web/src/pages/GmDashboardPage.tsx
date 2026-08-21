@@ -275,7 +275,11 @@ function CharactersTab({
                     )}
                   </h3>
                   <p className="text-xs text-ink-400">
-                    {c.characterClass ? `${c.characterClass} ` : ''}
+                    {c.classes && c.classes.length > 1
+                      ? `${c.classes.map((e) => `${e.classKey} ${e.level}`).join('/')} `
+                      : c.characterClass
+                        ? `${c.characterClass} `
+                        : ''}
                     {c.level ? `Niv. ${c.level}` : ''}
                     {c.race ? ` · ${c.race}` : ''}
                   </p>

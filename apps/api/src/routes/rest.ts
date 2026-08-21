@@ -14,7 +14,13 @@ import { applyRest, type FeatureResetType } from '@dnd-inventory/shared';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
-import { isPartyGM, isPartyMember, mapCharacter, requireUser } from './helpers.ts';
+import {
+  attachCharacterClasses,
+  isPartyGM,
+  isPartyMember,
+  mapCharacter,
+  requireUser,
+} from './helpers.ts';
 
 export async function restRoutes(app: FastifyInstance) {
   app.post(
@@ -69,6 +75,9 @@ export async function restRoutes(app: FastifyInstance) {
         counterCurrent: (r.counter_current as number | null) ?? null,
       }));
 
+      // Multiclassage : joindre les lignes de classe — applyRest évalue les
+      // dés de vie par ligne et les compteurs au niveau de LEUR classe.
+      attachCharacterClasses([char]);
       const result = applyRest(mapCharacter(char), features, {
         type: body.type,
         hitDiceSpent: body.hitDiceSpent,
@@ -80,6 +89,7 @@ export async function restRoutes(app: FastifyInstance) {
         currentHp: 'current_hp',
         tempHp: 'temp_hp',
         spellSlotsUsed: 'spell_slots_used',
+        pactSlotsUsed: 'pact_slots_used',
         hitDiceUsed: 'hit_dice_used',
         exhaustion: 'exhaustion',
         deathSaveSuccesses: 'death_save_successes',
@@ -93,7 +103,8 @@ export async function restRoutes(app: FastifyInstance) {
       for (const [key, col] of Object.entries(colMap)) {
         if (patch[key] === undefined) continue;
         sets.push(`${col} = ?`);
-        if (key === 'spellSlotsUsed') vals.push(JSON.stringify(patch[key]));
+        if (key === 'spellSlotsUsed' || key === 'pactSlotsUsed')
+          vals.push(JSON.stringify(patch[key]));
         else if (typeof patch[key] === 'boolean') vals.push(patch[key] ? 1 : 0);
         else vals.push(patch[key]);
       }
@@ -104,6 +115,16 @@ export async function restRoutes(app: FastifyInstance) {
       if (sets.length > 0) {
         vals.push(char.id);
         db.prepare(`UPDATE characters SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+      }
+
+      // --- Multiclassage : dés de vie par ligne de classe (pool par type de dé)
+      if (result.classHitDice.length > 0) {
+        const diceStmt = db.prepare(
+          'UPDATE character_classes SET hit_dice_used = ? WHERE character_id = ? AND class_key = ?',
+        );
+        for (const p of result.classHitDice) {
+          diceStmt.run(Math.max(0, p.hitDiceUsed), char.id, p.classKey);
+        }
       }
 
       // --- Persist catalog counter resets (max recomputed by applyRest)
@@ -151,6 +172,7 @@ export async function restRoutes(app: FastifyInstance) {
       });
 
       const row = db.prepare('SELECT * FROM characters WHERE id = ?').get(char.id) as any;
+      attachCharacterClasses([row]);
       return reply.send({
         character: mapCharacter(row),
         healed: result.healed,

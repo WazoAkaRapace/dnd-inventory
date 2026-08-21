@@ -36,8 +36,19 @@ export async function spellRoutes(app: FastifyInstance) {
       // against the quoted value. We wrap both sides in normalize() so accents
       // (é in "Magicien" is fine, but future-proof for accented names) match.
       if (klass) {
-        where.push(`normalize(classes_json) LIKE normalize(?)`);
-        params.push(`%"${klass}"%`);
+        // Multiclassage : le filtre accepte plusieurs classes (séparées par
+        // des virgules) — UNION des listes de sorts.
+        const classNames = String(klass)
+          .split(',')
+          .map((c) => c.trim())
+          .filter(Boolean);
+        if (classNames.length > 0) {
+          const likes = classNames
+            .map(() => `normalize(classes_json) LIKE normalize(?)`)
+            .join(' OR ');
+          where.push(`(${likes})`);
+          for (const name of classNames) params.push(`%"${name}"%`);
+        }
       }
 
       // Level filter: exact match (0-9). 0 = cantrip.

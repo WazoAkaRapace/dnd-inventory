@@ -21,6 +21,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
 import {
+  attachCharacterClasses,
   characterVisibleTo,
   isPartyGM,
   isPartyMember,
@@ -114,7 +115,12 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
       let counterMax = body.counterMax ?? null;
       if (counterMax === null && catalogId) {
         const def = findClassFeature(catalogId);
-        if (def) counterMax = classFeatureResourceMax(def, mapCharacter(char));
+        if (def) {
+          // Multiclassage : la formule s'évalue avec les lignes de classe
+          // (chaque capacité suit le niveau de SA classe, pas le total).
+          attachCharacterClasses([char]);
+          counterMax = classFeatureResourceMax(def, mapCharacter(char));
+        }
       }
       const counterCurrent = counterMax ?? null; // initialize to max
       const resetType = body.resetType ?? null;

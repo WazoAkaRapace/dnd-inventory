@@ -12,16 +12,20 @@ import {
   type AbilityKey,
   abilityModifier,
   type Character,
+  classesOf,
   computeAC,
   computeEncumbrance,
   computeSpeed,
+  fightingStylesOf,
   findClass,
   formatModifier,
+  hitDiceByClassOf,
   type InventoryEntry,
   passivePerception,
   proficiencyBonus,
   skillProficiencyLevel,
   spellSaveDC,
+  unarmoredDefensesOf,
 } from '@dnd-inventory/shared';
 import { useCallback, useEffect, useState } from 'react';
 import api from '../api';
@@ -114,15 +118,36 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
   const perceptionLevel = skillProficiencyLevel(character, 'perception');
   const passPerc = passivePerception(wisMod, profBonus, perceptionLevel);
 
-  const castingAbility = classInfo?.spellcastingAbility;
-  const isSpellcaster = classInfo && classInfo.spellcasting !== 'none' && castingAbility;
-  const castingMod = isSpellcaster
-    ? abilityModifier((character[castingAbility as keyof Character] as number) ?? 10)
-    : 0;
-  const spellDC = isSpellcaster ? spellSaveDC(castingMod, profBonus) : 0;
+  // Multiclassage : une ligne de lanceur par classe incantatrice — chaque
+  // sort suit la caractéristique de SA classe (SRD).
+  const castingLines = classesOf(character)
+    .map((entry) => {
+      const info = findClass(entry.classKey);
+      if (!info?.spellcastingAbility) return null;
+      const mod = abilityModifier(
+        (character[info.spellcastingAbility as keyof Character] as number) ?? 10,
+      );
+      return {
+        name: info.name,
+        ability: info.spellcastingAbility,
+        mod,
+        dc: spellSaveDC(mod, profBonus),
+      };
+    })
+    .filter((l): l is NonNullable<typeof l> => l !== null);
+
+  // Dés de vie par ligne de classe (le pool garde ses types de dés — SRD)
+  const hitDice = hitDiceByClassOf(character);
 
   // Armor Class — computed from equipped armor, or manual override
-  const acResult = computeAC(entries, dexMod, character.fightingStyle === 'defense', character);
+  const acResult = computeAC(
+    entries,
+    dexMod,
+    fightingStylesOf(character).has('defense'),
+    character,
+  );
+  // Défenses sans armure candidates (multiclassage : on en choisit UNE — SRD)
+  const defenseOptions = unarmoredDefensesOf(character);
   const acOverride = character.armorClassOverride;
   const effectiveAC = acOverride ?? acResult.ac;
   const [acDraft, setAcDraft] = useState('');
@@ -262,12 +287,14 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
             </div>
           </div>
           <DerivedStat label="Initiative" value={formatModifier(dexMod)} />
-          {isSpellcaster && (
-            <>
-              <DerivedStat label="DD de sauvegarde" value={String(spellDC)} />
-              <DerivedStat label="Attaque de sort" value={formatModifier(castingMod + profBonus)} />
-            </>
-          )}
+          {castingLines.map((l) => (
+            <DerivedStat
+              key={l.name}
+              label={`DD de sort${castingLines.length > 1 ? ` · ${l.name}` : ''}`}
+              value={String(l.dc)}
+              hint={`Attaque ${formatModifier(l.mod + profBonus)} · ${ABILITY_SHORT_FR[l.ability]}`}
+            />
+          ))}
           <DerivedStat label="Perception passive" value={String(passPerc)} />
           <DerivedStat
             label="Vitesse"
@@ -282,10 +309,16 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
                 : undefined
             }
           />
-          {classInfo && (
+          {hitDice.length > 0 && hitDice[0].classKey !== '' && (
             <DerivedStat
-              label="Dé de vie"
-              value={`d${classInfo.hitDie} · ${Math.max(0, (character.level ?? 1) - (character.hitDiceUsed ?? 0))}/${character.level ?? 1}`}
+              label="Dés de vie"
+              value={
+                hitDice.length === 1
+                  ? `d${hitDice[0].die} · ${Math.max(0, hitDice[0].max - hitDice[0].used)}/${hitDice[0].max}`
+                  : hitDice
+                      .map((d) => `d${d.die} ${Math.max(0, d.max - d.used)}/${d.max}`)
+                      .join(' · ')
+              }
             />
           )}
           <DerivedStat label="Bonus de maîtrise" value={formatModifier(profBonus)} />
@@ -312,10 +345,40 @@ export default function CharacterStatsTab({ character, charId, entries, onSaved,
           <p className="text-xs text-ink-500">
             Sauvegardes maîtrisées :{' '}
             {classInfo.savingThrows.map((s) => ABILITY_SHORT_FR[s]).join(', ')}
-            {isSpellcaster &&
-              castingAbility &&
-              ` · Incantation : ${ABILITY_LABELS_FR[castingAbility]}`}
+            {castingLines.length > 0 &&
+              ` · Incantation : ${castingLines
+                .map((l) => `${l.name} (${ABILITY_SHORT_FR[l.ability]})`)
+                .join(', ')}`}
           </p>
+        )}
+        {defenseOptions.length > 1 && acOverride === null && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-ink-500">Défense sans armure :</span>
+            {defenseOptions.map((o) => (
+              <button
+                key={o.key}
+                type="button"
+                onClick={() =>
+                  patchCharacter(
+                    { unarmoredDefense: character.unarmoredDefense === o.key ? null : o.key },
+                    'Erreur de mise à jour',
+                  )
+                }
+                aria-pressed={character.unarmoredDefense === o.key}
+                className={`px-2.5 py-1.5 rounded-full text-xs transition-colors ${
+                  character.unarmoredDefense === o.key
+                    ? 'bg-blood-600 text-white'
+                    : 'bg-parchment-100 text-ink-600 hover:bg-parchment-200'
+                }`}
+                title={`${o.label}${o.shieldForbidden ? ' — sans bouclier' : ''} · CA ${o.ac}`}
+              >
+                {o.classKey} <span className="font-mono">{o.ac}</span>
+              </button>
+            ))}
+            <span className="text-[11px] text-ink-400">
+              une seule se cumule (SRD) — la meilleure s'applique par défaut
+            </span>
+          </div>
         )}
       </section>
 

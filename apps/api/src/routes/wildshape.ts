@@ -9,6 +9,7 @@
 import {
   abilityModifier,
   computeAC,
+  findClass,
   MOON_ELEMENTAL_SLUGS,
   rollHitPoints,
   wildShapeCanFly,
@@ -19,6 +20,23 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
 import { isPartyGM, requireUser } from './helpers.ts';
+
+/** Ligne Druide du personnage : niveau de CLASSE + cercle (multiclassage SRD). */
+function druidLine(char: any): { level: number; circle: string | null } {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      'SELECT class_key, level, subclass_key FROM character_classes WHERE character_id = ? ORDER BY position, id',
+    )
+    .all(char.id) as any[];
+  const line = rows.find((r) => r.class_key === 'Druide');
+  if (line) return { level: line.level ?? 1, circle: line.subclass_key ?? null };
+  // Défensif (les lignes existent toujours après migration)
+  if (findClass(char.character_class)?.name === 'Druide') {
+    return { level: char.level ?? 1, circle: char.druid_circle ?? null };
+  }
+  return { level: 0, circle: null };
+}
 
 interface BeastRow {
   slug: string;
@@ -99,8 +117,7 @@ export async function wildShapeRoutes(app: FastifyInstance) {
         return reply.code(403).send({ error: 'Réservé au propriétaire ou au MD' });
       }
 
-      const level = char.level ?? 1;
-      const circle = char.druid_circle ?? null;
+      const { level, circle } = druidLine(char);
       const isMoon = circle === 'lune';
       const maxCR = wildShapeMaxCR(level, circle);
       const canSwim = wildShapeCanSwim(level);
@@ -151,7 +168,7 @@ export async function wildShapeRoutes(app: FastifyInstance) {
       return reply.send({
         forms,
         uses: char.wild_shape_uses ?? 2,
-        unlimited: (char.level ?? 1) >= 20, // Archidruide (niveau 20)
+        unlimited: level >= 20, // Archidruide (niveau de CLASSE Druide 20)
         shaped: char.wild_shape_slug ?? null,
         maxCR,
         canSwim,
@@ -185,7 +202,7 @@ export async function wildShapeRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'Déjà sous forme animale' });
       }
       // Archidruide (niveau 20) : forme sauvage illimitée
-      if ((char.wild_shape_uses ?? 2) <= 0 && (char.level ?? 1) < 20) {
+      if ((char.wild_shape_uses ?? 2) <= 0 && druidLine(char).level < 20) {
         return reply.code(400).send({ error: "Plus d'utilisations — repos court requis" });
       }
 
@@ -207,8 +224,7 @@ export async function wildShapeRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: "Vous n'avez jamais vu cette bête" });
       }
 
-      const level = char.level ?? 1;
-      const circle = char.druid_circle ?? null;
+      const { level, circle } = druidLine(char);
       const maxCR = wildShapeMaxCR(level, circle);
       const speed = parseSpeed(beast.speed_json);
       const isMoonElemental =
@@ -230,7 +246,7 @@ export async function wildShapeRoutes(app: FastifyInstance) {
 
       const tx = db.transaction(() => {
         // Niveau 20 (Archidruide) : pas de décrément
-        const usesExpr = (char.level ?? 1) >= 20 ? 'wild_shape_uses' : 'wild_shape_uses - 1';
+        const usesExpr = druidLine(char).level >= 20 ? 'wild_shape_uses' : 'wild_shape_uses - 1';
         db.prepare(`
           UPDATE characters
           SET wild_shape_slug = ?, wild_shape_hp = ?, wild_shape_max_hp = ?, wild_shape_uses = ${usesExpr}

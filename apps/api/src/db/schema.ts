@@ -180,6 +180,13 @@ export const characters = sqliteTable(
     sacredOath: text('sacred_oath'),
     // Subclass key (CLASS_SUBCLASSES) for classes without a dedicated column
     subclass: text('subclass'),
+    // --- Multiclassage (SRD 5.1) ---
+    // Pact-magic pool (Occultiste), SEPARATE from spell_slots_used: a
+    // warlock mixed with another caster owns both pools and they would
+    // collide at the same array index. Recharges on a short rest.
+    pactSlotsUsed: text('pact_slots_used').notNull().default('[0,0,0,0,0,0,0,0,0]'),
+    // Active Unarmored Defense when several are available (null = best auto)
+    unarmoredDefense: text('unarmored_defense'),
   },
   (_t) => [
     check('characters_strength_check', sql`strength >= 1`),
@@ -187,6 +194,36 @@ export const characters = sqliteTable(
     check('characters_exhaustion_check', sql`exhaustion >= 0 AND exhaustion <= 6`),
     check('characters_max_hp_check', sql`max_hp >= 1`),
     check('characters_level_check', sql`level >= 1 AND level <= 20`),
+  ],
+);
+
+// ---------- Multiclassage: one row per class line (SRD 5.1) ----------
+// The flat characters columns (character_class, level, subclass…) stay as a
+// denormalized view of the STARTING class (position 0) + total level = SUM.
+export const characterClasses = sqliteTable(
+  'character_classes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    characterId: integer('character_id')
+      .notNull()
+      .references(() => characters.id, { onDelete: 'cascade' }),
+    /** French class name (DND_CLASSES). */
+    classKey: text('class_key').notNull(),
+    /** Levels in THIS class — the character's total level is the SUM. */
+    level: integer('level').notNull().default(1),
+    /** Subclass taken in this class (CLASS_SUBCLASSES key). */
+    subclassKey: text('subclass_key'),
+    /** Hit dice of this class already spent. */
+    hitDiceUsed: integer('hit_dice_used').notNull().default(0),
+    /** Fighting style taken through this class (Guerrier 1, Paladin 2, Rôdeur 2). */
+    fightingStyle: text('fighting_style'),
+    /** 0 = starting class (max-HD first level, full proficiencies). */
+    position: integer('position').notNull().default(0),
+  },
+  (t) => [
+    unique('character_classes_character_class_unique').on(t.characterId, t.classKey),
+    index('idx_character_classes_character').on(t.characterId),
+    check('character_classes_level_check', sql`level >= 1 AND level <= 20`),
   ],
 );
 
@@ -371,6 +408,8 @@ export const characterSpells = sqliteTable(
       .notNull()
       .references(() => spells.id, { onDelete: 'cascade' }),
     prepared: integer('prepared').notNull().default(0),
+    /** Which class's list this spell was taken from (multiclassing SRD). */
+    classSource: text('class_source'),
     sortOrder: integer('sort_order').notNull().default(0),
     addedAt: text('added_at').notNull().default(sql`(datetime('now'))`),
   },

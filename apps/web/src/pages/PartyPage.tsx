@@ -42,7 +42,11 @@ function RoleBadge({ role }: { role: PartyRole }) {
 /** Classe + niveau, race — the identity line under a character name. */
 function charMeta(c: CharacterSummary): string {
   const parts: string[] = [];
-  if (c.characterClass) parts.push(c.level ? `${c.characterClass} ${c.level}` : c.characterClass);
+  if (c.classes && c.classes.length > 1) {
+    parts.push(c.classes.map((e) => `${e.classKey} ${e.level}`).join(' / '));
+  } else if (c.characterClass) {
+    parts.push(c.level ? `${c.characterClass} ${c.level}` : c.characterClass);
+  }
   if (c.race) parts.push(c.race);
   return parts.join(' · ');
 }

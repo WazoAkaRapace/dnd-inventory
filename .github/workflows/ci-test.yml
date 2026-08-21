@@ -51,6 +51,8 @@ jobs:
 
       - name: Rules suite - class features
         run: npm run test-class-features
+      - name: Règles — multiclassage
+        run: npm run test-multiclass-rules
 
       - name: Rules suite - creation data
         run: npm run test-creation-data

@@ -25,11 +25,14 @@ import {
 interface AddCharacterSpellPayload {
   spellId: number;
   prepared?: boolean;
+  /** Classe d'origine du sort (multiclassage SRD) — défaut : 1ère classe. */
+  classSource?: string | null;
 }
 
 interface PatchCharacterSpellPayload {
   prepared?: boolean;
   sortOrder?: number;
+  classSource?: string | null;
 }
 
 /**
@@ -77,7 +80,7 @@ export async function characterSpellRoutes(app: FastifyInstance) {
         .prepare(`
         SELECT
           cs.id AS id, cs.character_id AS character_id,
-          cs.prepared AS prepared, cs.sort_order AS sort_order, cs.added_at AS added_at,
+          cs.prepared AS prepared, cs.class_source AS class_source, cs.sort_order AS sort_order, cs.added_at AS added_at,
           s.id AS s_id, s.srd_index AS s_srd_index, s.name AS s_name, s.name_fr AS s_name_fr,
           s.level AS s_level, s.school AS s_school, s.casting_time AS s_casting_time,
           s.range_text AS s_range_text, s.components AS s_components, s.material AS s_material,
@@ -126,13 +129,36 @@ export async function characterSpellRoutes(app: FastifyInstance) {
 
       const prepared = body.prepared ? 1 : 0;
 
+      // Classe d'origine (multiclassage SRD) : une classe de la fiche, sinon
+      // la classe de départ. L'unicité reste (personnage, sort) — un sort
+      // connu via deux listes ne compte qu'une fois sur la fiche, la classe
+      // d'origine décide de son DD et de son compteur de préparation.
+      const classRows = db
+        .prepare('SELECT class_key FROM character_classes WHERE character_id = ? ORDER BY position')
+        .all(char.id) as any[];
+      const knownClasses = classRows.map((r) => r.class_key as string);
+      const firstClass = knownClasses[0] ?? char.character_class ?? null;
+      let classSource: string | null = firstClass;
+      if (body.classSource !== undefined && body.classSource !== null) {
+        const wanted = knownClasses.includes(body.classSource)
+          ? body.classSource
+          : body.classSource === char.character_class
+            ? body.classSource
+            : null;
+        if (wanted === null) {
+          return reply.code(400).send({ error: 'classe d’origine inconnue pour ce personnage' });
+        }
+        classSource = wanted;
+      }
+
       // UPSERT: if the character already knows this spell, just toggle prepared.
       db.prepare(`
-        INSERT INTO character_spells (character_id, spell_id, prepared)
-        VALUES (?, ?, ?)
+        INSERT INTO character_spells (character_id, spell_id, prepared, class_source)
+        VALUES (?, ?, ?, ?)
         ON CONFLICT(character_id, spell_id) DO UPDATE SET
-          prepared = excluded.prepared
-      `).run(char.id, body.spellId, prepared);
+          prepared = excluded.prepared,
+          class_source = COALESCE(excluded.class_source, character_spells.class_source)
+      `).run(char.id, body.spellId, prepared, classSource);
 
       // Query by character_id + spell_id (not lastInsertRowid, which is
       // unreliable on UPSERT: on the conflict path it still holds the rowid
@@ -141,7 +167,7 @@ export async function characterSpellRoutes(app: FastifyInstance) {
         .prepare(`
         SELECT
           cs.id AS id, cs.character_id AS character_id,
-          cs.prepared AS prepared, cs.sort_order AS sort_order, cs.added_at AS added_at,
+          cs.prepared AS prepared, cs.class_source AS class_source, cs.sort_order AS sort_order, cs.added_at AS added_at,
           s.id AS s_id, s.srd_index AS s_srd_index, s.name AS s_name, s.name_fr AS s_name_fr,
           s.level AS s_level, s.school AS s_school, s.casting_time AS s_casting_time,
           s.range_text AS s_range_text, s.components AS s_components, s.material AS s_material,
@@ -198,6 +224,10 @@ export async function characterSpellRoutes(app: FastifyInstance) {
         sets.push('sort_order = ?');
         vals.push(Math.floor(body.sortOrder));
       }
+      if (body.classSource !== undefined) {
+        sets.push('class_source = ?');
+        vals.push(body.classSource || null);
+      }
       if (sets.length === 0) return reply.code(400).send({ error: 'no fields to update' });
       vals.push(link.id);
       db.prepare(`UPDATE character_spells SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
@@ -206,7 +236,7 @@ export async function characterSpellRoutes(app: FastifyInstance) {
         .prepare(`
         SELECT
           cs.id AS id, cs.character_id AS character_id,
-          cs.prepared AS prepared, cs.sort_order AS sort_order, cs.added_at AS added_at,
+          cs.prepared AS prepared, cs.class_source AS class_source, cs.sort_order AS sort_order, cs.added_at AS added_at,
           s.id AS s_id, s.srd_index AS s_srd_index, s.name AS s_name, s.name_fr AS s_name_fr,
           s.level AS s_level, s.school AS s_school, s.casting_time AS s_casting_time,
           s.range_text AS s_range_text, s.components AS s_components, s.material AS s_material,

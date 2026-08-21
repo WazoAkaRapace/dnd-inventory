@@ -80,7 +80,9 @@ export default function AddPlayerModal({ open, onClose, characters, onAdd }: Pro
             <span className="font-medium">{c.name}</span>
             {c.characterClass && (
               <span className="text-sm text-ink-400 ml-auto">
-                {c.characterClass} N{c.level}
+                {c.classes && c.classes.length > 1
+                  ? c.classes.map((e) => `${e.classKey} ${e.level}`).join(' / ')
+                  : `${c.characterClass ?? ''} N${c.level}`}
               </span>
             )}
           </label>

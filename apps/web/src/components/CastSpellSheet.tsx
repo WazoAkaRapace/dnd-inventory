@@ -22,6 +22,8 @@ export default function CastSpellSheet({
   spell,
   slots,
   slotsUsed,
+  pactSlots,
+  pactUsed,
   concentrating,
   castingMod,
   profBonus,
@@ -30,9 +32,12 @@ export default function CastSpellSheet({
   onCast,
 }: {
   spell: Spell;
-  /** Max slots per level 1-9 (index 0 = level 1). */
+  /** Max slots per level 1-9 (index 0 = level 1) — Incantation pool. */
   slots: number[];
   slotsUsed: number[];
+  /** Pact magic pool (Occultiste) — interchangeable with Incantation (SRD). */
+  pactSlots?: number[];
+  pactUsed?: number[];
   concentrating: boolean;
   /** For the DD / attack preview chips. */
   castingMod?: number;
@@ -46,13 +51,23 @@ export default function CastSpellSheet({
   const canUpcast = !!(spell.higherLevelFr || spell.higherLevel);
 
   // Castable levels: the spell's own level, plus higher levels when the
-  // spell scales ("Aux niveaux supérieurs"), limited to slots remaining.
+  // spell scales ("Aux niveaux supérieurs"), limited to slots remaining —
+  // SRD magie de pacte : un emplacement de PACTE de niveau ≥ au sort convient
+  // aussi (les deux pools sont interchangeables).
+  const pactSlotsRef = pactSlots ?? [0, 0, 0, 0, 0, 0, 0, 0, 0];
+  const pactUsedRef = pactUsed ?? [0, 0, 0, 0, 0, 0, 0, 0, 0];
+  const pactAvailableFrom = (lvl: number): boolean => {
+    for (let i = lvl - 1; i < 9; i++) {
+      if ((pactSlotsRef[i] ?? 0) - (pactUsedRef[i] ?? 0) > 0) return true;
+    }
+    return false;
+  };
   const castableLevels: number[] = [];
   if (!isCantrip) {
     for (let lvl = spell.level; lvl <= 9; lvl++) {
       if (lvl > spell.level && !canUpcast) break;
       const remaining = (slots[lvl - 1] ?? 0) - (slotsUsed[lvl - 1] ?? 0);
-      if (remaining > 0) castableLevels.push(lvl);
+      if (remaining > 0 || pactAvailableFrom(lvl)) castableLevels.push(lvl);
     }
   }
 
@@ -84,6 +99,8 @@ export default function CastSpellSheet({
   };
 
   const remainingAt = (lvl: number) => (slots[lvl - 1] ?? 0) - (slotsUsed[lvl - 1] ?? 0);
+  /** Niveau puisé dans le PACTE (incantation épuisée à ce niveau) ? */
+  const viaPact = (lvl: number) => remainingAt(lvl) <= 0 && pactAvailableFrom(lvl);
 
   return createPortal(
     <div
@@ -163,7 +180,15 @@ export default function CastSpellSheet({
                     )}
                   </span>
                   <span className={selected ? 'text-parchment-100' : 'text-ink-400'}>
-                    {remainingAt(lvl)} restant{remainingAt(lvl) > 1 ? 's' : ''}
+                    {viaPact(lvl) ? (
+                      <span title="Emplacement de pacte (recharge au repos court) — SRD magie de pacte">
+                        ☾ magie de pacte
+                      </span>
+                    ) : (
+                      <>
+                        {remainingAt(lvl)} restant{remainingAt(lvl) > 1 ? 's' : ''}
+                      </>
+                    )}
                   </span>
                 </button>
               );

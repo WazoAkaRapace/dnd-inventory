@@ -9,6 +9,7 @@ import type {
 } from '@dnd-inventory/shared';
 import {
   abilityModifier,
+  CLASS_SUBCLASSES,
   CONCENTRATION_BREAKING_CONDITIONS_FR,
   computeAC,
 } from '@dnd-inventory/shared';
@@ -16,13 +17,16 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
 import {
+  attachCharacterClasses,
   characterVisibleTo,
   isPartyGM,
   isPartyMember,
   mapCharacter,
   mapCharacterSummary,
   mirrorConditionsToCombatants,
+  replaceCharacterClasses,
   requireUser,
+  validateClassEntries,
 } from './helpers.ts';
 
 export async function characterRoutes(app: FastifyInstance) {
@@ -97,6 +101,15 @@ export async function characterRoutes(app: FastifyInstance) {
           currentHp,
           body.hidden ? 1 : 0,
         );
+      // Multiclassage : lignes de classe (toujours présentes, même mono-classe)
+      const classPayload =
+        body.classes ??
+        (body.characterClass ? [{ classKey: body.characterClass, level: body.level ?? 1 }] : []);
+      if (classPayload.length > 0) {
+        const validated = validateClassEntries(classPayload);
+        if (!validated.ok) return reply.code(400).send({ error: validated.error });
+        replaceCharacterClasses(info.lastInsertRowid as number, validated.entries);
+      }
       const row = db
         .prepare(`
         SELECT c.*, u.display_name AS owner_name
@@ -104,6 +117,7 @@ export async function characterRoutes(app: FastifyInstance) {
         WHERE c.id = ?
       `)
         .get(info.lastInsertRowid);
+      attachCharacterClasses([row]);
       bus.emitChange({
         type: 'party:change',
         partyId,
@@ -137,6 +151,7 @@ export async function characterRoutes(app: FastifyInstance) {
       // owner and the GM.
       const callerIsGM = isPartyGM(partyId, userId);
       const visible = rows.filter((row) => !row.hidden || row.owner_id === userId || callerIsGM);
+      attachCharacterClasses(visible);
       return reply.send({ characters: visible.map(mapCharacterSummary) });
     },
   );
@@ -161,6 +176,7 @@ export async function characterRoutes(app: FastifyInstance) {
       // 404 (not 403): a hidden character must not betray its existence
       if (!characterVisibleTo(row, userId))
         return reply.code(404).send({ error: 'character not found' });
+      attachCharacterClasses([row]);
       return reply.send({ character: mapCharacter(row) });
     },
   );
@@ -235,6 +251,8 @@ export async function characterRoutes(app: FastifyInstance) {
         'armorProficiencies',
         'fightingStyle',
         'spellSlotsUsed',
+        'pactSlotsUsed',
+        'unarmoredDefense',
         // Description / personality
         'alignment',
         'sex',
@@ -285,6 +303,8 @@ export async function characterRoutes(app: FastifyInstance) {
         armorProficiencies: 'armor_proficiencies',
         fightingStyle: 'fighting_style',
         spellSlotsUsed: 'spell_slots_used',
+        pactSlotsUsed: 'pact_slots_used',
+        unarmoredDefense: 'unarmored_defense',
         portraitUrl: 'portrait_url',
         personalityTraits: 'personality_traits',
         armorClassOverride: 'armor_class_override',
@@ -311,6 +331,7 @@ export async function characterRoutes(app: FastifyInstance) {
         'weaponProficiencies',
         'armorProficiencies',
         'spellSlotsUsed',
+        'pactSlotsUsed',
         'wildShapeSeen',
       ]);
       for (const key of allowed) {
@@ -333,7 +354,16 @@ export async function characterRoutes(app: FastifyInstance) {
           }
         }
       }
-      if (sets.length === 0) return reply.code(400).send({ error: 'no fields to update' });
+      // Multiclassage : remplacement atomique des lignes de classe + re-sync
+      // des colonnes dénormalisées (classe de départ, niveau total…).
+      if (body.classes !== undefined) {
+        const validated = validateClassEntries(body.classes);
+        if (!validated.ok) return reply.code(400).send({ error: validated.error });
+        replaceCharacterClasses(char.id, validated.entries);
+      }
+      if (sets.length === 0 && body.classes === undefined) {
+        return reply.code(400).send({ error: 'no fields to update' });
+      }
 
       // --- Wild Shape: while shaped, HP edits target the beast's bar.
       // Hitting 0 reverts with excess damage carried over (SRD), and the
@@ -431,6 +461,7 @@ export async function characterRoutes(app: FastifyInstance) {
             WHERE c.id = ?
           `)
             .get(char.id);
+          attachCharacterClasses([rowAfter]);
           return reply.send({ character: mapCharacter(rowAfter) });
         }
       }
@@ -511,7 +542,9 @@ export async function characterRoutes(app: FastifyInstance) {
       // from inside the tx; events are best-effort refresh nudges, so a
       // rollback just leaves clients on the pre-tx state.)
       const writeTx = db.transaction(() => {
-        db.prepare(`UPDATE characters SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+        if (sets.length > 0) {
+          db.prepare(`UPDATE characters SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+        }
 
         for (const cr of hpMirrorTargets) {
           const setsC: string[] = [];
@@ -572,6 +605,86 @@ export async function characterRoutes(app: FastifyInstance) {
       });
       const removedCount = writeTx();
 
+      // --- Champs de classe « plats » (rétrocompat mono-classe) : les reporter
+      // sur les lignes de classe, qui font foi pour le moteur (multiclassage).
+      // Une fiche multiclassée s'édite via classes[] — un `level` seul sur une
+      // telle fiche est ambigu et ne touche pas les lignes.
+      const legacyClassFields = [
+        'characterClass',
+        'level',
+        'subclass',
+        'divineDomain',
+        'druidCircle',
+        'sacredOath',
+        'fightingStyle',
+      ] as const;
+      const changedLegacy = legacyClassFields.filter((f) => (body as any)[f] !== undefined);
+      const classRows = db
+        .prepare('SELECT * FROM character_classes WHERE character_id = ? ORDER BY position, id')
+        .all(char.id) as any[];
+      if (changedLegacy.length > 0) {
+        const entries =
+          classRows.length > 0
+            ? classRows.map((r) => ({
+                classKey: r.class_key as string,
+                level: r.level as number,
+                subclassKey: (r.subclass_key as string | null) ?? null,
+                hitDiceUsed: (r.hit_dice_used as number) ?? 0,
+                fightingStyle: (r.fighting_style as string | null) ?? null,
+              }))
+            : [
+                {
+                  classKey: (body.characterClass ?? char.character_class ?? '') as string,
+                  level: (body.level ?? char.level ?? 1) as number,
+                  subclassKey: (body.divineDomain ??
+                    char.divine_domain ??
+                    body.druidCircle ??
+                    char.druid_circle ??
+                    body.sacredOath ??
+                    char.sacred_oath ??
+                    body.subclass ??
+                    char.subclass ??
+                    null) as string | null,
+                  hitDiceUsed: (char.hit_dice_used as number) ?? 0,
+                  fightingStyle: (body.fightingStyle ?? char.fighting_style ?? null) as
+                    | string
+                    | null,
+                },
+              ];
+        const first = entries[0];
+        if (body.characterClass !== undefined) first.classKey = body.characterClass;
+        if (body.level !== undefined) {
+          // `level` plat = niveau TOTAL : le delta va sur la DERNIÈRE ligne
+          // (la classe en cours d'avancement — convention du multiclassage ;
+          // mono-classe, c'est simplement la ligne unique). Une sous-classe
+          // qui passe sous son palier RAW est retirée de la ligne.
+          const delta = body.level - entries.reduce((sum, e) => sum + e.level, 0);
+          const last = entries[entries.length - 1];
+          last.level = Math.max(1, last.level + delta);
+          for (const e of entries) {
+            if (!e.subclassKey) continue;
+            const def = (CLASS_SUBCLASSES[e.classKey] ?? []).find((s) => s.key === e.subclassKey);
+            if (def && def.level > e.level) e.subclassKey = null;
+          }
+        }
+        if (entries.length === 1) {
+          if (first.classKey === 'Clerc' && body.divineDomain !== undefined) {
+            first.subclassKey = body.divineDomain;
+          } else if (first.classKey === 'Druide' && body.druidCircle !== undefined) {
+            first.subclassKey = body.druidCircle;
+          } else if (first.classKey === 'Paladin' && body.sacredOath !== undefined) {
+            first.subclassKey = body.sacredOath;
+          } else if (body.subclass !== undefined) {
+            first.subclassKey = body.subclass;
+          }
+        }
+        if (body.fightingStyle !== undefined) first.fightingStyle = body.fightingStyle;
+        const validated = validateClassEntries(entries);
+        // Une fiche héritée peut dévier du catalogue (sous-classe hors palier) :
+        // on synchronise seulement l'état valide, sans rejeter l'écriture.
+        if (validated.ok) replaceCharacterClasses(char.id, validated.entries);
+      }
+
       if (hpMirrorTargets.length > 0) {
         bus.emitChange({
           type: 'combat:change',
@@ -596,6 +709,7 @@ export async function characterRoutes(app: FastifyInstance) {
         WHERE c.id = ?
       `)
         .get(char.id);
+      attachCharacterClasses([row]);
       // Detect if this was a coin change vs stat change for the event action
       const coinKeys = ['copper', 'silver', 'electrum', 'gold', 'platinum'];
       const isCoinChange = Object.keys(body).some((k) => coinKeys.includes(k));

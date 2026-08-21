@@ -12,6 +12,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
 import {
+  attachCharacterClasses,
   generateInviteCode,
   isPartyGM,
   isPartyMember,
@@ -158,6 +159,7 @@ export async function partyRoutes(app: FastifyInstance) {
         (c: any) => !c.hidden || c.owner_id === userId || callerIsGM,
       );
 
+      attachCharacterClasses(visibleCharacters);
       return reply.send({
         party: {
           id: party.id,

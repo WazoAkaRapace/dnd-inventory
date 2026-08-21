@@ -401,12 +401,12 @@ check(
 const pactChar = mkChar({
   characterClass: 'Occultiste',
   level: 5,
-  spellSlotsUsed: [0, 2, 0, 0, 0, 0, 0, 0, 0],
+  pactSlotsUsed: [0, 2, 0, 0, 0, 0, 0, 0, 0],
 });
 const pactRest = applyRest(pactChar, [], { type: 'short' });
 check(
-  'occultiste : repos court restaure les emplacements de pacte',
-  pactRest.characterPatch.spellSlotsUsed,
+  'occultiste : repos court restaure le POOL DE PACTE (séparé)',
+  pactRest.characterPatch.pactSlotsUsed,
   [0, 0, 0, 0, 0, 0, 0, 0, 0],
 );
 

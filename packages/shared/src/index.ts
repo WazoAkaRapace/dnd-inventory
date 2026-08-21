@@ -10,6 +10,7 @@ import {
   eldritchInvocationsCount,
   type FeatureResetType,
   findClassFeature,
+  findClassFeatureClass,
   songOfRestDie,
 } from './classFeatures.ts';
 
@@ -340,6 +341,12 @@ export interface CharacterSummary {
   // Druid Circle of the Land terrain + Paladin Sacred Oath
   landCircle: string | null;
   sacredOath: string | null;
+  // --- Multiclassage (SRD 5.1): class lines are the source of truth; the
+  // flat columns above stay as a denormalized view of the starting class ---
+  classes: CharacterClassEntry[];
+  pactSlotsUsed: number[];
+  /** Active Unarmored Defense when several are available (null = best auto). */
+  unarmoredDefense: 'barbare' | 'moine' | 'draconique' | null;
   // Secret prep: hidden characters are invisible to other players (owner + GM
   // still see them) and inactive — excluded from combat rosters and adds.
   hidden: boolean;
@@ -381,6 +388,8 @@ export interface CreateCharacterPayload {
   capacityMultiplier?: number;
   characterClass?: string;
   level?: number;
+  /** Multiclass creation (campaigns starting above level 1); position 0 = starting class. */
+  classes?: CharacterClassEntry[];
   race?: string;
   background?: string;
   skillProficiencies?: string[];
@@ -452,6 +461,10 @@ export interface PatchCharacterPayload {
   wildShapeMaxHp?: number | null;
   wildShapeUses?: number;
   hitDiceUsed?: number;
+  /** Multiclassage: replace the whole class-line set (position 0 = starting class). */
+  classes?: CharacterClassEntry[];
+  pactSlotsUsed?: number[];
+  unarmoredDefense?: 'barbare' | 'moine' | 'draconique' | null;
   wildShapeSeen?: string[];
   druidCircle?: string | null;
   subclass?: string | null;
@@ -601,22 +614,18 @@ export function skillModifier(character: Character, skillKey: SkillKey): number 
 
 /** Expertise slots by class/level (SRD): Roublard 2 at level 1 (+2 at 6), Barde 2 at
  *  level 3 (+2 at 10), Clerc du Domaine du Savoir 2 at level 1 (Bénédictions de la Connaissance). */
-export function expertiseSlots(character: {
-  characterClass?: string | null;
-  level?: number;
-  divineDomain?: string | null;
-}): number {
-  const level = character.level ?? 1;
-  switch (findClass(character.characterClass)?.name) {
-    case 'Roublard':
-      return level >= 6 ? 4 : 2;
-    case 'Barde':
-      return level >= 10 ? 4 : level >= 3 ? 2 : 0;
-    case 'Clerc':
-      return character.divineDomain === 'savoir' ? 2 : 0;
-    default:
-      return 0;
+export function expertiseSlots(character: CharacterClassSource): number {
+  // Each class grants its own expertise picks at its CLASS level (SRD
+  // multiclassing: features as if single-classed); the pools ADD UP. Same
+  // skill twice stays double — ProficiencyLevel caps at 2.
+  let total = 0;
+  for (const entry of classesOf(character)) {
+    const name = findClass(entry.classKey)?.name;
+    if (name === 'Roublard') total += entry.level >= 6 ? 4 : 2;
+    else if (name === 'Barde') total += entry.level >= 10 ? 4 : entry.level >= 3 ? 2 : 0;
+    else if (name === 'Clerc' && entry.subclassKey === 'savoir') total += 2;
   }
+  return total;
 }
 
 // ---------- Tools & languages (SRD 5e) ----------
@@ -891,6 +900,411 @@ export function findClass(name: string | null | undefined): ClassInfo | null {
           .replace(/[\u0300-\u036f]/g, '') === normalized,
     ) ?? null
   );
+}
+
+// ---------- Multiclassage (SRD 5.1 § « Multiclassing ») ----------
+
+/** One class line on a sheet: the multiclass source of truth (character_classes row). */
+export interface CharacterClassEntry {
+  /** French class name — a DND_CLASSES name ('Magicien'). */
+  classKey: string;
+  /** Levels in THIS class (1-20); the character's total level is the sum. */
+  level: number;
+  /** Subclass taken in this class (CLASS_SUBCLASSES / domaine / cercle / serment key). */
+  subclassKey?: string | null;
+  /** Hit dice of this class already spent (short rests). */
+  hitDiceUsed?: number;
+  /** Fighting style taken through this class (Guerrier 1, Paladin 2, Rôdeur 2). */
+  fightingStyle?: FightingStyle | null;
+}
+
+/** Anything carrying class info — legacy flat fields, the new classes[], or both. */
+export interface CharacterClassSource {
+  classes?: CharacterClassEntry[] | null;
+  characterClass?: string | null;
+  level?: number | null;
+  subclass?: string | null;
+  druidCircle?: string | null;
+  divineDomain?: string | null;
+  landCircle?: string | null;
+  sacredOath?: string | null;
+  fightingStyle?: FightingStyle | null;
+  hitDiceUsed?: number | null;
+}
+
+/**
+ * Resolve a character's class lines. Multiclass sheets carry `classes`
+ * directly; legacy single-class characters are synthesized from the flat
+ * columns (characterClass + level + subclass columns) so every engine
+ * function below works for both storage generations.
+ */
+export function classesOf(character: CharacterClassSource): CharacterClassEntry[] {
+  const entries = (character.classes ?? []).filter(
+    (c) => c && findClass(c.classKey) !== null && Number.isFinite(c.level) && c.level >= 1,
+  );
+  if (entries.length > 0) return entries;
+  const info = findClass(character.characterClass ?? '');
+  if (!info) return [];
+  const subclassKey =
+    info.name === 'Clerc'
+      ? (character.divineDomain ?? null)
+      : info.name === 'Druide'
+        ? (character.druidCircle ?? null)
+        : info.name === 'Paladin'
+          ? (character.sacredOath ?? null)
+          : (character.subclass ?? null);
+  return [
+    {
+      classKey: info.name,
+      level: character.level ?? 1,
+      subclassKey,
+      hitDiceUsed: character.hitDiceUsed ?? 0,
+      fightingStyle: character.fightingStyle ?? null,
+    },
+  ];
+}
+
+/** Total character level = sum of class levels (SRD multiclassing). */
+export function totalLevel(classes: CharacterClassEntry[]): number {
+  return classes.reduce((sum, c) => sum + c.level, 0);
+}
+
+/** Level in one class (0 when the character has none). */
+export function classLevelOf(character: CharacterClassSource, className: string): number {
+  const wanted = findClass(className)?.name;
+  if (!wanted) return 0;
+  const entry = classesOf(character).find((c) => findClass(c.classKey)?.name === wanted);
+  return entry?.level ?? 0;
+}
+
+/** Fighting styles taken through any class (same style twice doesn't stack — SAC). */
+export function fightingStylesOf(character: CharacterClassSource): Set<FightingStyle> {
+  const styles = new Set<FightingStyle>();
+  for (const entry of classesOf(character)) {
+    if (entry.fightingStyle) styles.add(entry.fightingStyle);
+  }
+  return styles;
+}
+
+/**
+ * Multiclassing prerequisites (SRD 5.1 table): each class needs one OR-group
+ * of abilities at 13+ (Guerrier FOR *ou* DEX ; Moine DEX *et* SAG ; Paladin
+ * FOR *et* CHA). The Artificier row (INT 13) is TCE — same extension status
+ * as the class itself in this catalog.
+ */
+export const MULTICLASS_PREREQUISITES: Record<string, AbilityKey[][]> = {
+  Artificier: [['intelligence']],
+  Barbare: [['strength']],
+  Barde: [['charisma']],
+  Clerc: [['wisdom']],
+  Druide: [['wisdom']],
+  Ensorceleur: [['charisma']],
+  Guerrier: [['strength'], ['dexterity']],
+  Magicien: [['intelligence']],
+  Moine: [['dexterity', 'wisdom']],
+  Occultiste: [['charisma']],
+  Paladin: [['strength', 'charisma']],
+  Rôdeur: [['dexterity', 'wisdom']],
+  Roublard: [['dexterity']],
+};
+
+/** Prerequisite check result for one class line (display + ⚠ in the UI). */
+export interface MulticlassPrereqStatus {
+  classKey: string;
+  satisfied: boolean;
+  /** French detail lines, e.g. "FOR 12 (13 requis)". */
+  details: string[];
+}
+
+/**
+ * Prerequisite status of every class AFTER the first (the starting class has
+ * none — SRD: you must meet the prereqs of your current and new class when
+ * taking a level in a new one; surfaced as ⚠ in the UI, never blocking).
+ */
+export function multiclassPrereqStatuses(
+  character: CharacterClassSource & Record<AbilityKey, number>,
+): MulticlassPrereqStatus[] {
+  return classesOf(character)
+    .slice(1)
+    .map((entry) => {
+      const name = findClass(entry.classKey)?.name ?? entry.classKey;
+      const groups = MULTICLASS_PREREQUISITES[name] ?? [];
+      const details: string[] = [];
+      let satisfied = false;
+      for (const group of groups) {
+        if (group.every((a) => (character[a] ?? 10) >= 13)) satisfied = true;
+        for (const a of group) {
+          details.push(`${ABILITY_SHORT_FR[a]} ${character[a] ?? 10} (13 requis)`);
+        }
+      }
+      return { classKey: name, satisfied, details };
+    });
+}
+
+/** Proficiencies gained when taking a FIRST level in a class (SRD 5.1 table). */
+export interface MulticlassProficiencies {
+  /** Armor tokens ('light'/'medium'/'heavy'/'shields'). */
+  armor: Array<'light' | 'medium' | 'heavy' | 'shields'>;
+  /** Weapon tokens ('simple'/'martial'/English weapon names). */
+  weapons: string[];
+  /** French lines for the add-class card. */
+  linesFr: string[];
+}
+
+export const MULTICLASS_PROFICIENCIES_GAINED: Record<string, MulticlassProficiencies> = {
+  Artificier: {
+    armor: ['light', 'medium', 'shields'],
+    weapons: [],
+    linesFr: ['Armures légères et intermédiaires', 'Boucliers', 'Outils de voleur'],
+  },
+  Barbare: {
+    armor: ['shields'],
+    weapons: ['simple', 'martial'],
+    linesFr: ['Boucliers', 'Armes simples et de guerre'],
+  },
+  Barde: {
+    armor: ['light'],
+    weapons: [],
+    linesFr: ['Armures légères', 'Une compétence au choix', 'Un instrument de musique'],
+  },
+  Clerc: {
+    armor: ['light', 'medium', 'shields'],
+    weapons: [],
+    linesFr: ['Armures légères et intermédiaires', 'Boucliers'],
+  },
+  Druide: {
+    armor: ['light', 'medium', 'shields'],
+    weapons: [],
+    linesFr: ['Armures légères et intermédiaires', 'Boucliers (jamais de métal)'],
+  },
+  Ensorceleur: { armor: [], weapons: [], linesFr: ['Rien'] },
+  Guerrier: {
+    armor: ['light', 'medium', 'shields'],
+    weapons: ['simple', 'martial'],
+    linesFr: ['Toutes les armures et boucliers', 'Armes simples et de guerre'],
+  },
+  Magicien: { armor: [], weapons: [], linesFr: ['Rien'] },
+  Moine: {
+    armor: [],
+    weapons: ['simple', 'Shortsword'],
+    linesFr: ['Armes simples', 'Épée courte'],
+  },
+  Occultiste: {
+    armor: ['light'],
+    weapons: ['simple'],
+    linesFr: ['Armures légères', 'Armes simples'],
+  },
+  Paladin: {
+    armor: ['light', 'medium', 'shields'],
+    weapons: ['simple', 'martial'],
+    linesFr: ['Toutes les armures et boucliers', 'Armes simples et de guerre'],
+  },
+  Rôdeur: {
+    armor: ['light', 'medium', 'shields'],
+    weapons: ['simple', 'martial'],
+    linesFr: [
+      'Toutes les armures et boucliers',
+      'Armes simples et de guerre',
+      'Une compétence de la liste de classe',
+    ],
+  },
+  Roublard: {
+    armor: ['light'],
+    weapons: [],
+    linesFr: ['Armures légères', 'Une compétence de la liste de classe', 'Outils de voleur'],
+  },
+};
+
+/**
+ * Multiclass caster level (SRD 5.1): sum full-caster levels, + ⌊paladin/rôdeur
+ * ÷ 2⌋, + ⌈artificier ÷ 2⌉ (TCE), + ⌊chevalier occultique / escroc arcanique
+ * ÷ 3⌋ (PHB — those subclasses are PHB-only, as in this catalog). Pact magic
+ * (Occultiste) NEVER feeds this total. Clamped to 20 (table ceiling).
+ */
+export function multiclassCasterLevel(classes: CharacterClassEntry[]): number {
+  let total = 0;
+  for (const entry of classes) {
+    const info = findClass(entry.classKey);
+    if (!info) continue;
+    if (info.spellcasting === 'full') total += entry.level;
+    else if (info.name === 'Paladin' || info.name === 'Rôdeur')
+      total += Math.floor(entry.level / 2);
+    else if (info.name === 'Artificier') total += Math.ceil(entry.level / 2);
+    else if (
+      (info.name === 'Guerrier' && entry.subclassKey === 'chevalier-occulte') ||
+      (info.name === 'Roublard' && entry.subclassKey === 'escroc-arcanique')
+    ) {
+      total += Math.floor(entry.level / 3);
+    }
+  }
+  return Math.min(20, total);
+}
+
+/** The two spell-slot pools of a character (SRD multiclassing spellcasting). */
+export interface SpellcastingPools {
+  /** Shared Spellcasting pool (multiclass table / own class table), per level 1-9. */
+  spellcasting: number[];
+  /** Pact magic pool (Occultiste class level only; recharges on a SHORT rest). */
+  pact: number[];
+  hasPact: boolean;
+  /** Caster level feeding the multiclass table. */
+  casterLevel: number;
+}
+
+/**
+ * Spell slots for any sheet. Single class → the class's own table (a lone
+ * Paladin keeps its dedicated half table — RAW: the multiclass formula only
+ * applies when you have more than one class; the Artificier table happens to
+ * equal its ⌈½⌉ formula). Multiclass → SRD incantateur multiclassé table
+ * (identical to SPELL_SLOTS_FULL rows — locked by tests), pact pool separate.
+ * Third-caster subclasses (chevalier occultique / escroc arcanique, PHB) use
+ * the full table at ⌈class level ÷ 3⌉ even alone.
+ */
+export function computeSpellcastingPools(character: CharacterClassSource): SpellcastingPools {
+  const classes = classesOf(character);
+  const zeros = (): number[] => [0, 0, 0, 0, 0, 0, 0, 0, 0];
+  const pactEntry = classes.find((c) => findClass(c.classKey)?.name === 'Occultiste');
+  const pact = pactEntry ? maxSpellSlots(pactEntry.level, 'pact') : zeros();
+  const casterLevel = multiclassCasterLevel(classes);
+
+  if (classes.length === 1) {
+    const entry = classes[0];
+    const info = findClass(entry.classKey);
+    const thirdCaster =
+      (info?.name === 'Guerrier' && entry.subclassKey === 'chevalier-occulte') ||
+      (info?.name === 'Roublard' && entry.subclassKey === 'escroc-arcanique');
+    let spellcasting = zeros();
+    if (info && info.spellcasting !== 'none' && info.spellcasting !== 'pact') {
+      spellcasting = maxSpellSlots(entry.level, info.spellcasting);
+    } else if (thirdCaster) {
+      spellcasting = maxSpellSlots(Math.ceil(entry.level / 3), 'full');
+    }
+    return { spellcasting, pact, hasPact: !!pactEntry, casterLevel };
+  }
+
+  const spellcasting = casterLevel > 0 ? maxSpellSlots(casterLevel, 'full') : zeros();
+  return { spellcasting, pact, hasPact: !!pactEntry, casterLevel };
+}
+
+/**
+ * Prepared-spells limit per preparing class — each computed as if the
+ * character were single-classed in that class (SRD multiclassing).
+ */
+export function preparedLimits(
+  character: CharacterClassSource & Record<AbilityKey, number>,
+): Array<{ classKey: string; castingAbility: AbilityKey; limit: number }> {
+  const out: Array<{ classKey: string; castingAbility: AbilityKey; limit: number }> = [];
+  for (const entry of classesOf(character)) {
+    const info = findClass(entry.classKey);
+    if (!info?.preparesSpells || !info.spellcastingAbility) continue;
+    const limit = computePreparedSpellsLimit(
+      info,
+      entry.level,
+      character[info.spellcastingAbility],
+    );
+    if (limit !== null)
+      out.push({ classKey: info.name, castingAbility: info.spellcastingAbility, limit });
+  }
+  return out;
+}
+
+/** Hit dice by class line — the pool keeps its die types separate (SRD). */
+export interface ClassHitDice {
+  classKey: string;
+  die: number;
+  max: number;
+  used: number;
+}
+
+export function hitDiceByClassOf(character: CharacterClassSource): ClassHitDice[] {
+  const classes = classesOf(character);
+  if (classes.length === 0) {
+    // Fiche sans classe définie : le compteur de dés suit le niveau total
+    // (comme avant le multiclassage — le type de dé est inconnu, seul le
+    // compte importe ici).
+    return [{ classKey: '', die: 8, max: character.level ?? 1, used: character.hitDiceUsed ?? 0 }];
+  }
+  return classes.map((entry) => ({
+    classKey: entry.classKey,
+    die: findClass(entry.classKey)?.hitDie ?? 8,
+    max: entry.level,
+    used: entry.hitDiceUsed ?? 0,
+  }));
+}
+
+/**
+ * Average max HP for a multiclass sheet: the STARTING class's max hit die at
+ * level 1, every further level at its own class's average die (SRD).
+ */
+export function averageMaxHpMulti(
+  classes: CharacterClassEntry[],
+  constitutionScore: number,
+): number {
+  if (classes.length === 0) return 1;
+  const conMod = abilityModifier(constitutionScore);
+  const dieOf = (key: string) => findClass(key)?.hitDie ?? 8;
+  const avg = (die: number) => Math.max(1, Math.floor(die / 2) + 1 + conMod);
+  let hp = Math.max(1, dieOf(classes[0].classKey) + conMod);
+  hp += Math.max(0, classes[0].level - 1) * avg(dieOf(classes[0].classKey));
+  for (const entry of classes.slice(1)) {
+    hp += entry.level * avg(dieOf(entry.classKey));
+  }
+  return hp;
+}
+
+/** Unarmored Defense candidate — SRD: gaining it again from another class does nothing. */
+export interface UnarmoredDefenseOption {
+  key: 'barbare' | 'moine' | 'draconique';
+  classKey: string;
+  /** French formula label, e.g. "Barbare · 10 + DEX + CON". */
+  label: string;
+  /** AC from the formula alone (DEX included, shield excluded). */
+  ac: number;
+  /** Moine: the class feature only applies WITHOUT a shield. */
+  shieldForbidden: boolean;
+}
+
+export function unarmoredDefensesOf(
+  character: CharacterClassSource & {
+    dexterity?: number;
+    constitution?: number;
+    wisdom?: number;
+  },
+): UnarmoredDefenseOption[] {
+  const dexMod = abilityModifier(character.dexterity ?? 10);
+  const out: UnarmoredDefenseOption[] = [];
+  if (classLevelOf(character, 'Barbare') > 0) {
+    const conMod = abilityModifier(character.constitution ?? 10);
+    out.push({
+      key: 'barbare',
+      classKey: 'Barbare',
+      label: 'Barbare · 10 + DEX + CON',
+      ac: 10 + dexMod + conMod,
+      shieldForbidden: false,
+    });
+  }
+  if (classLevelOf(character, 'Moine') > 0) {
+    const wisMod = abilityModifier(character.wisdom ?? 10);
+    out.push({
+      key: 'moine',
+      classKey: 'Moine',
+      label: 'Moine · 10 + DEX + SAG',
+      ac: 10 + dexMod + wisMod,
+      shieldForbidden: true,
+    });
+  }
+  for (const entry of classesOf(character)) {
+    if (findClass(entry.classKey)?.name === 'Ensorceleur' && entry.subclassKey === 'draconique') {
+      out.push({
+        key: 'draconique',
+        classKey: 'Ensorceleur',
+        label: 'Résilience draconique · 13 + DEX',
+        ac: 13 + dexMod,
+        shieldForbidden: false,
+      });
+    }
+  }
+  return out;
 }
 
 // ---------- Character creation catalogs (SRD 5.1 FR) ----------
@@ -1334,11 +1748,11 @@ export function computeAC(
   }>,
   dexMod: number,
   defenseStyle = false,
-  character?: {
+  character?: CharacterClassSource & {
     constitution?: number;
     wisdom?: number;
-    characterClass?: string | null;
-    subclass?: string | null;
+    dexterity?: number;
+    unarmoredDefense?: 'barbare' | 'moine' | 'draconique' | null;
   },
 ): ArmorClassResult {
   // Find equipped armor (non-shield) and shield
@@ -1400,22 +1814,48 @@ export function computeAC(
   let source: string;
 
   if (!armor) {
-    // Unarmored: 10 + DEX, or a class Unarmored Defense (SRD):
-    //   Barbare — 10 + DEX + CON (shield allowed)
-    //   Moine   — 10 + DEX + WIS (only without a shield)
-    const cls = character ? findClass(character.characterClass)?.name : null;
-    if (cls === 'Barbare') {
-      const conMod = abilityModifier(character?.constitution ?? 10);
-      ac = 10 + dexMod + conMod;
-      source = `Sans armure · 10 ${formatModifier(dexMod)} ${formatModifier(conMod)} (Barbare)`;
-    } else if (cls === 'Ensorceleur' && character?.subclass === 'draconique') {
-      // Draconic Resilience (Lignée draconique): 13 + DEX, shield allowed
-      ac = 13 + dexMod;
-      source = `Sans armure · 13 ${formatModifier(dexMod)} (Résilience draconique)`;
-    } else if (cls === 'Moine' && !hasShield) {
-      const wisMod = abilityModifier(character?.wisdom ?? 10);
-      ac = 10 + dexMod + wisMod;
-      source = `Sans armure · 10 ${formatModifier(dexMod)} ${formatModifier(wisMod)} (Moine)`;
+    // Unarmored: 10 + DEX, or ONE class Unarmored Defense (SRD multiclassing:
+    // gaining it again from another class does nothing — pick one, never
+    // combine). Multiclass sheets choose via `unarmoredDefense`; the default
+    // is the best computed AC. Moine's defense only applies without a shield
+    // (a shield still gives its +2).
+    const conMod = abilityModifier(character?.constitution ?? 10);
+    const wisMod = abilityModifier(character?.wisdom ?? 10);
+    const byKey: Record<string, { ac: number; source: string }> = {};
+    if (character && classLevelOf(character, 'Barbare') > 0) {
+      byKey.barbare = {
+        ac: 10 + dexMod + conMod,
+        source: `Sans armure · 10 ${formatModifier(dexMod)} ${formatModifier(conMod)} (Barbare)`,
+      };
+    }
+    if (
+      character &&
+      classesOf(character).some(
+        (c) => findClass(c.classKey)?.name === 'Ensorceleur' && c.subclassKey === 'draconique',
+      )
+    ) {
+      byKey.draconique = {
+        ac: 13 + dexMod,
+        source: `Sans armure · 13 ${formatModifier(dexMod)} (Résilience draconique)`,
+      };
+    }
+    if (character && classLevelOf(character, 'Moine') > 0 && !hasShield) {
+      byKey.moine = {
+        ac: 10 + dexMod + wisMod,
+        source: `Sans armure · 10 ${formatModifier(dexMod)} ${formatModifier(wisMod)} (Moine)`,
+      };
+    }
+    const choice = character?.unarmoredDefense ?? null;
+    const keys = Object.keys(byKey);
+    let pick: { ac: number; source: string } | null =
+      choice && byKey[choice] ? byKey[choice] : null;
+    if (!pick && keys.length > 0) {
+      const sorted = keys.map((k) => byKey[k]).sort((a, b) => b.ac - a.ac);
+      pick = sorted[0] ?? null;
+    }
+    if (pick) {
+      ac = pick.ac;
+      source = pick.source;
     } else {
       ac = 10 + dexMod;
       source = `Sans armure · 10 ${formatModifier(dexMod)}`;
@@ -1888,12 +2328,14 @@ export function classWeaponProficiencies(
 /**
  * Effective weapon proficiencies for a character: the explicit list
  * (weaponProficiencies tokens: 'simple', 'martial', or English weapon names)
- * when set, otherwise the class default.
+ * when set, otherwise the class default — for multiclass sheets the union of
+ * the starting class's full set and each later class's "proficiencies gained"
+ * (SRD 5.1 multiclassing table). Single-class sheets get exactly the old
+ * class default.
  */
-export function effectiveWeaponProficiencies(character: {
-  characterClass?: string | null;
-  weaponProficiencies?: string[] | null;
-}): WeaponProficiencySet {
+export function effectiveWeaponProficiencies(
+  character: CharacterClassSource & { weaponProficiencies?: string[] | null },
+): WeaponProficiencySet {
   if (character.weaponProficiencies != null) {
     const tokens = character.weaponProficiencies;
     return {
@@ -1902,7 +2344,22 @@ export function effectiveWeaponProficiencies(character: {
       specific: tokens.filter((t) => t !== 'simple' && t !== 'martial'),
     };
   }
-  return classWeaponProficiencies(character.characterClass);
+  const classes = classesOf(character);
+  const set = classWeaponProficiencies(classes[0]?.classKey ?? null);
+  if (classes.length <= 1) return set;
+  const specific = new Set(set.specific);
+  let simple = set.simple;
+  let martial = set.martial;
+  for (const entry of classes.slice(1)) {
+    const gained = MULTICLASS_PROFICIENCIES_GAINED[findClass(entry.classKey)?.name ?? ''];
+    if (!gained) continue;
+    for (const token of gained.weapons) {
+      if (token === 'simple') simple = true;
+      else if (token === 'martial') martial = true;
+      else specific.add(token);
+    }
+  }
+  return { simple, martial, specific: [...specific] };
 }
 
 /** Is the character proficient with this weapon? (Magic weapons follow their base weapon.) */
@@ -1976,12 +2433,12 @@ export function classArmorProficiencies(className: string | null | undefined): A
 /**
  * Effective armor proficiencies for a character: the explicit token list
  * (armorProficiencies: 'light'/'medium'/'heavy'/'shields') when set,
- * otherwise the class default.
+ * otherwise the class default — multiclass sheets union the starting class's
+ * full set with each later class's "proficiencies gained" (SRD 5.1 table).
  */
-export function effectiveArmorProficiencies(character: {
-  characterClass?: string | null;
-  armorProficiencies?: string[] | null;
-}): ArmorProficiencySet {
+export function effectiveArmorProficiencies(
+  character: CharacterClassSource & { armorProficiencies?: string[] | null },
+): ArmorProficiencySet {
   if (character.armorProficiencies != null) {
     const tokens = character.armorProficiencies;
     return {
@@ -1991,7 +2448,16 @@ export function effectiveArmorProficiencies(character: {
       shields: tokens.includes('shields'),
     };
   }
-  return classArmorProficiencies(character.characterClass);
+  const classes = classesOf(character);
+  const set = classArmorProficiencies(classes[0]?.classKey ?? null);
+  if (classes.length <= 1) return set;
+  const merged = { ...set };
+  for (const entry of classes.slice(1)) {
+    const gained = MULTICLASS_PROFICIENCIES_GAINED[findClass(entry.classKey)?.name ?? ''];
+    if (!gained) continue;
+    for (const token of gained.armor) merged[token] = true;
+  }
+  return merged;
 }
 
 /**
@@ -2193,11 +2659,10 @@ export function computeWeaponStats(
     Item,
     'category' | 'name' | 'nameFr' | 'description' | 'properties' | 'damageDice' | 'damageType'
   >,
-  character: Pick<Character, 'strength' | 'dexterity' | 'level' | 'characterClass'> & {
-    weaponProficiencies?: string[] | null;
-    fightingStyle?: FightingStyle | null;
-    subclass?: string | null;
-  },
+  character: CharacterClassSource &
+    Pick<Character, 'strength' | 'dexterity' | 'level'> & {
+      weaponProficiencies?: string[] | null;
+    },
 ): WeaponAttackStats | null {
   if (item.category !== 'weapon') return null;
 
@@ -2224,16 +2689,18 @@ export function computeWeaponStats(
   const dexMod = abilityModifier(character.dexterity ?? 10);
   const ranged = props.includes('ammunition');
   const finesse = props.includes('finesse');
-  // Monk weapons (martial arts): STR or DEX for Monks
+  // Monk weapons (martial arts): STR or DEX for Monks — monk features key off
+  // the Moine CLASS level (SRD multiclassing), not the character level.
+  const monkLvl = classLevelOf(character, 'Moine');
   const monkWeapon = props.includes('monk') || isMonkWeaponName(nameEn, item.nameFr);
-  const isMonk = findClass(character.characterClass)?.name === 'Moine';
+  const styles = fightingStylesOf(character);
 
   // Martial arts: the monk's damage die replaces the weapon's when larger
   // ("You can roll a d4 in place of the normal damage of your unarmed
   // strike or monk weapon") — monk weapons are all single-die.
   let martialDieApplied = false;
-  if (isMonk && monkWeapon && dice) {
-    const mDie = martialArtsDie(character.level ?? 1);
+  if (monkLvl > 0 && monkWeapon && dice) {
+    const mDie = martialArtsDie(monkLvl);
     const w = dice.match(/^(\d+)d(\d+)$/);
     const m = mDie.match(/^(\d+)d(\d+)$/);
     if (
@@ -2249,7 +2716,7 @@ export function computeWeaponStats(
   }
 
   let ability: 'strength' | 'dexterity';
-  if (finesse || (isMonk && monkWeapon)) {
+  if (finesse || (monkLvl > 0 && monkWeapon)) {
     ability = dexMod >= strMod ? 'dexterity' : 'strength';
   } else if (ranged) {
     ability = 'dexterity';
@@ -2270,11 +2737,11 @@ export function computeWeaponStats(
     (proficient ? proficiencyBonus(character.level ?? 1) : 0) +
     magicBonus +
     // Fighting style: Archery — +2 to attack rolls with ranged weapons
-    (character.fightingStyle === 'archery' && ranged ? 2 : 0);
+    (styles.has('archery') && ranged ? 2 : 0);
 
   // Fighting style: Dueling — +2 damage with a one-handed melee weapon
   // (the SRD "no other weapon" condition can't be checked per-item)
-  const dueling = character.fightingStyle === 'dueling' && !ranged && !props.includes('two-handed');
+  const dueling = styles.has('dueling') && !ranged && !props.includes('two-handed');
   const damageStr = dice
     ? formatDiceWithMod(dice, abilityMod + magicBonus + (dueling ? 2 : 0))
     : null;
@@ -2293,7 +2760,7 @@ export function computeWeaponStats(
     magicBonus,
     presumedBase,
     martialArtsDie: martialDieApplied,
-    critRange: criticalRange(character.characterClass, character.subclass, character.level ?? 1),
+    critRange: criticalRangeOf(character),
     ranged,
     finesse,
   };
@@ -2335,7 +2802,7 @@ export interface SpeedResult {
  *  - Barbare, Déplacement rapide (level 5+): +3 m unless wearing heavy armor
  */
 export function computeSpeed(
-  character: { characterClass?: string | null; level?: number; speed?: number; strength?: number },
+  character: CharacterClassSource & { speed?: number; strength?: number },
   entries: Array<{
     item: {
       category: string;
@@ -2349,8 +2816,6 @@ export function computeSpeed(
   }>,
 ): SpeedResult {
   const base = character.speed ?? 9;
-  const cls = findClass(character.characterClass)?.name;
-  const level = character.level ?? 1;
 
   const worn = entries.filter((e) => {
     if (!e.equipped || e.item.category !== 'armor') return false;
@@ -2379,13 +2844,18 @@ export function computeSpeed(
   const sources: string[] = [];
   let speed = base;
 
-  if (cls === 'Moine' && !wearingArmor && !hasShield) {
-    const bonus = unarmoredMovementBonus(level);
+  // Class movement features use CLASS levels; a Moine/Barbare multiclass gets
+  // BOTH (distinctly named features — they stack, unlike Extra Attack).
+  const monkLvl = classLevelOf(character, 'Moine');
+  if (monkLvl > 0 && !wearingArmor && !hasShield) {
+    const bonus = unarmoredMovementBonus(monkLvl);
     if (bonus > 0) {
       speed += bonus;
       sources.push(`Déplacement sans armure +${bonus} m`);
     }
-  } else if (cls === 'Barbare' && level >= 5 && !wearingHeavy) {
+  }
+  const barbLvl = classLevelOf(character, 'Barbare');
+  if (barbLvl >= 5 && !wearingHeavy) {
     speed += 3;
     sources.push('Déplacement rapide +3 m');
   }
@@ -2888,6 +3358,18 @@ export function extraAttacks(characterClass: string | null | undefined, level: n
   return 1;
 }
 
+/**
+ * Extra Attack across all classes — « son effet n'est pas cumulatif » (SRD
+ * multiclassing): take the MAX, each class evaluated at its own class level.
+ */
+export function extraAttacksOf(character: CharacterClassSource): number {
+  let best = 1;
+  for (const entry of classesOf(character)) {
+    best = Math.max(best, extraAttacks(entry.classKey, entry.level));
+  }
+  return best;
+}
+
 // ---------- Critical range & Paladin auras (SRD) ----------
 
 /**
@@ -2906,14 +3388,22 @@ export function criticalRange(
   return 20;
 }
 
-/** Paladin Aura of Protection (level 6): +CHA mod (min 1) to all saves. */
-export function auraOfProtectionBonus(character: {
-  characterClass?: string | null;
-  level?: number;
-  charisma?: number;
-}): number {
-  if (findClass(character.characterClass)?.name !== 'Paladin') return 0;
-  if ((character.level ?? 1) < 6) return 0;
+/** Champion improved critical, evaluated at the Guerrier CLASS level. */
+export function criticalRangeOf(character: CharacterClassSource): 18 | 19 | 20 {
+  for (const entry of classesOf(character)) {
+    if (findClass(entry.classKey)?.name !== 'Guerrier') continue;
+    if (entry.subclassKey !== 'champion') continue;
+    if (entry.level >= 15) return 18;
+    if (entry.level >= 3) return 19;
+  }
+  return 20;
+}
+
+/** Paladin Aura of Protection (Paladin CLASS level 6): +CHA mod (min 1) to all saves. */
+export function auraOfProtectionBonus(
+  character: CharacterClassSource & { charisma?: number },
+): number {
+  if (classLevelOf(character, 'Paladin') < 6) return 0;
   return Math.max(1, abilityModifier(character.charisma ?? 10));
 }
 
@@ -2953,16 +3443,17 @@ export interface UnarmedStats {
  * make one unarmed strike as a bonus action.
  */
 export function computeUnarmedStats(
-  character: Pick<Character, 'strength' | 'dexterity' | 'level' | 'characterClass'>,
+  character: CharacterClassSource & Pick<Character, 'strength' | 'dexterity' | 'level'>,
 ): UnarmedStats {
   const strMod = abilityModifier(character.strength ?? 10);
   const dexMod = abilityModifier(character.dexterity ?? 10);
-  const isMonk = findClass(character.characterClass)?.name === 'Moine';
+  const monkLvl = classLevelOf(character, 'Moine');
+  const isMonk = monkLvl > 0;
   // Monks may use DEX for unarmed strikes; everyone else uses STR
   const ability: 'strength' | 'dexterity' = isMonk && dexMod >= strMod ? 'dexterity' : 'strength';
   const mod = ability === 'dexterity' ? dexMod : strMod;
   const prof = proficiencyBonus(character.level ?? 1);
-  const dice = isMonk ? martialArtsDie(character.level ?? 1) : '1';
+  const dice = isMonk ? martialArtsDie(monkLvl) : '1';
   return {
     attackBonus: mod + prof,
     ability,
@@ -3249,6 +3740,8 @@ export interface CharacterSpell {
   characterId: number;
   spell: Spell;
   prepared: boolean;
+  /** Class whose list this spell was taken from (multiclassing SRD). */
+  classSource: string | null;
   sortOrder: number;
   addedAt: string;
 }
@@ -3396,6 +3889,8 @@ export function renderFeatureTemplate(text: string, character: Character): strin
 /** What a rest changes: the character PATCH plus catalog-feature counter resets. */
 export interface RestResult {
   characterPatch: PatchCharacterPayload;
+  /** Per-class hit-dice totals to persist on the character_classes rows. */
+  classHitDice: Array<{ classKey: string; hitDiceUsed: number }>;
   featureResets: Array<{
     featureId: number;
     counterMax: number;
@@ -3430,17 +3925,24 @@ export function applyRest(
   options: { type: 'short' | 'long'; hitDiceSpent?: number; healedHp?: number },
 ): RestResult {
   const level = character.level ?? 1;
-  const classInfo = findClass(character.characterClass);
+  const classes = classesOf(character);
+  const dice = hitDiceByClassOf(character);
   const patch: PatchCharacterPayload = {};
+  let classHitDice: RestResult['classHitDice'] = [];
 
   // Counters to reset on this rest type. The PLAYER'S reset choice
   // (resetType — the checkboxes) overrides the catalog's SRD rule: the catalog
   // pre-fills, it doesn't automate. With no player choice, a catalog trait
-  // follows its SRD rule (max recomputed at the current level).
+  // follows its SRD rule, evaluated at the level of the class that GRANTS it
+  // (SRD multiclassing) — never the character's total level.
   const featureResets: RestResult['featureResets'] = [];
   for (const feature of features) {
     if ((feature.counterMax ?? 0) <= 0) continue;
-    const effective = effectiveFeatureReset(feature, level);
+    const owner = feature.catalogId ? findClassFeatureClass(feature.catalogId) : null;
+    const ownerLevel = owner
+      ? (classes.find((c) => findClass(c.classKey)?.name === owner)?.level ?? level)
+      : level;
+    const effective = effectiveFeatureReset(feature, ownerLevel);
     // 'short' recharges on short AND long rests; 'long' only on long; 'none' never
     if (effective !== 'short' && !(effective === 'long' && options.type === 'long')) continue;
     // Catalog formula when the trait is catalog-linked with a resource,
@@ -3454,15 +3956,22 @@ export function applyRest(
   }
 
   // Hit-dice spending on a short rest: the player rolls their own dice at the
-  // table — we only COUNT them and apply the healing they announce (capped).
+  // table — we only COUNT them (FIFO across class lines when they spend a
+  // plain count) and apply the healing they announce (capped).
   let diceSpent = 0;
   let healed = 0;
   if (options.type === 'short') {
-    const available = Math.max(0, level - character.hitDiceUsed);
+    const available = dice.reduce((sum, d) => sum + Math.max(0, d.max - d.used), 0);
     diceSpent = Math.max(0, Math.min(options.hitDiceSpent ?? 0, available));
     const announced = Math.max(0, Math.floor(options.healedHp ?? 0));
     if (diceSpent > 0) {
-      patch.hitDiceUsed = character.hitDiceUsed + diceSpent;
+      let left = diceSpent;
+      classHitDice = dice.map((d) => {
+        const take = Math.min(Math.max(0, d.max - d.used), left);
+        left -= take;
+        return { classKey: d.classKey, hitDiceUsed: d.used + take };
+      });
+      patch.hitDiceUsed = (character.hitDiceUsed ?? 0) + diceSpent;
     }
     if (announced > 0) {
       const currentHp = Math.min(
@@ -3478,29 +3987,40 @@ export function applyRest(
   }
 
   if (options.type === 'short') {
-    // Pact magic recharges on a short rest (Occultiste)
-    if (classInfo?.spellcasting === 'pact') {
-      patch.spellSlotsUsed = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    // Pact magic recharges on a short rest (Occultiste — its own pool)
+    if (classes.some((c) => findClass(c.classKey)?.name === 'Occultiste')) {
+      patch.pactSlotsUsed = [0, 0, 0, 0, 0, 0, 0, 0, 0];
     }
-    if (classInfo?.name === 'Druide') {
+    if (classes.some((c) => findClass(c.classKey)?.name === 'Druide')) {
       patch.wildShapeUses = 2;
     }
   } else {
     patch.currentHp = character.maxHp;
     patch.tempHp = 0;
     patch.spellSlotsUsed = [0, 0, 0, 0, 0, 0, 0, 0, 0];
-    const regained = Math.max(1, Math.floor(level / 2));
-    patch.hitDiceUsed = Math.max(0, character.hitDiceUsed - regained);
+    patch.pactSlotsUsed = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    // Long rest: regain up to half the TOTAL dice pool, minimum 1 (SRD);
+    // restored front-loaded by class-line order (the SRD leaves the choice
+    // of which dice to the player — FIFO is the documented default).
+    const totalDice = dice.reduce((sum, d) => sum + d.max, 0);
+    const budget = Math.max(1, Math.floor(totalDice / 2));
+    let left = budget;
+    classHitDice = dice.map((d) => {
+      const regain = Math.min(d.used, left);
+      left -= regain;
+      return { classKey: d.classKey, hitDiceUsed: d.used - regain };
+    });
+    patch.hitDiceUsed = classHitDice.reduce((sum, p) => sum + p.hitDiceUsed, 0);
     patch.exhaustion = Math.max(0, character.exhaustion - 1);
     patch.deathSaveSuccesses = 0;
     patch.deathSaveFailures = 0;
     patch.concentrating = false;
-    if (classInfo?.name === 'Druide') {
+    if (classes.some((c) => findClass(c.classKey)?.name === 'Druide')) {
       patch.wildShapeUses = 2;
     }
   }
 
-  return { characterPatch: patch, featureResets, diceSpent, healed };
+  return { characterPatch: patch, classHitDice, featureResets, diceSpent, healed };
 }
 
 // ---------- Character notes (free-form with simple formatting) ----------

@@ -14,6 +14,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDb } from '../db/index.ts';
 import { bus } from '../sync/bus.ts';
 import {
+  attachCharacterClasses,
   characterVisibleTo,
   isOwnerOrGM,
   isPartyGM,
@@ -215,6 +216,8 @@ export async function inventoryRoutes(app: FastifyInstance) {
         char.capacity_multiplier ?? 1,
       );
 
+      // Multiclassage : joindre les lignes de classe (source de vérité moteur)
+      attachCharacterClasses([char]);
       const character = mapCharacter(char);
 
       const result: CharacterInventory = {

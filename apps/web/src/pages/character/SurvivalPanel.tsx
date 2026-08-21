@@ -6,15 +6,20 @@ import type {
 } from '@dnd-inventory/shared';
 import {
   CONCENTRATION_BREAKING_CONDITIONS_FR,
+  classesOf,
+  classLevelOf,
+  computeSpellcastingPools,
   computeUnarmedStats,
   computeWeaponStats,
   DND_CONDITIONS_FR,
   effectiveFeatureReset,
-  extraAttacks,
+  extraAttacksOf,
+  fightingStylesOf,
   findClass,
   findClassFeature,
+  findClassFeatureClass,
   formatModifier,
-  maxSpellSlots,
+  hitDiceByClassOf,
   proficiencyBonus,
   sneakAttackDice,
   type WildShapeFormSummary,
@@ -314,7 +319,7 @@ export function SurvivalPanel({
   };
 
   // --- Châtiment divin (Paladin) : consomme un emplacement de sort ---
-  const smiteMaxSlots = maxSpellSlots(character.level ?? 1, 'half');
+  const smiteMaxSlots = computeSpellcastingPools(character).spellcasting;
   const smiteUsed = character.spellSlotsUsed ?? [0, 0, 0, 0, 0, 0, 0, 0, 0];
   const smiteAvailable = smiteMaxSlots
     .map((max, i) => ({
@@ -622,7 +627,15 @@ export function SurvivalPanel({
               const current = feature.counterCurrent ?? max;
               const isPool = def?.resource?.unit === 'PV';
               // Recharge effective : choix du joueur, sinon règle SRD du catalogue
-              const eff = effectiveFeatureReset(feature, character.level ?? 1);
+              // SRD multiclassage : la bascule court/long se juge au niveau de
+              // la classe qui accorde la capacité, pas au niveau total.
+              const owner = feature.catalogId ? findClassFeatureClass(feature.catalogId) : null;
+              const ownerLevel = owner
+                ? (classesOf(character).find((c) => c.classKey === owner)?.level ??
+                  character.level ??
+                  1)
+                : (character.level ?? 1);
+              const eff = effectiveFeatureReset(feature, ownerLevel);
               const resetTitle =
                 eff === 'short'
                   ? 'Repos court ou long'
@@ -677,10 +690,11 @@ export function SurvivalPanel({
       <section className="card p-4 sm:p-5 space-y-3">
         <h2 className="section-title">🎲 Repos</h2>
         {(() => {
-          const classInfo = findClass(character.characterClass);
-          const die = classInfo?.hitDie ?? 8;
-          const total = character.level ?? 1;
-          const used = character.hitDiceUsed ?? 0;
+          // Dés de vie PAR LIGNE DE CLASSE (multiclassage SRD : le pool garde
+          // ses types de dés). Le compteur dénormalisé suit la somme.
+          const dice = hitDiceByClassOf(character).filter((d) => d.max > 0);
+          const total = dice.reduce((sum, d) => sum + d.max, 0);
+          const used = dice.reduce((sum, d) => sum + d.used, 0);
           const remaining = Math.max(0, total - used);
           const step = async (delta: number) => {
             markLocalMutation();
@@ -697,7 +711,13 @@ export function SurvivalPanel({
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <span className="text-sm font-medium text-ink-700 flex items-center gap-1.5">
                 🎲 Dés de vie
-                <span className="text-xs font-normal text-ink-400">d{die}</span>
+                {dice.length === 1 ? (
+                  <span className="text-xs font-normal text-ink-400">d{dice[0].die}</span>
+                ) : (
+                  <span className="text-xs font-normal text-ink-400">
+                    {dice.map((d) => `d${d.die}`).join(' + ')}
+                  </span>
+                )}
               </span>
               <span className="flex items-center gap-1">
                 <button
@@ -886,8 +906,9 @@ export function SurvivalPanel({
                 }
                 const abilityLabel = stats.ability === 'dexterity' ? 'DEX' : 'FOR';
                 const profBonus = proficiencyBonus(character.level ?? 1);
-                const nAttacks = extraAttacks(character.characterClass, character.level ?? 1);
-                const archery = character.fightingStyle === 'archery' && stats.ranged ? 2 : 0;
+                // Attaque supplémentaire : NON cumulative (SRD multiclassage) — max
+                const nAttacks = extraAttacksOf(character);
+                const archery = fightingStylesOf(character).has('archery') && stats.ranged ? 2 : 0;
                 const breakdown =
                   `d20 ${formatModifier(stats.attackBonus - (stats.proficient ? profBonus : 0) - stats.magicBonus - archery)} (${abilityLabel})` +
                   (stats.proficient ? ` + ${profBonus} (maîtrise)` : '') +
@@ -971,7 +992,7 @@ export function SurvivalPanel({
           );
         })()}
         {/* Unarmed strike — always available */}
-        {findClass(character.characterClass)?.name === 'Roublard' &&
+        {classLevelOf(character, 'Roublard') > 0 &&
           (() => {
             const hasFinesseWeapon = entries.some(
               (e) =>
@@ -997,7 +1018,7 @@ export function SurvivalPanel({
                     tone="orange"
                     title="Une fois par tour, avec avantage ou un allié adjacent à la cible — dégâts du type de l'arme"
                   >
-                    ⚔ {sneakAttackDice(character.level ?? 1)} dégâts de l'arme
+                    ⚔ {sneakAttackDice(classLevelOf(character, 'Roublard'))} dégâts de l'arme
                   </Chip>
                   <span className="text-[10px] text-ink-400">une fois par tour</span>
                 </div>
@@ -1132,16 +1153,17 @@ export function SurvivalPanel({
             forme sauvage, ressources marquées « repos court », et dés de vie dépensés pour soigner.
           </p>
           {(() => {
-            const classInfo = findClass(character.characterClass);
-            const die = classInfo?.hitDie ?? 8;
-            const total = character.level ?? 1;
-            const remaining = Math.max(0, total - (character.hitDiceUsed ?? 0));
+            const dice = hitDiceByClassOf(character).filter((d) => d.max > 0);
+            const die = dice.length === 1 ? dice[0].die : 8;
+            const total = dice.reduce((sum, d) => sum + d.max, 0);
+            const remaining = Math.max(0, total - dice.reduce((sum, d) => sum + d.used, 0));
             const conMod = Math.floor(((character.constitution ?? 10) - 10) / 2);
             return (
               <div className="bg-parchment-100 rounded-lg p-3 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium">
-                    🎲 Dés de vie dépensés (d{die}
+                    🎲 Dés de vie dépensés (d
+                    {dice.length === 1 ? die : dice.map((d) => `d${d.die}`).join('+')}
                     {conMod !== 0 ? ` ${conMod > 0 ? '+' : ''}${conMod}` : ''})
                   </span>
                   <span className="flex items-center gap-1">

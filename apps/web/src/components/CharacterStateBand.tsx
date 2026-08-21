@@ -22,11 +22,12 @@ import {
   abilityModifier,
   type Character,
   type ConcentrationCheck,
+  classesOf,
   computeAC,
+  computeSpellcastingPools,
   type EncumbranceState,
-  findClass,
+  fightingStylesOf,
   type InventoryEntry,
-  maxSpellSlots,
 } from '@dnd-inventory/shared';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -114,26 +115,42 @@ export default function CharacterStateBand({
   }, []);
 
   const level = character.level ?? 1;
-  const classInfo = findClass(character.characterClass);
-  const isCaster = !!classInfo && classInfo.spellcasting !== 'none';
 
   // CA — same computation as the Caractéristiques tab
   const dexMod = abilityModifier(character.dexterity ?? 10);
-  const acResult = computeAC(entries, dexMod, character.fightingStyle === 'defense', character);
+  const acResult = computeAC(
+    entries,
+    dexMod,
+    fightingStylesOf(character).has('defense'),
+    character,
+  );
   const effectiveAC = character.armorClassOverride ?? acResult.ac;
 
-  // Spell slots (casters): used per level vs the class table
-  const slotsMax = isCaster ? maxSpellSlots(level, classInfo.spellcasting) : null;
+  // Emplacements : les DEUX pools (multiclassage — le pacte recharge au repos
+  // court et vit sa vie à côté de l'incantation).
+  const pools = computeSpellcastingPools(character);
   const slotsUsed = character.spellSlotsUsed ?? [];
-  const slotRows = (slotsMax ?? [])
+  const pactUsed = character.pactSlotsUsed ?? [];
+  const slotRows = pools.spellcasting
     .map((max, i) => ({
       level: i + 1,
       max,
       left: Math.max(0, max - (slotsUsed[i] ?? 0)),
+      pact: false,
     }))
     .filter((s) => s.max > 0);
-  const slotsLeft = slotRows.reduce((s, r) => s + r.left, 0);
-  const slotsTotal = slotRows.reduce((s, r) => s + r.max, 0);
+  const pactRows = pools.pact
+    .map((max, i) => ({
+      level: i + 1,
+      max,
+      left: Math.max(0, max - (pactUsed[i] ?? 0)),
+      pact: true,
+    }))
+    .filter((s) => s.max > 0);
+  const allSlotRows = [...slotRows, ...pactRows];
+  const slotsLeft = allSlotRows.reduce((s, r) => s + r.left, 0);
+  const slotsTotal = allSlotRows.reduce((s, r) => s + r.max, 0);
+  const isCaster = slotsTotal > 0;
 
   // Wild shape: the bar shows the shape's HP; real HP rides beside as a chip
   const shaped =
@@ -323,7 +340,11 @@ export default function CharacterStateBand({
                 </h1>
                 <p className="text-xs text-ink-500 truncate flex items-center gap-1.5">
                   <span>
-                    {character.characterClass ?? '—'} · Niv {level}
+                    {classesOf(character).length > 1
+                      ? `${classesOf(character)
+                          .map((c) => `${c.classKey} ${c.level}`)
+                          .join(' / ')}`
+                      : `${character.characterClass ?? '—'} · Niv ${level}`}
                     {character.race ? ` · ${character.race}` : ''}
                   </span>
                   {character.concentrating && (
@@ -485,13 +506,20 @@ export default function CharacterStateBand({
               {slotRows.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-xs font-medium text-ink-600">Emplacements :</span>
-                  {slotRows.map((r) => (
+                  {allSlotRows.map((r) => (
                     <span
-                      key={r.level}
-                      className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-parchment-100 border border-parchment-200 text-ink-600"
-                      title={`Niveau ${r.level} : ${r.left}/${r.max} emplacements`}
+                      key={r.pact ? `p${r.level}` : `s${r.level}`}
+                      className={`text-[11px] font-mono px-1.5 py-0.5 rounded border ${
+                        r.pact
+                          ? 'bg-gold-100 border-gold-300 text-gold-700'
+                          : 'bg-parchment-100 border-parchment-200 text-ink-600'
+                      }`}
+                      title={`${
+                        r.pact ? 'Magie de pacte' : 'Incantation'
+                      } — niveau ${r.level} : ${r.left}/${r.max} emplacements`}
                     >
-                      N{r.level} {r.left}/{r.max}
+                      {r.pact ? '☾' : 'N'}
+                      {r.level} {r.left}/{r.max}
                     </span>
                   ))}
                 </div>

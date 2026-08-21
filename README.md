@@ -48,8 +48,17 @@ Conçue pour être utilisée sur téléphone et tablette pendant la partie : PWA
 |---|---|
 | ![Sorts](docs/screenshots/06-sorts.png) | ![Lancer](docs/screenshots/07-lancer-sort.png) |
 
+### 🔀 Multiclassage (SRD 5.1)
+- **Feuille guidée « ＋ Ajouter une classe »** : carte des prérequis de caractéristiques (⚠ jamais bloquant), maîtrises acquises selon la table SRD, sous-classe verrouillée jusqu'à son palier RAW
+- **Emplacements : deux pools** quand l'Occultiste s'y mêle — Incantation (table de l'incantateur multiclassé) et **magie de pacte** en or (recharge au repos court), interchangeables (SRD)
+- **Sorts à classe d'origine** : DD et bonus d'attaque par classe lancante, compteurs de préparation par classe (chacune comme si mono-classe)
+- **Dés de vie par type de dé** (5d10 + 3d8), dépense au repos court et budget de récupération au repos long
+- Règles au niveau de CLASSE : attaque supplémentaire non cumulative (max), attaque sournoise, dés d'arts martiaux, aura du Paladin, critique amélioré du Champion, prérequis, expertise cumulée
+
+![Multiclasse — deux pools d'emplacements](docs/screenshots/14-multiclasse.png)
+
 ### ⚔️ Caractéristiques & règles de classe
-- 6 scores, classe/niveau/race/historique, **sous-classes** (cercle druidique + terrain, domaine divin, serment sacré), style de combat
+- 6 scores, classe/niveau/race/historique, **sous-classes** (cercle druidique + terrain, domaine divin, serment sacré, archétypes), style de combat par classe
 - **CA calculée** : type d'armure réel (légère/intermédiaire/lourde), boucliers, **armures magiques** résolues depuis la description, défense sans armure du Barbare (10+DEX+CON) et du Moine (10+DEX+SAG), style Défense
 - **Vitesse** avec Déplacement sans armure (Moine), Déplacement rapide (Barbare), pénalité d'armure lourde sous la FOR minimale
 - **Maîtrise d'armes** éditable (armes simples/de guerre/spécifiques par classe)
@@ -112,7 +121,7 @@ Sous VS Code : l'extension `biomejs.biome` formate à la sauvegarde (réglages d
 
 ## ✅ CI
 
-À chaque PR et push sur `main`, [ci-test.yml](.github/workflows/ci-test.yml) exécute le lint Biome, le typecheck (`tsc -b`, web + shared), les 5 suites de règles, la suite d'intégration API (avec sa porte de couverture 100 % des sites de requêtes) et, en job parallèle, la suite E2E Playwright (`npm run test:e2e` — API + vite jetables sur base neuve, jamais les bases dev/Docker).
+À chaque PR et push sur `main`, [ci-test.yml](.github/workflows/ci-test.yml) exécute le lint Biome, le typecheck (`tsc -b`, web + shared), les 6 suites de règles, la suite d'intégration API (avec sa porte de couverture 100 % des sites de requêtes) et, en job parallèle, la suite E2E Playwright (`npm run test:e2e` — API + vite jetables sur base neuve, jamais les bases dev/Docker).
 
 ## 📜 Licence & données
 
