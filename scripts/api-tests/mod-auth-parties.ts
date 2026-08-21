@@ -57,6 +57,11 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
   const mine = r.data.parties.filter((p: any) => p.id === fx.partyId);
   eq(mine.length, 1, 'GM sees the test party');
   ok(mine[0].inviteCode, 'party carries invite code');
+  eq(
+    mine[0].inviteCode.length,
+    6,
+    'invite code is exactly 6 chars (matches the join input maxLength)',
+  );
   // Hidden Ombre: GM sees it in characterNames
   ok(mine[0].characterNames.includes('Ombre'), 'GM sees hidden character name');
 

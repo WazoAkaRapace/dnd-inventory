@@ -88,7 +88,7 @@ export function characterVisibleTo(char: any, userId: number): boolean {
 export function generateInviteCode(): string {
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   let out = '';
-  for (let i = 0; i < chars.length; i++) out += chars[randomInt(chars.length)];
+  for (let i = 0; i < 6; i++) out += chars[randomInt(chars.length)];
   return out;
 }
 
