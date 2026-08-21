@@ -11,8 +11,12 @@
  *
  * All mutations emit a `character:change` sync event.
  */
+
+import { and, desc, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { getDb } from '../db/index.ts';
+import { getDrizzle } from '../db/drizzle.ts';
+import { cols } from '../db/projections.ts';
+import { characterClasses, characterSpells, characters, spells } from '../db/schema.ts';
 import { bus } from '../sync/bus.ts';
 import {
   characterVisibleTo,
@@ -36,15 +40,58 @@ interface PatchCharacterSpellPayload {
 }
 
 /**
+ * character_spells JOIN spells with the spell columns prefixed `s_` — the
+ * shape mapCharacterSpell expects (avoids collisions with the link table's
+ * own id/prepared/sort_order).
+ */
+const LINK_WITH_SPELL = {
+  id: characterSpells.id,
+  character_id: characterSpells.characterId,
+  prepared: characterSpells.prepared,
+  class_source: characterSpells.classSource,
+  sort_order: characterSpells.sortOrder,
+  added_at: characterSpells.addedAt,
+  s_id: spells.id,
+  s_srd_index: spells.srdIndex,
+  s_name: spells.name,
+  s_name_fr: spells.nameFr,
+  s_level: spells.level,
+  s_school: spells.school,
+  s_casting_time: spells.castingTime,
+  s_range_text: spells.rangeText,
+  s_components: spells.components,
+  s_material: spells.material,
+  s_duration: spells.duration,
+  s_concentration: spells.concentration,
+  s_ritual: spells.ritual,
+  s_description: spells.description,
+  s_description_fr: spells.descriptionFr,
+  s_higher_level: spells.higherLevel,
+  s_higher_level_fr: spells.higherLevelFr,
+  s_attack_type: spells.attackType,
+  s_damage_json: spells.damageJson,
+  s_dc_json: spells.dcJson,
+  s_classes_json: spells.classesJson,
+};
+
+/**
  * Fetch the (character, link) pair for a character_spells row.
  * Used by PATCH/DELETE to resolve ownership before mutating.
  * Returns null if the link row doesn't exist.
  */
 function getLinkWithCharacter(linkId: number): { link: any; char: any } | null {
-  const db = getDb();
-  const link = db.prepare('SELECT * FROM character_spells WHERE id = ?').get(linkId) as any;
+  const drizzle = getDrizzle();
+  const link = drizzle
+    .select(cols(characterSpells))
+    .from(characterSpells)
+    .where(eq(characterSpells.id, linkId))
+    .get() as any;
   if (!link) return null;
-  const char = db.prepare('SELECT * FROM characters WHERE id = ?').get(link.character_id) as any;
+  const char = drizzle
+    .select(cols(characters))
+    .from(characters)
+    .where(eq(characters.id, link.character_id))
+    .get() as any;
   if (!char) return null;
   return { link, char };
 }
@@ -61,10 +108,12 @@ export async function characterSpellRoutes(app: FastifyInstance) {
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const char = db
-        .prepare('SELECT * FROM characters WHERE id = ?')
-        .get(Number(req.params.id)) as any;
+      const drizzle = getDrizzle();
+      const char = drizzle
+        .select(cols(characters))
+        .from(characters)
+        .where(eq(characters.id, Number(req.params.id)))
+        .get() as any;
       if (!char) return reply.code(404).send({ error: 'character not found' });
       if (!isPartyMember(char.party_id, userId)) {
         return reply.code(403).send({ error: 'not a member' });
@@ -74,27 +123,17 @@ export async function characterSpellRoutes(app: FastifyInstance) {
         return reply.code(404).send({ error: 'character not found' });
       }
 
-      // JOIN character_spells with spells, aliasing spell columns with s_ to
-      // avoid colliding with the link table's own id/prepared/sort_order.
-      const rows = db
-        .prepare(`
-        SELECT
-          cs.id AS id, cs.character_id AS character_id,
-          cs.prepared AS prepared, cs.class_source AS class_source, cs.sort_order AS sort_order, cs.added_at AS added_at,
-          s.id AS s_id, s.srd_index AS s_srd_index, s.name AS s_name, s.name_fr AS s_name_fr,
-          s.level AS s_level, s.school AS s_school, s.casting_time AS s_casting_time,
-          s.range_text AS s_range_text, s.components AS s_components, s.material AS s_material,
-          s.duration AS s_duration, s.concentration AS s_concentration, s.ritual AS s_ritual,
-          s.description AS s_description, s.description_fr AS s_description_fr,
-          s.higher_level AS s_higher_level, s.higher_level_fr AS s_higher_level_fr,
-          s.attack_type AS s_attack_type, s.damage_json AS s_damage_json,
-          s.dc_json AS s_dc_json, s.classes_json AS s_classes_json
-        FROM character_spells cs
-        JOIN spells s ON s.id = cs.spell_id
-        WHERE cs.character_id = ?
-        ORDER BY cs.prepared DESC, s.level ASC, COALESCE(s.name_fr, s.name) COLLATE NOCASE ASC
-      `)
-        .all(char.id);
+      const rows = drizzle
+        .select(LINK_WITH_SPELL)
+        .from(characterSpells)
+        .innerJoin(spells, eq(spells.id, characterSpells.spellId))
+        .where(eq(characterSpells.characterId, char.id))
+        .orderBy(
+          desc(characterSpells.prepared),
+          spells.level,
+          sql`COALESCE(${spells.nameFr}, ${spells.name}) COLLATE NOCASE ASC`,
+        )
+        .all();
 
       return reply.send({ spells: rows.map(mapCharacterSpell) });
     },
@@ -109,10 +148,12 @@ export async function characterSpellRoutes(app: FastifyInstance) {
     ) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const char = db
-        .prepare('SELECT * FROM characters WHERE id = ?')
-        .get(Number(req.params.id)) as any;
+      const drizzle = getDrizzle();
+      const char = drizzle
+        .select(cols(characters))
+        .from(characters)
+        .where(eq(characters.id, Number(req.params.id)))
+        .get() as any;
       if (!char) return reply.code(404).send({ error: 'character not found' });
       if (!isPartyMember(char.party_id, userId)) {
         return reply.code(403).send({ error: 'not a member' });
@@ -124,7 +165,11 @@ export async function characterSpellRoutes(app: FastifyInstance) {
       const body = req.body || ({} as AddCharacterSpellPayload);
       if (!body.spellId) return reply.code(400).send({ error: 'spellId is required' });
 
-      const spell = db.prepare('SELECT id FROM spells WHERE id = ?').get(body.spellId) as any;
+      const spell = drizzle
+        .select({ id: spells.id })
+        .from(spells)
+        .where(eq(spells.id, body.spellId))
+        .get();
       if (!spell) return reply.code(404).send({ error: 'spell not found' });
 
       const prepared = body.prepared ? 1 : 0;
@@ -133,9 +178,12 @@ export async function characterSpellRoutes(app: FastifyInstance) {
       // la classe de départ. L'unicité reste (personnage, sort) — un sort
       // connu via deux listes ne compte qu'une fois sur la fiche, la classe
       // d'origine décide de son DD et de son compteur de préparation.
-      const classRows = db
-        .prepare('SELECT class_key FROM character_classes WHERE character_id = ? ORDER BY position')
-        .all(char.id) as any[];
+      const classRows = drizzle
+        .select({ class_key: characterClasses.classKey })
+        .from(characterClasses)
+        .where(eq(characterClasses.characterId, char.id))
+        .orderBy(characterClasses.position)
+        .all() as any[];
       const knownClasses = classRows.map((r) => r.class_key as string);
       const firstClass = knownClasses[0] ?? char.character_class ?? null;
       let classSource: string | null = firstClass;
@@ -152,35 +200,29 @@ export async function characterSpellRoutes(app: FastifyInstance) {
       }
 
       // UPSERT: if the character already knows this spell, just toggle prepared.
-      db.prepare(`
-        INSERT INTO character_spells (character_id, spell_id, prepared, class_source)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(character_id, spell_id) DO UPDATE SET
-          prepared = excluded.prepared,
-          class_source = COALESCE(excluded.class_source, character_spells.class_source)
-      `).run(char.id, body.spellId, prepared, classSource);
+      drizzle
+        .insert(characterSpells)
+        .values({ characterId: char.id, spellId: body.spellId, prepared, classSource })
+        .onConflictDoUpdate({
+          target: [characterSpells.characterId, characterSpells.spellId],
+          set: {
+            prepared: sql`excluded.prepared`,
+            classSource: sql`COALESCE(excluded.class_source, character_spells.class_source)`,
+          },
+        })
+        .run();
 
       // Query by character_id + spell_id (not lastInsertRowid, which is
       // unreliable on UPSERT: on the conflict path it still holds the rowid
       // of the last INSERT on this connection — possibly another link row).
-      const row = db
-        .prepare(`
-        SELECT
-          cs.id AS id, cs.character_id AS character_id,
-          cs.prepared AS prepared, cs.class_source AS class_source, cs.sort_order AS sort_order, cs.added_at AS added_at,
-          s.id AS s_id, s.srd_index AS s_srd_index, s.name AS s_name, s.name_fr AS s_name_fr,
-          s.level AS s_level, s.school AS s_school, s.casting_time AS s_casting_time,
-          s.range_text AS s_range_text, s.components AS s_components, s.material AS s_material,
-          s.duration AS s_duration, s.concentration AS s_concentration, s.ritual AS s_ritual,
-          s.description AS s_description, s.description_fr AS s_description_fr,
-          s.higher_level AS s_higher_level, s.higher_level_fr AS s_higher_level_fr,
-          s.attack_type AS s_attack_type, s.damage_json AS s_damage_json,
-          s.dc_json AS s_dc_json, s.classes_json AS s_classes_json
-        FROM character_spells cs
-        JOIN spells s ON s.id = cs.spell_id
-        WHERE cs.character_id = ? AND cs.spell_id = ?
-      `)
-        .get(char.id, body.spellId);
+      const row = drizzle
+        .select(LINK_WITH_SPELL)
+        .from(characterSpells)
+        .innerJoin(spells, eq(spells.id, characterSpells.spellId))
+        .where(
+          and(eq(characterSpells.characterId, char.id), eq(characterSpells.spellId, body.spellId)),
+        )
+        .get();
 
       bus.emitChange({
         type: 'character:change',
@@ -202,7 +244,7 @@ export async function characterSpellRoutes(app: FastifyInstance) {
     ) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
+      const drizzle = getDrizzle();
       const resolved = getLinkWithCharacter(Number(req.params.linkId));
       if (!resolved) return reply.code(404).send({ error: 'character spell not found' });
       const { link, char } = resolved;
@@ -214,42 +256,21 @@ export async function characterSpellRoutes(app: FastifyInstance) {
       }
 
       const body = req.body || {};
-      const sets: string[] = [];
-      const vals: any[] = [];
-      if (body.prepared !== undefined) {
-        sets.push('prepared = ?');
-        vals.push(body.prepared ? 1 : 0);
+      const values: Record<string, unknown> = {};
+      if (body.prepared !== undefined) values.prepared = body.prepared ? 1 : 0;
+      if (body.sortOrder !== undefined) values.sortOrder = Math.floor(body.sortOrder);
+      if (body.classSource !== undefined) values.classSource = body.classSource || null;
+      if (Object.keys(values).length === 0) {
+        return reply.code(400).send({ error: 'no fields to update' });
       }
-      if (body.sortOrder !== undefined) {
-        sets.push('sort_order = ?');
-        vals.push(Math.floor(body.sortOrder));
-      }
-      if (body.classSource !== undefined) {
-        sets.push('class_source = ?');
-        vals.push(body.classSource || null);
-      }
-      if (sets.length === 0) return reply.code(400).send({ error: 'no fields to update' });
-      vals.push(link.id);
-      db.prepare(`UPDATE character_spells SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+      drizzle.update(characterSpells).set(values).where(eq(characterSpells.id, link.id)).run();
 
-      const row = db
-        .prepare(`
-        SELECT
-          cs.id AS id, cs.character_id AS character_id,
-          cs.prepared AS prepared, cs.class_source AS class_source, cs.sort_order AS sort_order, cs.added_at AS added_at,
-          s.id AS s_id, s.srd_index AS s_srd_index, s.name AS s_name, s.name_fr AS s_name_fr,
-          s.level AS s_level, s.school AS s_school, s.casting_time AS s_casting_time,
-          s.range_text AS s_range_text, s.components AS s_components, s.material AS s_material,
-          s.duration AS s_duration, s.concentration AS s_concentration, s.ritual AS s_ritual,
-          s.description AS s_description, s.description_fr AS s_description_fr,
-          s.higher_level AS s_higher_level, s.higher_level_fr AS s_higher_level_fr,
-          s.attack_type AS s_attack_type, s.damage_json AS s_damage_json,
-          s.dc_json AS s_dc_json, s.classes_json AS s_classes_json
-        FROM character_spells cs
-        JOIN spells s ON s.id = cs.spell_id
-        WHERE cs.id = ?
-      `)
-        .get(link.id);
+      const row = drizzle
+        .select(LINK_WITH_SPELL)
+        .from(characterSpells)
+        .innerJoin(spells, eq(spells.id, characterSpells.spellId))
+        .where(eq(characterSpells.id, link.id))
+        .get();
 
       bus.emitChange({
         type: 'character:change',
@@ -268,7 +289,7 @@ export async function characterSpellRoutes(app: FastifyInstance) {
     async (req: FastifyRequest<{ Params: { linkId: string } }>, reply: FastifyReply) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
+      const drizzle = getDrizzle();
       const resolved = getLinkWithCharacter(Number(req.params.linkId));
       if (!resolved) return reply.code(404).send({ error: 'character spell not found' });
       const { link, char } = resolved;
@@ -279,7 +300,7 @@ export async function characterSpellRoutes(app: FastifyInstance) {
         return reply.code(403).send({ error: 'only the owner or GM can modify spells' });
       }
 
-      db.prepare('DELETE FROM character_spells WHERE id = ?').run(link.id);
+      drizzle.delete(characterSpells).where(eq(characterSpells.id, link.id)).run();
       bus.emitChange({
         type: 'character:change',
         partyId: char.party_id,

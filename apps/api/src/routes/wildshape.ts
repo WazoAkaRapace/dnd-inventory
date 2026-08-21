@@ -16,19 +16,35 @@ import {
   wildShapeCanSwim,
   wildShapeMaxCR,
 } from '@dnd-inventory/shared';
+import { and, desc, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { getDrizzle } from '../db/drizzle.ts';
 import { getDb } from '../db/index.ts';
+import { cols } from '../db/projections.ts';
+import {
+  characterClasses,
+  characters,
+  combatants,
+  encounters,
+  inventory,
+  items,
+  monsters,
+} from '../db/schema.ts';
 import { bus } from '../sync/bus.ts';
 import { isPartyGM, requireUser } from './helpers.ts';
 
 /** Ligne Druide du personnage : niveau de CLASSE + cercle (multiclassage SRD). */
 function druidLine(char: any): { level: number; circle: string | null } {
-  const db = getDb();
-  const rows = db
-    .prepare(
-      'SELECT class_key, level, subclass_key FROM character_classes WHERE character_id = ? ORDER BY position, id',
-    )
-    .all(char.id) as any[];
+  const rows = getDrizzle()
+    .select({
+      class_key: characterClasses.classKey,
+      level: characterClasses.level,
+      subclass_key: characterClasses.subclassKey,
+    })
+    .from(characterClasses)
+    .where(eq(characterClasses.characterId, char.id))
+    .orderBy(characterClasses.position, characterClasses.id)
+    .all() as any[];
   const line = rows.find((r) => r.class_key === 'Druide');
   if (line) return { level: line.level ?? 1, circle: line.subclass_key ?? null };
   // Défensif (les lignes existent toujours après migration)
@@ -59,28 +75,53 @@ function parseSpeed(raw: string | null): { fly: boolean; swim: boolean } {
   }
 }
 
+/** Beast-list projection (summary fields only). */
+const BEAST_COLS = {
+  slug: monsters.slug,
+  name_fr: monsters.nameFr,
+  challenge_rating: monsters.challengeRating,
+  size: monsters.size,
+  armor_class: monsters.armorClass,
+  hit_points: monsters.hitPoints,
+  hit_dice: monsters.hitDice,
+  speed_json: monsters.speedJson,
+};
+
 /** All of the character's combatants in non-ended encounters (newest first). */
-function findActiveCombatants(db: any, characterId: number): any[] {
-  return db
-    .prepare(`
-    SELECT c.* FROM combatants c
-    JOIN encounters e ON e.id = c.encounter_id
-    WHERE c.character_id = ? AND c.type = 'player' AND e.status != 'ended'
-    ORDER BY e.created_at DESC, c.id DESC
-  `)
-    .all(characterId);
+function findActiveCombatants(characterId: number): any[] {
+  return (
+    getDrizzle()
+      .select(cols(combatants))
+      .from(combatants)
+      .innerJoin(encounters, eq(combatants.encounterId, encounters.id))
+      .where(
+        and(
+          eq(combatants.characterId, characterId),
+          eq(combatants.type, 'player'),
+          ne(encounters.status, 'ended'),
+        ),
+      )
+      // newest encounter first, latest-added combatant first
+      .orderBy(desc(encounters.createdAt), desc(combatants.id))
+      .all() as any[]
+  );
 }
 
 /** Recompute the character's normal AC from equipped armor. */
-function normalAC(db: any, char: any): number | null {
-  const rows = db
-    .prepare(`
-    SELECT i.category AS category, i.ac_base AS ac_base, i.str_min AS str_min,
-           i.name_fr AS name_fr, i.name AS name, inv.equipped AS equipped
-    FROM inventory inv JOIN items i ON i.id = inv.item_id
-    WHERE inv.character_id = ? AND inv.equipped = 1
-  `)
-    .all(char.id) as any[];
+function normalAC(char: any): number | null {
+  const rows = getDrizzle()
+    .select({
+      category: items.category,
+      ac_base: items.acBase,
+      str_min: items.strMin,
+      name_fr: items.nameFr,
+      name: items.name,
+      equipped: inventory.equipped,
+    })
+    .from(inventory)
+    .innerJoin(items, eq(items.id, inventory.itemId))
+    .where(and(eq(inventory.characterId, char.id), eq(inventory.equipped, 1)))
+    .all() as any[];
   const dexMod = abilityModifier(char.dexterity ?? 10);
   const acResult = computeAC(
     rows.map((r) => ({
@@ -100,6 +141,14 @@ function normalAC(db: any, char: any): number | null {
   return char.armor_class_override ?? acResult.ac;
 }
 
+function getCharacter(id: number): any {
+  return getDrizzle()
+    .select(cols(characters))
+    .from(characters)
+    .where(eq(characters.id, id))
+    .get() as any;
+}
+
 export async function wildShapeRoutes(app: FastifyInstance) {
   // ===== Eligible beast list for this druid =====
   app.get(
@@ -107,10 +156,7 @@ export async function wildShapeRoutes(app: FastifyInstance) {
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const char = db
-        .prepare('SELECT * FROM characters WHERE id = ?')
-        .get(Number(req.params.id)) as any;
+      const char = getCharacter(Number(req.params.id));
       if (!char) return reply.code(404).send({ error: 'Personnage introuvable' });
       const gm = isPartyGM(char.party_id, userId);
       if (char.owner_id !== userId && !gm) {
@@ -125,13 +171,23 @@ export async function wildShapeRoutes(app: FastifyInstance) {
       // Circle of the Moon, level 10: Elemental Wild Shape
       const includeElementals = isMoon && level >= 10;
 
-      const rows = db
-        .prepare(`
-        SELECT slug, name_fr, challenge_rating, size, armor_class, hit_points, hit_dice, speed_json
-        FROM monsters WHERE type = 'Bête'
-          ${includeElementals ? "OR slug IN ('elementaire-de-l-air','elementaire-de-l-eau','elementaire-de-la-terre','elementaire-du-feu')" : ''}
-        ORDER BY challenge_rating, name_fr COLLATE NOCASE
-      `)
+      const rows = getDrizzle()
+        .select(BEAST_COLS)
+        .from(monsters)
+        .where(
+          includeElementals
+            ? or(
+                eq(monsters.type, 'Bête'),
+                inArray(monsters.slug, [
+                  'elementaire-de-l-air',
+                  'elementaire-de-l-eau',
+                  'elementaire-de-la-terre',
+                  'elementaire-du-feu',
+                ]),
+              )
+            : eq(monsters.type, 'Bête'),
+        )
+        .orderBy(monsters.challengeRating, sql`${monsters.nameFr} COLLATE NOCASE`)
         .all() as BeastRow[];
 
       // SRD: only beasts the druid has seen before
@@ -189,10 +245,7 @@ export async function wildShapeRoutes(app: FastifyInstance) {
     ) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const char = db
-        .prepare('SELECT * FROM characters WHERE id = ?')
-        .get(Number(req.params.id)) as any;
+      const char = getCharacter(Number(req.params.id));
       if (!char) return reply.code(404).send({ error: 'Personnage introuvable' });
       const gm = isPartyGM(char.party_id, userId);
       if (char.owner_id !== userId && !gm) {
@@ -206,9 +259,12 @@ export async function wildShapeRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: "Plus d'utilisations — repos court requis" });
       }
 
-      const beast = db
-        .prepare('SELECT * FROM monsters WHERE slug = ?')
-        .get(req.body?.slug ?? '') as any;
+      const drizzle = getDrizzle();
+      const beast = drizzle
+        .select(cols(monsters))
+        .from(monsters)
+        .where(eq(monsters.slug, req.body?.slug ?? ''))
+        .get() as any;
       // monsters are French-only in the catalog
       if (!beast) return reply.code(404).send({ error: 'Forme introuvable dans le bestiaire' });
 
@@ -244,31 +300,38 @@ export async function wildShapeRoutes(app: FastifyInstance) {
       // Roll the beast's HP from its hit dice
       const hp = rollHitPoints(beast.hit_dice, beast.hit_points ?? 1, 0);
 
-      const tx = db.transaction(() => {
+      const db = getDb();
+      db.transaction(() => {
         // Niveau 20 (Archidruide) : pas de décrément
-        const usesExpr = druidLine(char).level >= 20 ? 'wild_shape_uses' : 'wild_shape_uses - 1';
-        db.prepare(`
-          UPDATE characters
-          SET wild_shape_slug = ?, wild_shape_hp = ?, wild_shape_max_hp = ?, wild_shape_uses = ${usesExpr}
-          WHERE id = ?
-        `).run(beast.slug, hp, hp, char.id);
+        const uses = druidLine(char).level >= 20;
+        drizzle
+          .update(characters)
+          .set({
+            wildShapeSlug: beast.slug,
+            wildShapeHp: hp,
+            wildShapeMaxHp: hp,
+            wildShapeUses: uses
+              ? sql`${characters.wildShapeUses}`
+              : sql`${characters.wildShapeUses} - 1`,
+          })
+          .where(eq(characters.id, char.id))
+          .run();
 
         // The combat tracker combatants become the beast
-        for (const combatant of findActiveCombatants(db, char.id)) {
-          db.prepare(`
-            UPDATE combatants
-            SET name = ?, hit_points = ?, max_hit_points = ?, armor_class = ?, defeated = 0
-            WHERE id = ?
-          `).run(
-            `${char.name} (${beast.name_fr ?? beast.slug})`,
-            hp,
-            hp,
-            beast.armor_class ?? 10,
-            combatant.id,
-          );
+        for (const combatant of findActiveCombatants(char.id)) {
+          drizzle
+            .update(combatants)
+            .set({
+              name: `${char.name} (${beast.name_fr ?? beast.slug})`,
+              hitPoints: hp,
+              maxHitPoints: hp,
+              armorClass: beast.armor_class ?? 10,
+              defeated: 0,
+            })
+            .where(eq(combatants.id, combatant.id))
+            .run();
         }
-      });
-      tx();
+      })();
 
       bus.emitChange({
         type: 'character:change',
@@ -301,10 +364,7 @@ export async function wildShapeRoutes(app: FastifyInstance) {
     async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
       const userId = requireUser(req, reply);
       if (userId === null) return;
-      const db = getDb();
-      const char = db
-        .prepare('SELECT * FROM characters WHERE id = ?')
-        .get(Number(req.params.id)) as any;
+      const char = getCharacter(Number(req.params.id));
       if (!char) return reply.code(404).send({ error: 'Personnage introuvable' });
       const gm = isPartyGM(char.party_id, userId);
       if (char.owner_id !== userId && !gm) {
@@ -323,23 +383,36 @@ export async function wildShapeRoutes(app: FastifyInstance) {
         newHp = Math.max(0, newHp - carried);
       }
 
-      const tx = db.transaction(() => {
-        db.prepare(`
-          UPDATE characters
-          SET wild_shape_slug = NULL, wild_shape_hp = NULL, wild_shape_max_hp = NULL, current_hp = ?
-          WHERE id = ?
-        `).run(newHp, char.id);
+      const db = getDb();
+      const drizzle = getDrizzle();
+      db.transaction(() => {
+        drizzle
+          .update(characters)
+          .set({
+            wildShapeSlug: null,
+            wildShapeHp: null,
+            wildShapeMaxHp: null,
+            currentHp: newHp,
+          })
+          .where(eq(characters.id, char.id))
+          .run();
 
         // Combatants go back to the normal form
-        for (const combatant of findActiveCombatants(db, char.id)) {
-          const ac = normalAC(db, char);
-          db.prepare(`
-            UPDATE combatants SET name = ?, hit_points = ?, max_hit_points = ?, armor_class = ?, defeated = ?
-            WHERE id = ?
-          `).run(char.name, newHp, char.max_hp ?? 1, ac ?? 10, newHp <= 0 ? 1 : 0, combatant.id);
+        for (const combatant of findActiveCombatants(char.id)) {
+          const ac = normalAC(char);
+          drizzle
+            .update(combatants)
+            .set({
+              name: char.name,
+              hitPoints: newHp,
+              maxHitPoints: char.max_hp ?? 1,
+              armorClass: ac ?? 10,
+              defeated: newHp <= 0 ? 1 : 0,
+            })
+            .where(eq(combatants.id, combatant.id))
+            .run();
         }
-      });
-      tx();
+      })();
 
       bus.emitChange({
         type: 'character:change',

@@ -8,8 +8,12 @@ import type {
   JoinPartyPayload,
   PartyRole,
 } from '@dnd-inventory/shared';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { getDrizzle } from '../db/drizzle.ts';
 import { getDb } from '../db/index.ts';
+import { cols } from '../db/projections.ts';
+import { characters, parties, partyBans, partyMembers, users } from '../db/schema.ts';
 import { bus } from '../sync/bus.ts';
 import {
   attachCharacterClasses,
@@ -25,30 +29,39 @@ export async function partyRoutes(app: FastifyInstance) {
   app.get('/parties', async (req: FastifyRequest, reply: FastifyReply) => {
     const userId = requireUser(req, reply);
     if (userId === null) return;
-    const db = getDb();
-    const rows = db
-      .prepare(`
-      SELECT p.*, pm.role, u.display_name AS gm_name,
-        (SELECT COUNT(*) FROM party_members x WHERE x.party_id = p.id) AS member_count
-      FROM parties p
-      JOIN party_members pm ON pm.party_id = p.id AND pm.user_id = ?
-      LEFT JOIN users u ON u.id = p.gm_user_id
-      ORDER BY p.created_at DESC
-    `)
-      .all(userId);
+    const drizzle = getDrizzle();
+    const rows = drizzle
+      .select({
+        ...cols(parties),
+        role: partyMembers.role,
+        gm_name: users.displayName,
+        member_count: sql<number>`(SELECT COUNT(*) FROM party_members x WHERE x.party_id = ${parties.id})`,
+      })
+      .from(parties)
+      .innerJoin(
+        partyMembers,
+        and(eq(partyMembers.partyId, parties.id), eq(partyMembers.userId, userId)),
+      )
+      .leftJoin(users, eq(users.id, parties.gmUserId))
+      .orderBy(desc(parties.createdAt))
+      .all();
     // Roster names for the register's current entry — parties are few, one batched query.
     // Hidden characters of other owners stay out of the names AND the count
     // (the GM still sees them — GM runs the game).
     const partyIds: number[] = rows.map((r: any) => r.id);
     const rosterByParty = new Map<number, string[]>();
     if (partyIds.length > 0) {
-      const placeholders = partyIds.map(() => '?').join(',');
-      const nameRows = db
-        .prepare(
-          `SELECT party_id, name, hidden, owner_id FROM characters WHERE party_id IN (${placeholders})
-           ORDER BY name COLLATE NOCASE ASC`,
-        )
-        .all(...partyIds) as any[];
+      const nameRows = drizzle
+        .select({
+          party_id: characters.partyId,
+          name: characters.name,
+          hidden: characters.hidden,
+          owner_id: characters.ownerId,
+        })
+        .from(characters)
+        .where(inArray(characters.partyId, partyIds))
+        .orderBy(sql`${characters.name} COLLATE NOCASE ASC`)
+        .all() as any[];
       for (const nr of nameRows) {
         if (nr.hidden && nr.owner_id !== userId && !isPartyGM(nr.party_id, userId)) continue;
         const list = rosterByParty.get(nr.party_id) ?? [];
@@ -85,23 +98,22 @@ export async function partyRoutes(app: FastifyInstance) {
         ['variant', 'standard', 'slots'].includes(encumbranceMode) ? encumbranceMode : 'variant'
       ) as EncumbranceMode;
 
-      const db = getDb();
+      const drizzle = getDrizzle();
       const code = generateInviteCode();
-      const tx = db.transaction(() => {
-        const info = db
-          .prepare(`
-          INSERT INTO parties (name, gm_user_id, invite_code, encumbrance_mode)
-          VALUES (?, ?, ?, ?)
-        `)
-          .run(name.trim(), userId, code, mode);
-        const partyId = info.lastInsertRowid;
-        db.prepare(`
-          INSERT INTO party_members (party_id, user_id, role) VALUES (?, ?, 'gm')
-        `).run(partyId, userId);
-        return partyId;
-      });
-      const partyId = tx();
-      const row = db.prepare('SELECT * FROM parties WHERE id = ?').get(partyId) as any;
+      const partyId = getDb().transaction(() => {
+        const { id } = drizzle
+          .insert(parties)
+          .values({ name: name.trim(), gmUserId: userId, inviteCode: code, encumbranceMode: mode })
+          .returning({ id: parties.id })
+          .get();
+        drizzle.insert(partyMembers).values({ partyId: id, userId, role: 'gm' }).run();
+        return id;
+      })();
+      const row = drizzle
+        .select(cols(parties))
+        .from(parties)
+        .where(eq(parties.id, partyId))
+        .get() as any;
       return reply.code(201).send({
         party: {
           id: row.id,
@@ -124,38 +136,43 @@ export async function partyRoutes(app: FastifyInstance) {
       const partyId = Number(req.params.id);
       if (!isPartyMember(partyId, userId)) return reply.code(403).send({ error: 'not a member' });
 
-      const db = getDb();
-      const party = db.prepare('SELECT * FROM parties WHERE id = ?').get(partyId) as any;
+      const drizzle = getDrizzle();
+      const party = drizzle
+        .select(cols(parties))
+        .from(parties)
+        .where(eq(parties.id, partyId))
+        .get() as any;
       if (!party) return reply.code(404).send({ error: 'party not found' });
 
-      const members = db
-        .prepare(`
-      SELECT pm.*, u.username, u.display_name
-      FROM party_members pm JOIN users u ON u.id = pm.user_id
-      WHERE pm.party_id = ?
-      ORDER BY pm.role DESC, pm.joined_at ASC
-    `)
-        .all(partyId);
-      const banned = db
-        .prepare(`
-      SELECT b.*, u.username, u.display_name
-      FROM party_bans b JOIN users u ON u.id = b.user_id
-      WHERE b.party_id = ?
-      ORDER BY b.banned_at ASC
-    `)
-        .all(partyId);
-      const characters = db
-        .prepare(`
-      SELECT c.*, u.display_name AS owner_name
-      FROM characters c JOIN users u ON u.id = c.owner_id
-      WHERE c.party_id = ?
-      ORDER BY c.name COLLATE NOCASE ASC
-    `)
-        .all(partyId);
+      const members = drizzle
+        .select({
+          ...cols(partyMembers),
+          username: users.username,
+          display_name: users.displayName,
+        })
+        .from(partyMembers)
+        .innerJoin(users, eq(users.id, partyMembers.userId))
+        .where(eq(partyMembers.partyId, partyId))
+        .orderBy(desc(partyMembers.role), partyMembers.joinedAt)
+        .all();
+      const banned = drizzle
+        .select({ ...cols(partyBans), username: users.username, display_name: users.displayName })
+        .from(partyBans)
+        .innerJoin(users, eq(users.id, partyBans.userId))
+        .where(eq(partyBans.partyId, partyId))
+        .orderBy(partyBans.bannedAt)
+        .all();
+      const charactersAll = drizzle
+        .select({ ...cols(characters), owner_name: users.displayName })
+        .from(characters)
+        .innerJoin(users, eq(users.id, characters.ownerId))
+        .where(eq(characters.partyId, partyId))
+        .orderBy(sql`${characters.name} COLLATE NOCASE ASC`)
+        .all() as any[];
       // Hidden (secret prep) characters stay out of other players' views —
       // the owner and the GM (from the members rows above) still see them.
       const callerIsGM = members.some((m: any) => m.user_id === userId && m.role === 'gm');
-      const visibleCharacters = characters.filter(
+      const visibleCharacters = charactersAll.filter(
         (c: any) => !c.hidden || c.owner_id === userId || callerIsGM,
       );
 
@@ -197,25 +214,29 @@ export async function partyRoutes(app: FastifyInstance) {
       const { inviteCode } = req.body || {};
       if (!inviteCode) return reply.code(400).send({ error: 'inviteCode is required' });
 
-      const db = getDb();
-      const party = db
-        .prepare('SELECT * FROM parties WHERE invite_code = ?')
-        .get(inviteCode.toUpperCase()) as any;
+      const drizzle = getDrizzle();
+      const party = drizzle
+        .select(cols(parties))
+        .from(parties)
+        .where(eq(parties.inviteCode, String(inviteCode).toUpperCase()))
+        .get() as any;
       if (!party) return reply.code(404).send({ error: 'invalid invite code' });
 
-      const banned = db
-        .prepare('SELECT 1 FROM party_bans WHERE party_id = ? AND user_id = ?')
-        .get(party.id, userId);
+      const banned = drizzle
+        .select({ one: sql`1` })
+        .from(partyBans)
+        .where(and(eq(partyBans.partyId, party.id), eq(partyBans.userId, userId)))
+        .get();
       if (banned) return reply.code(403).send({ error: 'banned from this party' });
 
-      const already = db
-        .prepare('SELECT 1 FROM party_members WHERE party_id = ? AND user_id = ?')
-        .get(party.id, userId);
+      const already = drizzle
+        .select({ one: sql`1` })
+        .from(partyMembers)
+        .where(and(eq(partyMembers.partyId, party.id), eq(partyMembers.userId, userId)))
+        .get();
       if (already) return reply.code(409).send({ error: 'already a member', partyId: party.id });
 
-      db.prepare(`
-        INSERT INTO party_members (party_id, user_id, role) VALUES (?, ?, 'player')
-      `).run(party.id, userId);
+      drizzle.insert(partyMembers).values({ partyId: party.id, userId, role: 'player' }).run();
 
       bus.emitChange({
         type: 'party:change',
@@ -237,17 +258,19 @@ export async function partyRoutes(app: FastifyInstance) {
       const targetId = Number(req.params.userId);
       if (!isPartyGM(partyId, userId)) return reply.code(403).send({ error: 'GM only' });
 
-      const db = getDb();
-      const target = db
-        .prepare('SELECT * FROM party_members WHERE party_id = ? AND user_id = ?')
-        .get(partyId, targetId) as any;
+      const drizzle = getDrizzle();
+      const target = drizzle
+        .select(cols(partyMembers))
+        .from(partyMembers)
+        .where(and(eq(partyMembers.partyId, partyId), eq(partyMembers.userId, targetId)))
+        .get() as any;
       if (!target) return reply.code(404).send({ error: 'member not found' });
       if (target.role === 'gm') return reply.code(403).send({ error: 'cannot remove the GM' });
 
-      db.prepare('DELETE FROM party_members WHERE party_id = ? AND user_id = ?').run(
-        partyId,
-        targetId,
-      );
+      drizzle
+        .delete(partyMembers)
+        .where(and(eq(partyMembers.partyId, partyId), eq(partyMembers.userId, targetId)))
+        .run();
       // Characters stay in the party — the sheet survives, only the seat is freed.
       bus.emitChange({
         type: 'party:change',
@@ -271,24 +294,29 @@ export async function partyRoutes(app: FastifyInstance) {
       if (!targetId) return reply.code(400).send({ error: 'userId is required' });
       if (!isPartyGM(partyId, userId)) return reply.code(403).send({ error: 'GM only' });
 
-      const db = getDb();
-      const target = db
-        .prepare('SELECT * FROM party_members WHERE party_id = ? AND user_id = ?')
-        .get(partyId, targetId) as any;
+      const drizzle = getDrizzle();
+      const target = drizzle
+        .select(cols(partyMembers))
+        .from(partyMembers)
+        .where(and(eq(partyMembers.partyId, partyId), eq(partyMembers.userId, targetId)))
+        .get() as any;
       if (!target) return reply.code(404).send({ error: 'member not found' });
       if (target.role === 'gm') return reply.code(403).send({ error: 'cannot ban the GM' });
 
-      const tx = db.transaction(() => {
-        db.prepare('DELETE FROM party_members WHERE party_id = ? AND user_id = ?').run(
-          partyId,
-          targetId,
-        );
-        db.prepare(`
-          INSERT OR REPLACE INTO party_bans (party_id, user_id, banned_at)
-          VALUES (?, ?, datetime('now'))
-        `).run(partyId, targetId);
-      });
-      tx();
+      getDb().transaction(() => {
+        drizzle
+          .delete(partyMembers)
+          .where(and(eq(partyMembers.partyId, partyId), eq(partyMembers.userId, targetId)))
+          .run();
+        drizzle
+          .insert(partyBans)
+          .values({ partyId, userId: targetId, bannedAt: sql`datetime('now')` })
+          .onConflictDoUpdate({
+            target: [partyBans.partyId, partyBans.userId],
+            set: { bannedAt: sql`datetime('now')` },
+          })
+          .run();
+      })();
       bus.emitChange({
         type: 'party:change',
         partyId,
@@ -310,10 +338,11 @@ export async function partyRoutes(app: FastifyInstance) {
       const targetId = Number(req.params.userId);
       if (!isPartyGM(partyId, userId)) return reply.code(403).send({ error: 'GM only' });
 
-      const db = getDb();
-      const info = db
-        .prepare('DELETE FROM party_bans WHERE party_id = ? AND user_id = ?')
-        .run(partyId, targetId);
+      const drizzle = getDrizzle();
+      const info = drizzle
+        .delete(partyBans)
+        .where(and(eq(partyBans.partyId, partyId), eq(partyBans.userId, targetId)))
+        .run();
       if (info.changes === 0) return reply.code(404).send({ error: 'not banned' });
 
       bus.emitChange({
@@ -343,21 +372,22 @@ export async function partyRoutes(app: FastifyInstance) {
       if (!isPartyGM(partyId, userId)) return reply.code(403).send({ error: 'GM only' });
 
       const { name, encumbranceMode } = req.body || {};
-      const db = getDb();
+      const drizzle = getDrizzle();
       if (name !== undefined) {
         if (!name.trim()) return reply.code(400).send({ error: 'name cannot be empty' });
-        db.prepare('UPDATE parties SET name = ? WHERE id = ?').run(name.trim(), partyId);
+        drizzle.update(parties).set({ name: name.trim() }).where(eq(parties.id, partyId)).run();
       }
       if (encumbranceMode !== undefined) {
         if (!['variant', 'standard', 'slots'].includes(encumbranceMode)) {
           return reply.code(400).send({ error: 'invalid encumbranceMode' });
         }
-        db.prepare('UPDATE parties SET encumbrance_mode = ? WHERE id = ?').run(
-          encumbranceMode,
-          partyId,
-        );
+        drizzle.update(parties).set({ encumbranceMode }).where(eq(parties.id, partyId)).run();
       }
-      const row = db.prepare('SELECT * FROM parties WHERE id = ?').get(partyId) as any;
+      const row = drizzle
+        .select(cols(parties))
+        .from(parties)
+        .where(eq(parties.id, partyId))
+        .get() as any;
       bus.emitChange({ type: 'party:change', partyId, action: 'stats', actorUserId: userId });
       return reply.send({
         party: {
@@ -384,12 +414,16 @@ export async function partyRoutes(app: FastifyInstance) {
       if (userId === null) return;
       const partyId = Number(req.params.id);
 
-      const db = getDb();
-      const party = db.prepare('SELECT * FROM parties WHERE id = ?').get(partyId) as any;
+      const drizzle = getDrizzle();
+      const party = drizzle
+        .select(cols(parties))
+        .from(parties)
+        .where(eq(parties.id, partyId))
+        .get() as any;
       if (!party) return reply.code(404).send({ error: 'party not found' });
       if (!isPartyGM(partyId, userId)) return reply.code(403).send({ error: 'GM only' });
 
-      db.prepare('DELETE FROM parties WHERE id = ?').run(partyId);
+      drizzle.delete(parties).where(eq(parties.id, partyId)).run();
 
       // 'disband' — ws.ts delivers on PRE-refresh membership (the cascade
       // already emptied party_members, so the usual member gate would skip

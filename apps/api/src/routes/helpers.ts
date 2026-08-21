@@ -20,8 +20,18 @@ import {
   type Spell,
   type SpellSchool,
 } from '@dnd-inventory/shared';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { getDrizzle } from '../db/drizzle.ts';
 import { getDb } from '../db/index.ts';
+import { cols } from '../db/projections.ts';
+import {
+  characterClasses,
+  characters,
+  combatants,
+  encounters,
+  partyMembers,
+} from '../db/schema.ts';
 import { bus } from '../sync/bus.ts';
 
 /** Parse a JSON column that's guaranteed to be an array; never throws. */
@@ -55,19 +65,27 @@ export function requireUser(req: FastifyRequest, reply: FastifyReply): number | 
 
 /** Is this user a member (gm or player) of this party? */
 export function isPartyMember(partyId: number, userId: number): boolean {
-  const db = getDb();
-  const row = db
-    .prepare('SELECT 1 FROM party_members WHERE party_id = ? AND user_id = ?')
-    .get(partyId, userId);
+  const row = getDrizzle()
+    .select({ one: sql`1` })
+    .from(partyMembers)
+    .where(and(eq(partyMembers.partyId, partyId), eq(partyMembers.userId, userId)))
+    .get();
   return !!row;
 }
 
 /** Is this user the GM of this party? */
 export function isPartyGM(partyId: number, userId: number): boolean {
-  const db = getDb();
-  const row = db
-    .prepare("SELECT 1 FROM party_members WHERE party_id = ? AND user_id = ? AND role = 'gm'")
-    .get(partyId, userId);
+  const row = getDrizzle()
+    .select({ one: sql`1` })
+    .from(partyMembers)
+    .where(
+      and(
+        eq(partyMembers.partyId, partyId),
+        eq(partyMembers.userId, userId),
+        eq(partyMembers.role, 'gm'),
+      ),
+    )
+    .get();
   return !!row;
 }
 
@@ -101,13 +119,12 @@ export function generateInviteCode(): string {
 export function loadCharacterClasses(characterIds: number[]): Map<number, any[]> {
   const map = new Map<number, any[]>();
   if (characterIds.length === 0) return map;
-  const db = getDb();
-  const placeholders = characterIds.map(() => '?').join(',');
-  const rows = db
-    .prepare(
-      `SELECT * FROM character_classes WHERE character_id IN (${placeholders}) ORDER BY position, id`,
-    )
-    .all(...characterIds) as any[];
+  const rows = getDrizzle()
+    .select(cols(characterClasses))
+    .from(characterClasses)
+    .where(inArray(characterClasses.characterId, characterIds))
+    .orderBy(characterClasses.position, characterClasses.id)
+    .all() as any[];
   for (const row of rows) {
     const list = map.get(row.character_id) ?? [];
     list.push(row);
@@ -182,47 +199,48 @@ export function validateClassEntries(
  */
 export function replaceCharacterClasses(characterId: number, entries: CharacterClassEntry[]): void {
   const db = getDb();
+  const drizzle = getDrizzle();
   db.transaction(() => {
-    db.prepare('DELETE FROM character_classes WHERE character_id = ?').run(characterId);
-    const insert = db.prepare(`
-      INSERT INTO character_classes (character_id, class_key, level, subclass_key, hit_dice_used, fighting_style, position)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    entries.forEach((entry, position) => {
-      insert.run(
-        characterId,
-        entry.classKey,
-        entry.level,
-        entry.subclassKey ?? null,
-        entry.hitDiceUsed ?? 0,
-        entry.fightingStyle ?? null,
-        position,
-      );
-    });
+    drizzle.delete(characterClasses).where(eq(characterClasses.characterId, characterId)).run();
+    for (const [position, entry] of entries.entries()) {
+      drizzle
+        .insert(characterClasses)
+        .values({
+          characterId,
+          classKey: entry.classKey,
+          level: entry.level,
+          subclassKey: entry.subclassKey ?? null,
+          hitDiceUsed: entry.hitDiceUsed ?? 0,
+          fightingStyle: entry.fightingStyle ?? null,
+          position,
+        })
+        .run();
+    }
     const first = entries[0];
     const hitDiceTotal = entries.reduce((sum, e) => sum + (e.hitDiceUsed ?? 0), 0);
     const style = entries.find((e) => e.fightingStyle)?.fightingStyle ?? null;
-    const setSubclass =
+    // The starting class's subclass lands in its dedicated column (Clerc/
+    // Druide/Paladin) or the generic one — property-keyed spread replaces
+    // the old interpolated `${col}` column picker.
+    const subclassSet =
       first.classKey === 'Clerc'
-        ? { col: 'divine_domain', value: first.subclassKey ?? null }
+        ? { divineDomain: first.subclassKey ?? null }
         : first.classKey === 'Druide'
-          ? { col: 'druid_circle', value: first.subclassKey ?? null }
+          ? { druidCircle: first.subclassKey ?? null }
           : first.classKey === 'Paladin'
-            ? { col: 'sacred_oath', value: first.subclassKey ?? null }
-            : { col: 'subclass', value: first.subclassKey ?? null };
-    db.prepare(
-      `UPDATE characters SET
-        character_class = ?, level = ?, ${setSubclass.col} = ?,
-        fighting_style = ?, hit_dice_used = ?
-      WHERE id = ?`,
-    ).run(
-      first.classKey,
-      entries.reduce((sum, e) => sum + e.level, 0),
-      setSubclass.value,
-      style,
-      hitDiceTotal,
-      characterId,
-    );
+            ? { sacredOath: first.subclassKey ?? null }
+            : { subclass: first.subclassKey ?? null };
+    drizzle
+      .update(characters)
+      .set({
+        characterClass: first.classKey,
+        level: entries.reduce((sum, e) => sum + e.level, 0),
+        ...subclassSet,
+        fightingStyle: style,
+        hitDiceUsed: hitDiceTotal,
+      })
+      .where(eq(characters.id, characterId))
+      .run();
   })();
 }
 
@@ -539,14 +557,19 @@ export function mirrorConditionsToCombatants(
   actorUserId: number,
 ): void {
   if (added.length === 0 && removed.length === 0) return;
-  const db = getDb();
-  const rows = db
-    .prepare(`
-    SELECT c.id, c.conditions FROM combatants c
-    JOIN encounters e ON e.id = c.encounter_id
-    WHERE c.character_id = ? AND c.type = 'player' AND e.status != 'ended'
-  `)
-    .all(charId) as any[];
+  const drizzle = getDrizzle();
+  const rows = drizzle
+    .select({ id: combatants.id, conditions: combatants.conditions })
+    .from(combatants)
+    .innerJoin(encounters, eq(combatants.encounterId, encounters.id))
+    .where(
+      and(
+        eq(combatants.characterId, charId),
+        eq(combatants.type, 'player'),
+        ne(encounters.status, 'ended'),
+      ),
+    )
+    .all() as any[];
   let changed = false;
   for (const row of rows) {
     let conds = parseCombatantConditions(row.conditions);
@@ -556,7 +579,7 @@ export function mirrorConditionsToCombatants(
     }
     const next = JSON.stringify(conds);
     if (next !== row.conditions) {
-      db.prepare('UPDATE combatants SET conditions = ? WHERE id = ?').run(next, row.id);
+      drizzle.update(combatants).set({ conditions: next }).where(eq(combatants.id, row.id)).run();
       changed = true;
     }
   }
@@ -577,8 +600,12 @@ export function mirrorConditionsToCharacter(
   actorUserId: number,
 ): void {
   if (added.length === 0 && removed.length === 0) return;
-  const db = getDb();
-  const ch = db.prepare('SELECT conditions FROM characters WHERE id = ?').get(characterId) as any;
+  const drizzle = getDrizzle();
+  const ch = drizzle
+    .select({ conditions: characters.conditions })
+    .from(characters)
+    .where(eq(characters.id, characterId))
+    .get() as any;
   if (!ch) return;
   let list = parseCharConditions(ch.conditions);
   list = list.filter((n) => !removed.includes(n));
@@ -587,7 +614,11 @@ export function mirrorConditionsToCharacter(
   }
   const next = JSON.stringify(list);
   if (next !== ch.conditions) {
-    db.prepare('UPDATE characters SET conditions = ? WHERE id = ?').run(next, characterId);
+    drizzle
+      .update(characters)
+      .set({ conditions: next })
+      .where(eq(characters.id, characterId))
+      .run();
     bus.emitChange({
       type: 'character:change',
       partyId,
