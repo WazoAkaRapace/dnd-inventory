@@ -378,9 +378,12 @@ export function SurvivalPanel({
             const shapeMax = character.wildShapeMaxHp ?? 1;
             const commitShapeHp = async () => {
               if (shapeHpDraft === null) return;
-              // Same ceiling as the regular HP tracker: typed values obey the max.
-              const n = Math.min(Math.max(0, Math.round(Number(shapeHpDraft) || 0)), shapeMax);
+              const parsed = Number(shapeHpDraft);
               setShapeHpDraft(null);
+              // Empty (or unparsable) → rollback to the displayed value, no write.
+              if (shapeHpDraft.trim() === '' || !Number.isFinite(parsed)) return;
+              // Same ceiling as the regular HP tracker: typed values obey the max.
+              const n = Math.min(Math.max(0, Math.round(parsed)), shapeMax);
               if (n === shapeHp) return;
               markLocalMutation();
               try {

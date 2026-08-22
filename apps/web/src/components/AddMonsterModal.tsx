@@ -8,7 +8,7 @@ import type { MonsterSummary } from '@dnd-inventory/shared';
 import { formatCR, MONSTER_SIZE_LABELS_FR } from '@dnd-inventory/shared';
 import { useCallback, useEffect, useState } from 'react';
 import api from '../api';
-import { Modal } from './ui';
+import { Modal, NumberField } from './ui';
 
 interface Props {
   open: boolean;
@@ -140,15 +140,12 @@ export default function AddMonsterModal({ open, onClose, onAdd }: Props) {
               >
                 −
               </button>
-              <input
+              <NumberField
                 id="monster-count"
-                type="number"
                 min={1}
                 max={50}
                 value={count}
-                onChange={(e) =>
-                  setCount(Math.max(1, Math.min(50, parseInt(e.target.value, 10) || 1)))
-                }
+                onChange={setCount}
                 className="input w-20 text-center"
               />
               <button

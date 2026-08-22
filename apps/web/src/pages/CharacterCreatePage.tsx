@@ -42,6 +42,7 @@ import {
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api';
+import { NumberField } from '../components/ui';
 
 /** Marker for the « Autre… » free-text escape on every catalog picker. */
 const CUSTOM = '__custom__';
@@ -406,14 +407,13 @@ export default function CharacterCreatePage() {
               <label className="label" htmlFor="create-level">
                 Niveau
               </label>
-              <input
+              <NumberField
                 id="create-level"
-                type="number"
                 className="input"
                 value={level}
                 min={1}
                 max={20}
-                onChange={(e) => setLevel(Math.min(20, Math.max(1, Number(e.target.value) || 1)))}
+                onChange={setLevel}
               />
             </div>
             <div className="flex items-start gap-2.5 rounded-xl border border-parchment-200 p-3">
@@ -601,19 +601,13 @@ export default function CharacterCreatePage() {
                     <label className="label" htmlFor={`create-score-${abi.key}`}>
                       {abi.label}
                     </label>
-                    <input
+                    <NumberField
                       id={`create-score-${abi.key}`}
-                      type="number"
                       className="input"
                       min={1}
                       max={30}
                       value={freeScores[abi.key]}
-                      onChange={(e) =>
-                        setFreeScores({
-                          ...freeScores,
-                          [abi.key]: Math.min(30, Math.max(1, Number(e.target.value) || 1)),
-                        })
-                      }
+                      onChange={(n) => setFreeScores({ ...freeScores, [abi.key]: n })}
                     />
                   </div>
                 ))}

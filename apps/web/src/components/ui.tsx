@@ -190,6 +190,59 @@ export function Fab({
   );
 }
 
+// ---------- Numeric field ----------
+
+// The number input every numeric field must use: while focused the box holds a
+// free draft (clearing a default to retype it never snaps back mid-keystroke),
+// every parsable entry commits clamped to [min, max], and a box left empty (or
+// unparsable) rolls back to its last committed value on blur — never coerced
+// to the min, never to 0. Hand-rolled `Number(value) || fallback` clamps have
+// regressed more than once; route them here.
+export function NumberField({
+  value,
+  onChange,
+  min,
+  max,
+  zeroAsEmpty = false,
+  onBlur,
+  ...inputProps
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  min?: number;
+  max?: number;
+  /** Show a committed 0 as an empty box (coin purse display convention). */
+  zeroAsEmpty?: boolean;
+} & Omit<React.ComponentPropsWithoutRef<'input'>, 'value' | 'onChange' | 'min' | 'max' | 'type'>) {
+  // The draft holds the raw text while the user edits (possibly ''); null when
+  // the box mirrors the committed value. An empty draft never reaches onChange,
+  // so dropping it on blur restores the previous value for free.
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const clamp = (n: number) => Math.min(max ?? n, Math.max(min ?? n, n));
+  const display = draft ?? (zeroAsEmpty && value === 0 ? '' : String(value));
+
+  return (
+    <input
+      {...inputProps}
+      type="number"
+      min={min}
+      max={max}
+      value={display}
+      onChange={(e) => {
+        const text = e.target.value;
+        setDraft(text);
+        const n = Number(text);
+        if (text !== '' && Number.isFinite(n)) onChange(clamp(n));
+      }}
+      onBlur={(e) => {
+        setDraft(null);
+        onBlur?.(e);
+      }}
+    />
+  );
+}
+
 export function CostBadge({ qty, unit }: { qty: number | null; unit: CostUnit | null }) {
   if (!qty || !unit) return null;
   return (

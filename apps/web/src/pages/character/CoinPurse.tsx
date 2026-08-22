@@ -1,6 +1,7 @@
 import type { Character } from '@dnd-inventory/shared';
 import { COIN_LABELS_FR } from '@dnd-inventory/shared';
 import { useState } from 'react';
+import { NumberField } from '../../components/ui';
 import type { CoinsState } from './types';
 
 // ---------- Coin purse (auto-save, distinct colored glyphs) ----------
@@ -80,19 +81,14 @@ export function CoinPurse({ coins, readOnly = false, onChange, onBlur }: CoinPur
                       <span className="text-xs text-ink-400">{unit}</span>
                     </div>
                   ) : (
-                    <input
+                    <NumberField
                       id={`coin-${key}`}
-                      type="number"
                       min={0}
                       className="input"
-                      value={coins[key] === 0 ? '' : coins[key]}
-                      onChange={(e) =>
-                        onChange(key, e.target.value === '' ? 0 : Number(e.target.value) || 0)
-                      }
-                      onBlur={(e) => {
-                        if (e.target.value === '' || e.target.value === '0') onChange(key, 0);
-                        onBlur();
-                      }}
+                      value={coins[key]}
+                      zeroAsEmpty
+                      onChange={(n) => onChange(key, n)}
+                      onBlur={onBlur}
                       aria-label={`Quantité de ${COIN_LABELS_FR[unit]}`}
                     />
                   )}

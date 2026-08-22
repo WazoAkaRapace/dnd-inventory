@@ -1,7 +1,7 @@
 import type { CharacterSummary, InventoryEntry, PartyDetail } from '@dnd-inventory/shared';
 import { useEffect, useState } from 'react';
 import api from '../../api';
-import { EmptyState, LoadingSpinner, Modal } from '../../components/ui';
+import { EmptyState, LoadingSpinner, Modal, NumberField } from '../../components/ui';
 
 // ---------- Transfer modal ----------
 
@@ -117,14 +117,13 @@ export function TransferModal({
             <label className="label" htmlFor="give-qty">
               Quantité (max {maxQty})
             </label>
-            <input
+            <NumberField
               id="give-qty"
-              type="number"
               min={1}
               max={maxQty}
               className="input"
               value={qty}
-              onChange={(e) => setQty(Math.max(1, Number(e.target.value) || 1))}
+              onChange={setQty}
             />
           </div>
           <button type="submit" disabled={!targetId || submitting} className="btn-primary w-full">

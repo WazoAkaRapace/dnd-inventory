@@ -1,7 +1,7 @@
 import type { Character, ConcentrationCheck } from '@dnd-inventory/shared';
 import { useEffect, useRef, useState } from 'react';
 import api from '../../api';
-import { HpBar } from '../../components/ui';
+import { HpBar, NumberField } from '../../components/ui';
 
 import type { SheetActionProps } from './types';
 
@@ -19,10 +19,10 @@ export function HpTracker({
   onError,
   onConcentrationCheck,
 }: HpTrackerProps) {
-  // Fields may be '' while the user is editing (input cleared).
-  const [maxHp, setMaxHp] = useState<number | ''>(character.maxHp);
-  const [currentHp, setCurrentHp] = useState<number | ''>(character.currentHp);
-  const [tempHp, setTempHp] = useState<number | ''>(character.tempHp);
+  // Empty-while-editing lives inside NumberField — these stay pure numbers.
+  const [maxHp, setMaxHp] = useState<number>(character.maxHp);
+  const [currentHp, setCurrentHp] = useState<number>(character.currentHp);
+  const [tempHp, setTempHp] = useState<number>(character.tempHp);
 
   useEffect(() => {
     setMaxHp(character.maxHp);
@@ -63,15 +63,16 @@ export function HpTracker({
     }, 1000);
   };
 
-  // Commit an input on blur: empty (or invalid) → 0 (1 for max HP),
-  // and supersede any pending debounced update for that field.
+  // Commit an input on blur: clamp (typed current HP obeys the same ceiling
+  // as the +1 stepper) and supersede any pending debounced update for that
+  // field. An emptied box never gets here — NumberField rolls it back instead.
   const commit = (
     field: 'currentHp' | 'maxHp' | 'tempHp',
-    raw: number | '',
+    raw: number,
     setter: (n: number) => void,
   ) => {
     const min = field === 'maxHp' ? 1 : 0;
-    let n = typeof raw === 'number' && Number.isFinite(raw) ? Math.max(min, raw) : min;
+    let n = Math.max(min, raw);
     // Typed current HP obeys the same ceiling as the +1 stepper.
     if (field === 'currentHp') {
       const max = typeof maxHp === 'number' && maxHp > 0 ? maxHp : character.maxHp;
@@ -94,9 +95,9 @@ export function HpTracker({
     [charId],
   );
 
-  const curNum = currentHp === '' ? 0 : currentHp;
-  const maxNum = typeof maxHp === 'number' && maxHp > 0 ? maxHp : character.maxHp;
-  const tempNum = tempHp === '' ? 0 : tempHp;
+  const curNum = currentHp;
+  const maxNum = maxHp > 0 ? maxHp : character.maxHp;
+  const tempNum = tempHp;
   const hpColor =
     curNum <= 0
       ? 'text-red-600'
@@ -158,20 +159,20 @@ export function HpTracker({
             <span className="max-[379px]:hidden">−1</span>
             <span className="hidden max-[379px]:inline">−</span>
           </button>
-          <input
-            type="number"
+          <NumberField
             className={`w-16 text-center text-lg font-bold font-mono bg-white border border-parchment-300 rounded-lg py-1 focus:outline-none focus:border-blood-500 ${hpColor}`}
             value={currentHp}
-            onChange={(e) => setCurrentHp(e.target.value === '' ? '' : Number(e.target.value) || 0)}
+            min={0}
+            onChange={setCurrentHp}
             onBlur={() => commit('currentHp', currentHp, setCurrentHp)}
             aria-label="Points de vie actuels"
           />
           <span className="text-ink-400 font-semibold">/</span>
-          <input
-            type="number"
+          <NumberField
             className="w-12 text-center text-base font-semibold font-mono text-ink-500 bg-transparent border-b border-dashed border-parchment-400 py-0 focus:outline-none focus:border-blood-500 focus:bg-white"
             value={maxHp}
-            onChange={(e) => setMaxHp(e.target.value === '' ? '' : Number(e.target.value) || 0)}
+            min={1}
+            onChange={setMaxHp}
             onBlur={() => commit('maxHp', maxHp, setMaxHp)}
             aria-label="Points de vie maximum"
           />
@@ -201,14 +202,11 @@ export function HpTracker({
           which absorb temp first (no minus here). */}
         <div className="flex items-center justify-center gap-1.5">
           <span className="text-xs text-ink-500 font-medium">PV temp</span>
-          <input
-            type="number"
+          <NumberField
             className={`w-14 text-center text-sm font-medium font-mono bg-white border border-parchment-300 rounded-lg py-1 focus:outline-none focus:border-blood-500 ${tempNum > 0 ? 'text-blue-700' : 'text-ink-400'}`}
             value={tempHp}
             min={0}
-            onChange={(e) =>
-              setTempHp(e.target.value === '' ? '' : Math.max(0, Number(e.target.value) || 0))
-            }
+            onChange={setTempHp}
             onBlur={() => commit('tempHp', tempHp, setTempHp)}
             aria-label="Points de vie temporaires"
           />

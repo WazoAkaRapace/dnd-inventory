@@ -259,11 +259,13 @@ export default function CharacterStateBand({
   };
 
   // Explicit commit (typed value) sends immediately, carrying any queued total.
+  // An emptied box rolls back instead — Number('') is 0, which would drop the
+  // character to 0 PV on an accidental clear.
   const commitHpDraft = () => {
     if (hpDraft === null) return;
     const val = Number(hpDraft);
     setHpDraft(null);
-    if (Number.isFinite(val)) {
+    if (hpDraft.trim() !== '' && Number.isFinite(val)) {
       queueHp(val);
       flushHp();
     }
