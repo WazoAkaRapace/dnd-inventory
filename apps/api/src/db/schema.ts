@@ -51,6 +51,8 @@ export const parties = sqliteTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     inviteCode: text('invite_code').notNull().unique('parties_invite_code_unique'),
     encumbranceMode: text('encumbrance_mode').notNull().default('variant'),
+    // Players may create custom items themselves (GM keeps the kill switch).
+    playersCreateItems: integer('players_create_items').notNull().default(1),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   },
   (_t) => [
@@ -237,6 +239,7 @@ export const items = sqliteTable(
     id: integer('id').primaryKey({ autoIncrement: true }),
     source: text('source').notNull().default('srd'),
     partyId: integer('party_id').references(() => parties.id, { onDelete: 'cascade' }), // NULL = global/SRD
+    createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }), // author of a custom item (players can author too)
     category: text('category').notNull(),
     srdIndex: text('srd_index'), // original SRD index for dedup
     name: text('name').notNull(),

@@ -789,6 +789,11 @@ function TransactionsTab({ transactions }: { transactions: Transaction[] }) {
 function CustomItemsTab({ partyId }: { partyId: string }) {
   const [customItems, setCustomItems] = useState<any[]>([]);
   const [loadingItems, setLoadingItems] = useState(true);
+  // Party setting: may players create items themselves? + member names to
+  // attribute each item to its author.
+  const [playersCreate, setPlayersCreate] = useState<boolean | null>(null);
+  const [memberNames, setMemberNames] = useState<Map<number, string>>(new Map());
+  const [togglingPlayersCreate, setTogglingPlayersCreate] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
@@ -817,6 +822,36 @@ function CustomItemsTab({ partyId }: { partyId: string }) {
   useEffect(() => {
     loadCustomItems();
   }, [loadCustomItems]);
+
+  // Party setting + member display names (to attribute items to authors).
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get(`/api/parties/${partyId}`)
+      .then((res: any) => {
+        if (cancelled) return;
+        setPlayersCreate(!!res.data.party.playersCreateItems);
+        setMemberNames(new Map(res.data.members.map((m: any) => [m.userId, m.displayName])));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [partyId]);
+
+  const togglePlayersCreate = async () => {
+    if (playersCreate === null || togglingPlayersCreate) return;
+    const next = !playersCreate;
+    setTogglingPlayersCreate(true);
+    try {
+      await api.patch(`/api/parties/${partyId}`, { playersCreateItems: next });
+      setPlayersCreate(next);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Erreur');
+    } finally {
+      setTogglingPlayersCreate(false);
+    }
+  };
 
   useSyncEvent(
     (event) => {
@@ -897,6 +932,26 @@ function CustomItemsTab({ partyId }: { partyId: string }) {
         </button>
       </div>
 
+      {/* Autonomy switch: players create missing items from their inventory
+          search; everything lands here for review and later edits. */}
+      <div className="card p-3 flex items-start gap-2.5">
+        <input
+          id="gm-players-create-items"
+          type="checkbox"
+          className="mt-0.5 h-4 w-4 accent-blood-600"
+          checked={playersCreate ?? false}
+          onChange={togglePlayersCreate}
+          disabled={playersCreate === null || togglingPlayersCreate}
+        />
+        <label htmlFor="gm-players-create-items" className="text-sm font-medium text-ink-700">
+          Les joueurs peuvent créer des objets
+          <span className="mt-0.5 block text-xs font-normal text-ink-400">
+            Depuis la recherche de leur inventaire, un objet introuvable se crée en une touche — il
+            rejoint cette liste pour relecture et retouche.
+          </span>
+        </label>
+      </div>
+
       {loadingItems ? (
         <p className="text-sm text-ink-400 animate-pulse">Chargement…</p>
       ) : customItems.length === 0 ? (
@@ -917,6 +972,11 @@ function CustomItemsTab({ partyId }: { partyId: string }) {
                   <CategoryBadge category={item.category} />
                   {item.weightKg !== null && (
                     <span className="text-xs text-ink-400">{item.weightKg} kg</span>
+                  )}
+                  {item.createdBy !== null && (
+                    <span className="text-xs text-ink-400">
+                      par {memberNames.get(item.createdBy) ?? 'un joueur'}
+                    </span>
                   )}
                 </div>
                 {item.description && (

@@ -250,6 +250,7 @@ export function mapItem(row: any): Item {
     id: row.id,
     source: row.source,
     partyId: row.party_id,
+    createdBy: row.created_by,
     category: row.category as ItemCategory,
     name: row.name,
     nameFr: row.name_fr,

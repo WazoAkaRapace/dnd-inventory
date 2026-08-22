@@ -88,6 +88,7 @@ export async function partyRoutes(app: FastifyInstance) {
         gmName: r.gm_name,
         inviteCode: r.invite_code,
         encumbranceMode: r.encumbrance_mode,
+        playersCreateItems: !!r.players_create_items,
         role: r.role,
         createdAt: r.created_at,
         memberCount: r.member_count,
@@ -132,6 +133,7 @@ export async function partyRoutes(app: FastifyInstance) {
           gmUserId: row.gm_user_id,
           inviteCode: row.invite_code,
           encumbranceMode: row.encumbrance_mode,
+          playersCreateItems: !!row.players_create_items,
           createdAt: row.created_at,
         },
       });
@@ -195,6 +197,7 @@ export async function partyRoutes(app: FastifyInstance) {
           gmUserId: party.gm_user_id,
           inviteCode: party.invite_code,
           encumbranceMode: party.encumbrance_mode,
+          playersCreateItems: !!party.players_create_items,
           createdAt: party.created_at,
         },
         members: members.map((m: any) => ({
@@ -399,7 +402,11 @@ export async function partyRoutes(app: FastifyInstance) {
     async (
       req: FastifyRequest<{
         Params: { id: string };
-        Body: { name?: string; encumbranceMode?: EncumbranceMode };
+        Body: {
+          name?: string;
+          encumbranceMode?: EncumbranceMode;
+          playersCreateItems?: boolean;
+        };
       }>,
       reply: FastifyReply,
     ) => {
@@ -408,7 +415,7 @@ export async function partyRoutes(app: FastifyInstance) {
       const partyId = Number(req.params.id);
       if (!isPartyGM(partyId, userId)) return reply.code(403).send({ error: 'GM only' });
 
-      const { name, encumbranceMode } = req.body || {};
+      const { name, encumbranceMode, playersCreateItems } = req.body || {};
       const drizzle = getDrizzle();
       if (name !== undefined) {
         if (!name.trim()) return reply.code(400).send({ error: 'name cannot be empty' });
@@ -419,6 +426,16 @@ export async function partyRoutes(app: FastifyInstance) {
           return reply.code(400).send({ error: 'invalid encumbranceMode' });
         }
         drizzle.update(parties).set({ encumbranceMode }).where(eq(parties.id, partyId)).run();
+      }
+      if (playersCreateItems !== undefined) {
+        if (typeof playersCreateItems !== 'boolean') {
+          return reply.code(400).send({ error: 'playersCreateItems must be a boolean' });
+        }
+        drizzle
+          .update(parties)
+          .set({ playersCreateItems: playersCreateItems ? 1 : 0 })
+          .where(eq(parties.id, partyId))
+          .run();
       }
       const row = drizzle
         .select(cols(parties))
@@ -433,6 +450,7 @@ export async function partyRoutes(app: FastifyInstance) {
           gmUserId: row.gm_user_id,
           inviteCode: row.invite_code,
           encumbranceMode: row.encumbrance_mode,
+          playersCreateItems: !!row.players_create_items,
           createdAt: row.created_at,
         },
       });

@@ -77,11 +77,32 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
   );
 
   // ---------- custom items ----------
+  // player-created items: allowed by default (party setting), author recorded
   r = await api(base, 'POST', `/api/parties/${P}/items`, {
     token: fx.player.token,
-    body: { name: 'Lame de test' },
+    body: { name: 'Fiole du joueur', description: 'Créé par un joueur' },
   });
-  eq(r.status, 403, 'create custom item non-GM → 403');
+  eq(r.status, 201, 'player creates a custom item when the party allows it');
+  eq(r.data.item.createdBy, fx.player.userId, 'player creation records the author');
+
+  // the GM's kill switch: once off, players are back to GM-only creation
+  r = await api(base, 'PATCH', `/api/parties/${P}`, {
+    token: fx.gm.token,
+    body: { playersCreateItems: false },
+  });
+  eq(r.status, 200, 'GM disables player item creation');
+  r = await api(base, 'POST', `/api/parties/${P}/items`, {
+    token: fx.player.token,
+    body: { name: 'Interdit' },
+  });
+  eq(r.status, 403, 'player creation blocked once the setting is off');
+
+  // non-members never create, whatever the setting
+  r = await api(base, 'POST', `/api/parties/${P}/items`, {
+    token: fx.outsider.token,
+    body: { name: 'Intrus' },
+  });
+  eq(r.status, 403, 'create custom item non-member → 403');
 
   r = await api(base, 'POST', `/api/parties/${P}/items`, { token: fx.gm.token, body: {} });
   eq(r.status, 400, 'create custom item no name → 400');
@@ -102,6 +123,7 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
   const custom = r.data.item;
   eq(custom.source, 'custom', 'custom source');
   eq(custom.partyId, P, 'attached to party');
+  eq(custom.createdBy, fx.gm.userId, 'GM creation records the author');
 
   // party context: SRD catalog + this party's customs — and nothing from
   // other parties, even for a user member of both (DM here, player there)
@@ -118,7 +140,11 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
     'own custom item present in its party context',
   );
   r = await api(base, 'GET', `/api/items?partyId=${P}&source=custom`, { token: fx.gm.token });
-  eq(r.data.total, 1, 'party + source=custom → own customs only (dashboard tab)');
+  eq(
+    r.data.total,
+    srv.query('SELECT COUNT(*) AS c FROM items WHERE party_id = ? AND source = ?', P, 'custom').c,
+    'party + source=custom → own customs only (dashboard tab)',
+  );
   r = await api(base, 'GET', `/api/items?partyId=${P}`, { token: fx.outsider.token });
   eq(r.status, 403, 'party filter non-member → 403');
 

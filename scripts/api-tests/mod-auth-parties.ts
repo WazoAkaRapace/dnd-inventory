@@ -275,11 +275,32 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
 
   r = await api(base, 'PATCH', `/api/parties/${fx.partyId}`, {
     token: fx.gm.token,
+    body: { playersCreateItems: 'oui' },
+  });
+  eq(r.status, 400, 'patch party playersCreateItems non-boolean → 400');
+
+  r = await api(base, 'PATCH', `/api/parties/${fx.partyId}`, {
+    token: fx.gm.token,
     body: { name: 'Compagnie Renommée', encumbranceMode: 'standard' },
   });
   eq(r.status, 200, 'patch party name + mode');
   eq(r.data.party.name, 'Compagnie Renommée', 'name updated');
   eq(r.data.party.encumbranceMode, 'standard', 'mode updated');
+
+  // playersCreateItems toggle: roundtrip + persisted in the party detail
+  r = await api(base, 'PATCH', `/api/parties/${fx.partyId}`, {
+    token: fx.gm.token,
+    body: { playersCreateItems: false },
+  });
+  eq(r.status, 200, 'patch party playersCreateItems off');
+  eq(r.data.party.playersCreateItems, false, 'playersCreateItems updated');
+  r = await api(base, 'GET', `/api/parties/${fx.partyId}`, { token: fx.gm.token });
+  eq(r.data.party.playersCreateItems, false, 'playersCreateItems persisted in detail');
+  r = await api(base, 'PATCH', `/api/parties/${fx.partyId}`, {
+    token: fx.gm.token,
+    body: { playersCreateItems: true },
+  });
+  eq(r.data.party.playersCreateItems, true, 'playersCreateItems re-enabled');
 
   // ---------- disband party (GM only) — cascade deletes everything ----------
   // Throwaway party owned by eve — fx.partyId must survive for later modules.

@@ -44,6 +44,8 @@ export interface Item {
   id: number;
   source: 'srd' | 'custom';
   partyId: number | null; // null for SRD/global; set for custom items
+  /** Author of a custom item (players can author when the party allows it). */
+  createdBy: number | null;
   category: ItemCategory;
   name: string;
   nameFr: string | null;
@@ -123,6 +125,8 @@ export interface Party {
   gmUserId: number;
   inviteCode: string;
   encumbranceMode: EncumbranceMode;
+  /** Players may create custom items themselves (GM toggles this). */
+  playersCreateItems: boolean;
   createdAt: string;
 }
 
@@ -4043,6 +4047,13 @@ export interface CreateCharacterNotePayload {
 export interface PatchCharacterNotePayload {
   title?: string;
   content?: string | null;
+}
+
+/** Reorder payload — ids in the new order. For features this covers ONE
+ *  category group (sections are separate drag arenas); for notes the whole
+ *  list. The server rewrites sort_order = index for exactly these ids. */
+export interface ReorderPayload {
+  order: number[];
 }
 
 /** List of available template variables for the help UI. */

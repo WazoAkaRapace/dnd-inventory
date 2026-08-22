@@ -42,6 +42,9 @@ interface CatalogSearchProps {
   offset: number;
   /** When true (viewer mode), hide the add buttons — catalog is browse-only. */
   readOnly?: boolean;
+  /** Players may create the missing item inline (party setting, GM-gated). */
+  canCreateItem?: boolean;
+  onCreateItem?: (name: string) => void;
   onAdd: (item: Item) => void;
   onLoadMore: () => void;
 }
@@ -59,9 +62,21 @@ export function CatalogSearch({
   addingItemId,
   offset,
   readOnly = false,
+  canCreateItem = false,
+  onCreateItem,
   onAdd,
   onLoadMore,
 }: CatalogSearchProps) {
+  const wanted = search.trim();
+  const createCta = canCreateItem && wanted !== '' && !readOnly && onCreateItem && (
+    <button
+      type="button"
+      onClick={() => onCreateItem(wanted)}
+      className="btn-secondary w-full text-sm"
+    >
+      + Créer « {wanted} »
+    </button>
+  );
   return (
     <div className="space-y-3">
       <div className="card p-3 space-y-3">
@@ -102,13 +117,20 @@ export function CatalogSearch({
       </div>
 
       {items.length === 0 && !loading ? (
-        <div className="card p-4">
-          {search.trim() || category || rarity ? (
-            <EmptyState
-              icon="🔍"
-              title="Aucun objet trouvé"
-              hint="Modifiez votre recherche ou vos filtres."
-            />
+        <div className="card p-4 space-y-3">
+          {wanted || category || rarity ? (
+            <>
+              <EmptyState
+                icon="🔍"
+                title="Aucun objet trouvé"
+                hint={
+                  wanted && canCreateItem
+                    ? `« ${wanted} » n'existe pas encore — tu peux le créer.`
+                    : 'Modifiez votre recherche ou vos filtres.'
+                }
+              />
+              {wanted && createCta}
+            </>
           ) : (
             <EmptyState
               icon="📝"
@@ -155,6 +177,10 @@ export function CatalogSearch({
           </ul>
 
           {loading && <LoadingSpinner label="Recherche…" />}
+
+          {/* The exact item may still be missing among the hits — creation
+              stays one tap away even with results on screen. */}
+          {createCta}
 
           {offset + items.length < total && !loading && (
             <button type="button" onClick={onLoadMore} className="btn-secondary w-full">

@@ -30,6 +30,7 @@ import {
   ErrorMsg,
   Fab,
   LoadingSpinner,
+  Modal,
   type Toast,
   ToastStack,
 } from '../components/ui';
@@ -125,10 +126,13 @@ export default function CharacterInventoryPage() {
     enabled: !!partyId && !!user,
     queryFn: async () => {
       const res = await api.get<PartyDetail>(`/api/parties/${partyId}`);
-      return res.data.members.some((m) => m.userId === user?.id && m.role === 'gm');
+      return {
+        isGM: res.data.members.some((m) => m.userId === user?.id && m.role === 'gm'),
+        playersCreateItems: res.data.party.playersCreateItems,
+      };
     },
   });
-  const isGM = gmQuery.data ?? false;
+  const isGM = gmQuery.data?.isGM ?? false;
 
   // Inline-editable character name lives in the state band; the portage
   // multiplier too (a derived stat of the encumbrance line).
@@ -195,6 +199,14 @@ export default function CharacterInventoryPage() {
   const [catalogCategory, setCatalogCategory] = useState<'' | ItemCategory>('');
   const [catalogRarity, setCatalogRarity] = useState<'' | Rarity>('');
   const [addingItemId, setAddingItemId] = useState<number | null>(null);
+
+  // Custom item creation — players too, when the party allows it (GM setting)
+  const [createItemOpen, setCreateItemOpen] = useState(false);
+  const [createItemName, setCreateItemName] = useState('');
+  const [createItemCategory, setCreateItemCategory] = useState('custom');
+  const [createItemWeight, setCreateItemWeight] = useState('');
+  const [createItemDesc, setCreateItemDesc] = useState('');
+  const [creatingItem, setCreatingItem] = useState(false);
 
   // Transfer modal
   const [transferEntry, setTransferEntry] = useState<InventoryEntry | null>(null);
@@ -480,6 +492,43 @@ export default function CharacterInventoryPage() {
     }
   };
 
+  // ---------- Custom item creation (players too, party setting) ----------
+
+  function openItemCreator(name: string) {
+    setCreateItemName(name);
+    setCreateItemCategory('custom');
+    setCreateItemWeight('');
+    setCreateItemDesc('');
+    // Fold the catalog sheet: the creator modal takes over, and the freshly
+    // created item lands in the bag (toast) rather than behind the sheet.
+    setCatalogOpen(false);
+    setCreateItemOpen(true);
+  }
+
+  const submitCreateItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!createItemName.trim() || creatingItem) return;
+    setCreatingItem(true);
+    try {
+      const res = await api.post(`/api/parties/${partyId}/items`, {
+        name: createItemName.trim(),
+        category: createItemCategory,
+        weightKg: createItemWeight.trim() === '' ? null : Number(createItemWeight),
+        description: createItemDesc.trim() || undefined,
+      });
+      const created: Item = res.data.item;
+      setCreateItemOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ['catalog'] });
+      pushToast(`« ${created.nameFr || created.name} » créé`);
+      // The search was meant to ADD the item — land it in the bag right away.
+      addFromCatalog(created);
+    } catch (err) {
+      pushToast(apiError(err, "Impossible de créer l'objet"), 'error');
+    } finally {
+      setCreatingItem(false);
+    }
+  };
+
   // ---------- Storage location mutations ----------
 
   const createLocation = async (payload: NewLocationPayload) => {
@@ -701,6 +750,8 @@ export default function CharacterInventoryPage() {
       addingItemId={addingItemId}
       offset={catalogOffset}
       readOnly={!canEdit}
+      canCreateItem={canEdit && (isGM || (gmQuery.data?.playersCreateItems ?? false))}
+      onCreateItem={openItemCreator}
       onAdd={addFromCatalog}
       onLoadMore={() => catalogQuery.fetchNextPage()}
     />
@@ -1355,6 +1406,72 @@ export default function CharacterInventoryPage() {
         onClose={() => setShowNewLocationModal(false)}
         onCreate={createLocation}
       />
+
+      {/* ---------- Custom item creation modal (players too, party setting) ---------- */}
+      <Modal open={createItemOpen} onClose={() => setCreateItemOpen(false)} title="Créer un objet">
+        <form onSubmit={submitCreateItem} className="space-y-3">
+          <label className="block">
+            <span className="label">Nom *</span>
+            <input
+              className="input"
+              value={createItemName}
+              onChange={(e) => setCreateItemName(e.target.value)}
+              maxLength={60}
+              autoFocus
+              required
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="label">Catégorie</span>
+              <select
+                className="input"
+                value={createItemCategory}
+                onChange={(e) => setCreateItemCategory(e.target.value)}
+              >
+                <option value="custom">Personnalisé</option>
+                <option value="weapon">Arme</option>
+                <option value="armor">Armure</option>
+                <option value="gear">Équipement</option>
+                <option value="magic">Objet magique</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="label">Poids (kg)</span>
+              <input
+                type="number"
+                step="0.01"
+                min={0}
+                className="input"
+                value={createItemWeight}
+                onChange={(e) => setCreateItemWeight(e.target.value)}
+                placeholder="—"
+              />
+            </label>
+          </div>
+          <label className="block">
+            <span className="label">Description</span>
+            <textarea
+              className="input"
+              rows={3}
+              value={createItemDesc}
+              onChange={(e) => setCreateItemDesc(e.target.value)}
+              placeholder="À quoi ça sert ?"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={creatingItem || !createItemName.trim()}
+            className="btn-primary w-full"
+          >
+            {creatingItem ? '…' : '✨ Créer et ajouter'}
+          </button>
+          <p className="text-xs text-ink-400">
+            L’objet rejoint le catalogue du groupe — le MD pourra le retoucher dans son tableau de
+            bord.
+          </p>
+        </form>
+      </Modal>
 
       {/* ---------- Toast stack ---------- */}
       <ToastStack toasts={toasts} onDismiss={dismissToast} />

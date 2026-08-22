@@ -7,7 +7,7 @@ import { and, eq, inArray, isNull, or, type SQL, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDrizzle } from '../db/drizzle.ts';
 import { cols } from '../db/projections.ts';
-import { items, partyMembers } from '../db/schema.ts';
+import { items, parties, partyMembers } from '../db/schema.ts';
 import { bus } from '../sync/bus.ts';
 import { isPartyGM, isPartyMember, mapItem, requireUser } from './helpers.ts';
 
@@ -138,7 +138,7 @@ export async function itemRoutes(app: FastifyInstance) {
     },
   );
 
-  // ---------- GM: create custom item for a party ----------
+  // ---------- Create custom item (GM always; players when the party allows) ----------
   app.post(
     '/parties/:partyId/items',
     { onRequest: [(app as any).authenticate] },
@@ -149,8 +149,18 @@ export async function itemRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const partyId = Number(req.params.partyId);
+      const drizzle = getDrizzle();
       if (!isPartyGM(partyId, userId)) {
-        return reply.code(403).send({ error: 'only the GM can create custom items' });
+        // Player-created items are a party setting the GM toggles — autonomy
+        // for the players, the kill switch stays on the GM's dashboard.
+        const allowed =
+          isPartyMember(partyId, userId) &&
+          !!(
+            drizzle.select(cols(parties)).from(parties).where(eq(parties.id, partyId)).get() as any
+          )?.players_create_items;
+        if (!allowed) {
+          return reply.code(403).send({ error: 'only the GM can create custom items' });
+        }
       }
       const body = req.body || ({} as CreateCustomItem);
 
@@ -158,12 +168,12 @@ export async function itemRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: 'name is required' });
       }
 
-      const drizzle = getDrizzle();
       const row = drizzle
         .insert(items)
         .values({
           source: 'custom',
           partyId,
+          createdBy: userId,
           category: body.category || 'custom',
           name: body.name.trim(),
           nameFr: body.nameFr || null,
