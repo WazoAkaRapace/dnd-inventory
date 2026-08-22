@@ -122,7 +122,11 @@ export async function openTab(page: Page, label: string) {
 }
 
 /** GET authentifié d'un personnage (pour poller la persistance d'un PATCH). */
-export async function fetchCharacter(charId: number): Promise<{ currentHp: number }> {
+export async function fetchCharacter(charId: number): Promise<{
+  currentHp: number;
+  backstory: string | null;
+  alliesOrganizations: string | null;
+}> {
   const res = await fetch(`${API_BASE}/api/characters/${charId}`, {
     headers: { authorization: `Bearer ${seed().player.token}` },
     signal: AbortSignal.timeout(5000),

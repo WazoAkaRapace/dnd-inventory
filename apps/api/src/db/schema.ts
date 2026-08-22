@@ -156,6 +156,8 @@ export const characters = sqliteTable(
     bonds: text('bonds'),
     flaws: text('flaws'),
     appearance: text('appearance'),
+    backstory: text('backstory'),
+    alliesOrganizations: text('allies_organizations'),
     armorClassOverride: integer('armor_class_override'),
     deathSaveSuccesses: integer('death_save_successes').notNull().default(0),
     deathSaveFailures: integer('death_save_failures').notNull().default(0),
