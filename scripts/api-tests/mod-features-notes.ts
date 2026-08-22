@@ -129,6 +129,52 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
   eq(patchedRow.counter_max, 3, 'db: patched counter_max persisted');
   eq(patchedRow.counter_current, 1, 'db: patched counter_current persisted');
 
+  // ---------- features: drag-to-reorder (one category group) ----------
+  r = await api(base, 'POST', `/api/characters/${A}/features`, {
+    token: fx.gm.token,
+    body: { title: 'Agilité halfeline', category: 'racial' },
+  });
+  eq(r.status, 201, 'create second racial feature');
+  const feat2 = r.data.feature;
+
+  r = await api(base, 'PATCH', `/api/characters/${A}/features/order`, {
+    token: fx.player2.token,
+    body: { order: [feat2.id, feat.id] },
+  });
+  eq(r.status, 403, 'reorder features non-owner → 403');
+  r = await api(base, 'PATCH', `/api/characters/${A}/features/order`, {
+    token: fx.gm.token,
+    body: { order: [] },
+  });
+  eq(r.status, 400, 'reorder features empty → 400');
+  r = await api(base, 'PATCH', `/api/characters/${A}/features/order`, {
+    token: fx.gm.token,
+    body: { order: [feat2.id, 999999] },
+  });
+  eq(r.status, 400, 'reorder features foreign id → 400');
+
+  r = await api(base, 'PATCH', `/api/characters/${A}/features/order`, {
+    token: fx.gm.token,
+    body: { order: [feat2.id, feat.id] },
+  });
+  eq(r.status, 200, 'reorder features');
+  eq(r.data.ok, true, 'reorder features ok');
+  r = await api(base, 'GET', `/api/characters/${A}/features`, { token: fx.player.token });
+  const racialTitles = r.data.features
+    .filter((f: any) => f.category === 'racial')
+    .map((f: any) => f.title);
+  eq(racialTitles.join('|'), 'Agilité halfeline|Vision dans le noir', 'racial group order swapped');
+  eq(
+    srv.query('SELECT sort_order FROM character_features WHERE id = ?', feat2.id).sort_order,
+    0,
+    'db: reordered feature sort_order 0',
+  );
+  eq(
+    srv.query('SELECT sort_order FROM character_features WHERE id = ?', feat.id).sort_order,
+    1,
+    'db: reordered feature sort_order 1',
+  );
+
   r = await api(base, 'DELETE', `/api/character-features/${feat.id}`, { token: fx.player2.token });
   eq(r.status, 403, 'delete feature non-owner → 403');
   r = await api(base, 'DELETE', '/api/character-features/999999', { token: fx.gm.token });
@@ -209,6 +255,55 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
   eq(patchedNote.title, 'Journal (2)', 'db: patched note title persisted');
   eq(patchedNote.content, 'Jour 2 : jungle.', 'db: patched note content persisted');
   ok(patchedNote.updated_at, 'db: updated_at set');
+
+  // ---------- notes: drag-to-reorder ----------
+  r = await api(base, 'POST', `/api/characters/${A}/notes`, {
+    token: fx.gm.token,
+    body: { title: 'PNJ croisées' },
+  });
+  const note2 = r.data.note;
+  r = await api(base, 'POST', `/api/characters/${A}/notes`, {
+    token: fx.gm.token,
+    body: { title: 'Quêtes' },
+  });
+  const note3 = r.data.note;
+
+  r = await api(base, 'PATCH', `/api/characters/${A}/notes/order`, {
+    token: fx.player2.token,
+    body: { order: [note3.id, note2.id, note.id] },
+  });
+  eq(r.status, 403, 'reorder notes non-owner → 403');
+  r = await api(base, 'PATCH', `/api/characters/${A}/notes/order`, {
+    token: fx.gm.token,
+    body: { order: [] },
+  });
+  eq(r.status, 400, 'reorder notes empty → 400');
+  r = await api(base, 'PATCH', `/api/characters/${A}/notes/order`, {
+    token: fx.gm.token,
+    body: { order: [note.id, 999999] },
+  });
+  eq(r.status, 400, 'reorder notes foreign id → 400');
+
+  const noteUpdatedBefore = srv.query(
+    'SELECT updated_at FROM character_notes WHERE id = ?',
+    note.id,
+  ).updated_at;
+  r = await api(base, 'PATCH', `/api/characters/${A}/notes/order`, {
+    token: fx.gm.token,
+    body: { order: [note3.id, note.id, note2.id] },
+  });
+  eq(r.status, 200, 'reorder notes');
+  r = await api(base, 'GET', `/api/characters/${A}/notes`, { token: fx.player.token });
+  eq(
+    r.data.notes.map((n: any) => n.title).join('|'),
+    'Quêtes|Journal (2)|PNJ croisées',
+    'notes listed in new order',
+  );
+  eq(
+    srv.query('SELECT updated_at FROM character_notes WHERE id = ?', note.id).updated_at,
+    noteUpdatedBefore,
+    'db: reorder leaves updated_at untouched',
+  );
 
   r = await api(base, 'DELETE', `/api/character-notes/${note.id}`, { token: fx.player2.token });
   eq(r.status, 403, 'delete note non-owner → 403');

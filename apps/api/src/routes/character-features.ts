@@ -15,11 +15,13 @@
 import type {
   CreateCharacterFeaturePayload,
   PatchCharacterFeaturePayload,
+  ReorderPayload,
 } from '@dnd-inventory/shared';
 import { classFeatureResourceMax, findClassFeature } from '@dnd-inventory/shared';
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDrizzle } from '../db/drizzle.ts';
+import { getDb } from '../db/index.ts';
 import { cols } from '../db/projections.ts';
 import { characterFeatures, characters } from '../db/schema.ts';
 import { bus } from '../sync/bus.ts';
@@ -249,6 +251,72 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
         actorUserId: userId,
       });
       return reply.send({ feature: mapFeature(row) });
+    },
+  );
+
+  // ---------- Reorder one category group ----------
+  // The traits grid keeps its category sections: each is its own drag arena,
+  // so the client sends ONE group's ids and the server rewrites
+  // sort_order = index for those rows only (ordering matters within a
+  // category after grouping — interleaved values across groups are fine).
+  app.patch(
+    '/characters/:id/features/order',
+    async (
+      req: FastifyRequest<{ Params: { id: string }; Body: ReorderPayload }>,
+      reply: FastifyReply,
+    ) => {
+      const userId = requireUser(req, reply);
+      if (userId === null) return;
+      const drizzle = getDrizzle();
+      const char = getCharacter(drizzle, Number(req.params.id));
+      if (!char) return reply.code(404).send({ error: 'character not found' });
+      if (!isPartyMember(char.party_id, userId)) {
+        return reply.code(403).send({ error: 'not a member' });
+      }
+      if (!isOwnerOrGM(char, userId)) {
+        return reply.code(403).send({ error: 'only the owner or GM can modify features' });
+      }
+
+      const body = req.body || ({} as ReorderPayload);
+      const order = [
+        ...new Set(
+          (Array.isArray(body.order) ? body.order : []).map(Number).filter(Number.isInteger),
+        ),
+      ];
+      if (order.length === 0) return reply.code(400).send({ error: 'order is required' });
+
+      // Every id must belong to this character
+      const owned = new Set(
+        (
+          drizzle
+            .select({ id: characterFeatures.id })
+            .from(characterFeatures)
+            .where(inArray(characterFeatures.id, order))
+            .all() as any[]
+        ).map((r) => r.id),
+      );
+      if (order.some((id) => !owned.has(id))) {
+        return reply.code(400).send({ error: 'feature does not belong to this character' });
+      }
+
+      getDb().transaction(() => {
+        order.forEach((id, index) => {
+          drizzle
+            .update(characterFeatures)
+            .set({ sortOrder: index })
+            .where(eq(characterFeatures.id, id))
+            .run();
+        });
+      })();
+
+      bus.emitChange({
+        type: 'character:change',
+        partyId: char.party_id,
+        characterId: char.id,
+        action: 'stats',
+        actorUserId: userId,
+      });
+      return reply.send({ ok: true });
     },
   );
 

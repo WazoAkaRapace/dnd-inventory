@@ -6,6 +6,7 @@
 import type { Character, CharacterNote } from '@dnd-inventory/shared';
 import { useCallback, useEffect, useState } from 'react';
 import api from '../api';
+import { SortableCard, SortableGrid } from '../components/SortableGrid';
 import { EmptyState, Modal } from '../components/ui';
 import { useSyncEvent } from '../sync';
 
@@ -199,6 +200,20 @@ export default function CharacterNotesTab({
     }
   };
 
+  // Drag-to-reorder: optimistic move, one PATCH per drop carrying the whole
+  // order (self-healing, last writer wins). On failure: roll back and say so.
+  const reorder = async (nextIds: number[]) => {
+    const prev = notes;
+    const byId = new Map(notes.map((n) => [n.id, n]));
+    setNotes(nextIds.map((id) => byId.get(id)).filter((n) => n !== undefined));
+    try {
+      await api.patch(`/api/characters/${charId}/notes/order`, { order: nextIds });
+    } catch {
+      setNotes(prev);
+      onError('Réorganisation non enregistrée');
+    }
+  };
+
   if (loading) return <p className="text-sm text-ink-400 animate-pulse">Chargement…</p>;
 
   return (
@@ -221,62 +236,74 @@ export default function CharacterNotesTab({
           />
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <SortableGrid
+          ids={notes.map((n) => n.id)}
+          onReorder={reorder}
+          labelOf={(id) => notes.find((n) => n.id === Number(id))?.title ?? ''}
+          className="grid gap-3 sm:grid-cols-2"
+        >
           {notes.map((note) => (
-            <div key={note.id} className="card p-4 flex flex-col gap-2">
-              <div className="flex items-start justify-between gap-2">
-                <h3 className="font-display font-semibold text-ink-800">{note.title}</h3>
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => openEdit(note)}
-                    className="text-ink-400 hover:text-blood-600 text-sm p-1"
-                    aria-label={`Modifier ${note.title}`}
-                  >
-                    ✎
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmDelete(note.id)}
-                    className="text-ink-400 hover:text-red-500 text-sm p-1"
-                    aria-label={`Supprimer ${note.title}`}
-                  >
-                    ×
-                  </button>
-                </div>
-              </div>
-              {note.content && (
+            <SortableCard key={note.id} id={note.id} label={`Déplacer ${note.title}`}>
+              {(handle, isDragging) => (
                 <div
-                  className="text-sm text-ink-600 prose-sm max-w-none"
-                  // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown escapes <, > and & in inline() before injecting its own trusted tags — no user HTML reaches the DOM.
-                  dangerouslySetInnerHTML={{ __html: renderMarkdown(note.content) }}
-                />
-              )}
-              <span className="text-[10px] text-ink-400 mt-auto">
-                Modifié le {new Date(`${note.updatedAt}Z`).toLocaleDateString('fr-FR')}
-              </span>
-              {confirmDelete === note.id && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-red-600">Supprimer ?</span>
-                  <button
-                    type="button"
-                    onClick={() => remove(note.id)}
-                    className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700"
-                  >
-                    Oui
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmDelete(null)}
-                    className="text-xs px-2 py-1 rounded bg-parchment-200 hover:bg-parchment-300"
-                  >
-                    Non
-                  </button>
+                  className={`card p-4 flex flex-col gap-2 ${isDragging ? 'card-dragging' : ''}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="font-display font-semibold text-ink-800">{note.title}</h3>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => openEdit(note)}
+                        className="text-ink-400 hover:text-blood-600 text-sm p-1"
+                        aria-label={`Modifier ${note.title}`}
+                      >
+                        ✎
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDelete(note.id)}
+                        className="text-ink-400 hover:text-red-500 text-sm p-1"
+                        aria-label={`Supprimer ${note.title}`}
+                      >
+                        ×
+                      </button>
+                      {notes.length > 1 && handle}
+                    </div>
+                  </div>
+                  {note.content && (
+                    <div
+                      className="text-sm text-ink-600 prose-sm max-w-none"
+                      // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown escapes <, > and & in inline() before injecting its own trusted tags — no user HTML reaches the DOM.
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(note.content) }}
+                    />
+                  )}
+                  <span className="text-[10px] text-ink-400 mt-auto">
+                    Modifié le {new Date(`${note.updatedAt}Z`).toLocaleDateString('fr-FR')}
+                  </span>
+                  {confirmDelete === note.id && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-red-600">Supprimer ?</span>
+                      <button
+                        type="button"
+                        onClick={() => remove(note.id)}
+                        className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700"
+                      >
+                        Oui
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDelete(null)}
+                        className="text-xs px-2 py-1 rounded bg-parchment-200 hover:bg-parchment-300"
+                      >
+                        Non
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
+            </SortableCard>
           ))}
-        </div>
+        </SortableGrid>
       )}
 
       {/* Add/Edit modal */}

@@ -24,6 +24,7 @@ import {
 } from '@dnd-inventory/shared';
 import { useCallback, useEffect, useState } from 'react';
 import api from '../api';
+import { SortableCard, SortableGrid } from '../components/SortableGrid';
 import { EmptyState, Modal } from '../components/ui';
 import { useSyncEvent } from '../sync';
 
@@ -214,6 +215,24 @@ export default function CharacterFeaturesTab({
     }
   };
 
+  // Drag-to-reorder within ONE category section: the client sends the group's
+  // ids, the server rewrites their sort_order (interleaved values across
+  // groups are fine — ordering only matters within a category after
+  // grouping). Optimistic move, rollback + message on failure.
+  const reorderGroup = async (nextIds: number[]) => {
+    const prev = features;
+    const moved = new Set(nextIds);
+    const byId = new Map(features.map((f) => [f.id, f]));
+    const reordered = nextIds.map((id) => byId.get(id)).filter((f) => f !== undefined);
+    setFeatures([...features.filter((f) => !moved.has(f.id)), ...reordered]);
+    try {
+      await api.patch(`/api/characters/${charId}/features/order`, { order: nextIds });
+    } catch {
+      setFeatures(prev);
+      onError('Réorganisation non enregistrée');
+    }
+  };
+
   // Catalogue : ajout en 1 clic — le compteur est déduit de la formule SRD côté API
   const addFromCatalog = async (def: ClassFeatureDef) => {
     try {
@@ -274,137 +293,155 @@ export default function CharacterFeaturesTab({
               <div className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-2">
                 {FEATURE_CATEGORY_LABELS_FR[group.category]} ({group.items.length})
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <SortableGrid
+                ids={group.items.map((f) => f.id)}
+                onReorder={reorderGroup}
+                labelOf={(id) => features.find((f) => f.id === Number(id))?.title ?? ''}
+                className="grid gap-3 sm:grid-cols-2"
+              >
                 {group.items.map((feature) => {
                   const rendered = feature.description
                     ? renderFeatureTemplate(feature.description, character)
                     : null;
                   return (
-                    <div key={feature.id} className="card p-4 flex flex-col gap-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <h3 className="font-display font-semibold text-ink-800">{feature.title}</h3>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => openEdit(feature)}
-                            className="text-ink-400 hover:text-blood-600 text-sm p-1"
-                            aria-label={`Modifier ${feature.title}`}
-                          >
-                            ✎
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDelete(feature.id)}
-                            className="text-ink-400 hover:text-red-500 text-sm p-1"
-                            aria-label={`Supprimer ${feature.title}`}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      </div>
-                      {rendered && (
-                        <p className="text-sm text-ink-600 whitespace-pre-line">{rendered}</p>
-                      )}
-
-                      {/* Charge counter widget */}
-                      {feature.counterMax &&
-                        feature.counterMax > 0 &&
-                        (() => {
-                          const max = feature.counterMax;
-                          const current = feature.counterCurrent ?? max;
-                          const pct = Math.round((current / max) * 100);
-                          const barColor =
-                            current === 0
-                              ? 'bg-red-500'
-                              : pct <= 50
-                                ? 'bg-amber-500'
-                                : 'bg-green-500';
-                          return (
-                            <div className="flex items-center gap-2 bg-parchment-50 rounded-lg p-2">
+                    <SortableCard
+                      key={feature.id}
+                      id={feature.id}
+                      label={`Déplacer ${feature.title}`}
+                    >
+                      {(handle, isDragging) => (
+                        <div
+                          className={`card p-4 flex flex-col gap-2 ${isDragging ? 'card-dragging' : ''}`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <h3 className="font-display font-semibold text-ink-800">
+                              {feature.title}
+                            </h3>
+                            <div className="flex items-center gap-1 shrink-0">
                               <button
                                 type="button"
-                                onClick={() => adjustCounter(feature, -1)}
-                                disabled={current <= 0}
-                                className="w-7 h-7 rounded-md bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center shrink-0"
-                                aria-label="Diminuer"
+                                onClick={() => openEdit(feature)}
+                                className="text-ink-400 hover:text-blood-600 text-sm p-1"
+                                aria-label={`Modifier ${feature.title}`}
                               >
-                                −
+                                ✎
                               </button>
-                              <span className="text-sm font-bold text-ink-800 tabular-nums">
-                                {current}
-                                <span className="text-ink-400 font-normal"> / {max}</span>
-                              </span>
                               <button
                                 type="button"
-                                onClick={() => adjustCounter(feature, 1)}
-                                disabled={current >= max}
-                                className="w-7 h-7 rounded-md bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center shrink-0"
-                                aria-label="Augmenter"
+                                onClick={() => setConfirmDelete(feature.id)}
+                                className="text-ink-400 hover:text-red-500 text-sm p-1"
+                                aria-label={`Supprimer ${feature.title}`}
                               >
-                                +
+                                ×
                               </button>
-                              <div className="flex-1 h-2 bg-parchment-200 rounded-full overflow-hidden">
-                                <div
-                                  className={`h-full ${barColor} transition-all rounded-full`}
-                                  style={{ width: `${pct}%` }}
-                                />
-                              </div>
+                              {group.items.length > 1 && handle}
                             </div>
-                          );
-                        })()}
+                          </div>
+                          {rendered && (
+                            <p className="text-sm text-ink-600 whitespace-pre-line">{rendered}</p>
+                          )}
 
-                      {/* Badge de recharge effective : choix du joueur, sinon règle SRD du catalogue */}
-                      {(feature.counterMax ?? 0) > 0 &&
-                        (() => {
-                          const eff = effectiveFeatureReset(
-                            feature,
-                            ownerLevelOf(feature.catalogId),
-                          );
-                          if (eff !== 'short' && eff !== 'long') return null;
-                          return (
-                            <span
-                              className="self-start text-[10px] px-2 py-0.5 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-200"
-                              title={
-                                eff === 'short'
-                                  ? 'Se recharge après un repos court ou long'
-                                  : 'Se recharge après un repos long'
-                              }
-                            >
-                              ↻ {eff === 'short' ? 'repos court' : 'repos long'}
-                            </span>
-                          );
-                        })()}
+                          {/* Charge counter widget */}
+                          {feature.counterMax &&
+                            feature.counterMax > 0 &&
+                            (() => {
+                              const max = feature.counterMax;
+                              const current = feature.counterCurrent ?? max;
+                              const pct = Math.round((current / max) * 100);
+                              const barColor =
+                                current === 0
+                                  ? 'bg-red-500'
+                                  : pct <= 50
+                                    ? 'bg-amber-500'
+                                    : 'bg-green-500';
+                              return (
+                                <div className="flex items-center gap-2 bg-parchment-50 rounded-lg p-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => adjustCounter(feature, -1)}
+                                    disabled={current <= 0}
+                                    className="w-7 h-7 rounded-md bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center shrink-0"
+                                    aria-label="Diminuer"
+                                  >
+                                    −
+                                  </button>
+                                  <span className="text-sm font-bold text-ink-800 tabular-nums">
+                                    {current}
+                                    <span className="text-ink-400 font-normal"> / {max}</span>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => adjustCounter(feature, 1)}
+                                    disabled={current >= max}
+                                    className="w-7 h-7 rounded-md bg-parchment-200 hover:bg-parchment-300 disabled:opacity-30 text-sm font-medium flex items-center justify-center shrink-0"
+                                    aria-label="Augmenter"
+                                  >
+                                    +
+                                  </button>
+                                  <div className="flex-1 h-2 bg-parchment-200 rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full ${barColor} transition-all rounded-full`}
+                                      style={{ width: `${pct}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })()}
 
-                      <span
-                        className={`inline-block self-start text-[10px] px-2 py-0.5 rounded-full border ${CATEGORY_COLORS[feature.category]}`}
-                      >
-                        {FEATURE_CATEGORY_LABELS_FR[feature.category]}
-                      </span>
+                          {/* Badge de recharge effective : choix du joueur, sinon règle SRD du catalogue */}
+                          {(feature.counterMax ?? 0) > 0 &&
+                            (() => {
+                              const eff = effectiveFeatureReset(
+                                feature,
+                                ownerLevelOf(feature.catalogId),
+                              );
+                              if (eff !== 'short' && eff !== 'long') return null;
+                              return (
+                                <span
+                                  className="self-start text-[10px] px-2 py-0.5 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-200"
+                                  title={
+                                    eff === 'short'
+                                      ? 'Se recharge après un repos court ou long'
+                                      : 'Se recharge après un repos long'
+                                  }
+                                >
+                                  ↻ {eff === 'short' ? 'repos court' : 'repos long'}
+                                </span>
+                              );
+                            })()}
 
-                      {/* Delete confirmation */}
-                      {confirmDelete === feature.id && (
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs text-red-600">Supprimer ?</span>
-                          <button
-                            type="button"
-                            onClick={() => remove(feature.id)}
-                            className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700"
+                          <span
+                            className={`inline-block self-start text-[10px] px-2 py-0.5 rounded-full border ${CATEGORY_COLORS[feature.category]}`}
                           >
-                            Oui
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDelete(null)}
-                            className="text-xs px-2 py-1 rounded bg-parchment-200 hover:bg-parchment-300"
-                          >
-                            Non
-                          </button>
+                            {FEATURE_CATEGORY_LABELS_FR[feature.category]}
+                          </span>
+
+                          {/* Delete confirmation */}
+                          {confirmDelete === feature.id && (
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-xs text-red-600">Supprimer ?</span>
+                              <button
+                                type="button"
+                                onClick={() => remove(feature.id)}
+                                className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700"
+                              >
+                                Oui
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDelete(null)}
+                                className="text-xs px-2 py-1 rounded bg-parchment-200 hover:bg-parchment-300"
+                              >
+                                Non
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )}
-                    </div>
+                    </SortableCard>
                   );
                 })}
-              </div>
+              </SortableGrid>
             </div>
           ))}
         </div>

@@ -120,6 +120,24 @@ input[type="number"] {
     0 4px 12px rgba(42, 31, 20, 0.03);
 }
 
+/* The card currently being dragged — it rises above its siblings with a
+   deeper offset shadow (drag lift IS the moment; nothing else moves). */
+.card-dragging {
+  box-shadow:
+    0 4px 8px rgba(42, 31, 20, 0.08),
+    0 14px 32px rgba(42, 31, 20, 0.14);
+  transform: scale(1.01);
+  cursor: grabbing;
+}
+
+/* Reduced motion: the lift keeps its shadow (state, not animation) but
+   neither the card nor its siblings animate. */
+@media (prefers-reduced-motion: reduce) {
+  .card-dragging {
+    transform: none;
+  }
+}
+
 /* Primary button */
 .btn-primary {
   @apply bg-blood-600 text-white font-medium rounded-xl px-4 py-2.5 transition-all hover:bg-blood-700 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;

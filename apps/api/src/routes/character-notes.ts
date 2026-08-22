@@ -7,10 +7,12 @@ import type {
   CharacterNote,
   CreateCharacterNotePayload,
   PatchCharacterNotePayload,
+  ReorderPayload,
 } from '@dnd-inventory/shared';
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { getDrizzle } from '../db/drizzle.ts';
+import { getDb } from '../db/index.ts';
 import { cols } from '../db/projections.ts';
 import { characterNotes, characters } from '../db/schema.ts';
 import { bus } from '../sync/bus.ts';
@@ -165,6 +167,65 @@ export async function characterNoteRoutes(app: FastifyInstance) {
       actorUserId: userId,
     });
     return { note: updated };
+  });
+
+  // ---------- Reorder the whole note list ----------
+  // The client sends the full id list after a drop; the server rewrites
+  // sort_order = index in one transaction. updatedAt stays untouched — moving
+  // a card is not editing its content.
+  app.patch('/characters/:id/notes/order', async (req, reply) => {
+    const userId = await requireUser(req, reply);
+    if (!userId) return;
+    const charId = Number((req.params as any).id);
+    const drizzle = getDrizzle();
+    const char = getCharacter(drizzle, charId);
+    if (!char) return reply.code(404).send({ error: 'Character not found' });
+    if (!isPartyMember(char.party_id, userId))
+      return reply.code(403).send({ error: 'Not a party member' });
+    if (!isOwnerOrGM(char, userId))
+      return reply.code(403).send({ error: 'Only the owner or GM can modify' });
+
+    const body = req.body as ReorderPayload;
+    const order = [
+      ...new Set(
+        (Array.isArray(body?.order) ? body.order : []).map(Number).filter(Number.isInteger),
+      ),
+    ];
+    if (order.length === 0) return reply.code(400).send({ error: 'Order is required' });
+
+    // Every id must belong to this character — a foreign id would silently
+    // rewrite another sheet's ordering
+    const owned = new Set(
+      (
+        drizzle
+          .select({ id: characterNotes.id })
+          .from(characterNotes)
+          .where(inArray(characterNotes.id, order))
+          .all() as any[]
+      ).map((r) => r.id),
+    );
+    if (order.some((id) => !owned.has(id))) {
+      return reply.code(400).send({ error: 'Note does not belong to this character' });
+    }
+
+    getDb().transaction(() => {
+      order.forEach((id, index) => {
+        drizzle
+          .update(characterNotes)
+          .set({ sortOrder: index })
+          .where(eq(characterNotes.id, id))
+          .run();
+      });
+    })();
+
+    bus.emitChange({
+      type: 'character:change',
+      partyId: char.party_id,
+      characterId: charId,
+      action: 'stats',
+      actorUserId: userId,
+    });
+    return { ok: true };
   });
 
   app.delete('/character-notes/:noteId', async (req, reply) => {
