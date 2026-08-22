@@ -340,6 +340,8 @@ export function mapCharacterSummary(row: any): CharacterSummary {
     bonds: row.bonds ?? null,
     flaws: row.flaws ?? null,
     appearance: row.appearance ?? null,
+    backstory: row.backstory ?? null,
+    alliesOrganizations: row.allies_organizations ?? null,
     armorClassOverride: row.armor_class_override ?? null,
     deathSaveSuccesses: row.death_save_successes ?? 0,
     deathSaveFailures: row.death_save_failures ?? 0,

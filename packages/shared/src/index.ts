@@ -320,6 +320,8 @@ export interface CharacterSummary {
   bonds: string | null;
   flaws: string | null;
   appearance: string | null;
+  backstory: string | null;
+  alliesOrganizations: string | null;
   armorClassOverride: number | null;
   deathSaveSuccesses: number; // 0-3
   deathSaveFailures: number; // 0-3
@@ -455,6 +457,8 @@ export interface PatchCharacterPayload {
   bonds?: string | null;
   flaws?: string | null;
   appearance?: string | null;
+  backstory?: string | null;
+  alliesOrganizations?: string | null;
   armorClassOverride?: number | null;
   deathSaveSuccesses?: number;
   deathSaveFailures?: number;

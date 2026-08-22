@@ -308,6 +308,8 @@ export async function characterRoutes(app: FastifyInstance) {
         'bonds',
         'flaws',
         'appearance',
+        'backstory',
+        'alliesOrganizations',
         'armorClassOverride',
         'deathSaveSuccesses',
         'deathSaveFailures',

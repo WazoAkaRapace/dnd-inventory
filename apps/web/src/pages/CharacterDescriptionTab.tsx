@@ -1,6 +1,7 @@
 /**
  * Description tab — identity & class lines (multiclassage SRD 5.1), physical
- * description, portrait, and personality traits.
+ * description, portrait, personality traits, backstory, and allies &
+ * organizations.
  *
  * Une fiche mono-classe voit un seul stepper de niveau, comme avant ; la
  * complexité multiclassée (feuille guidée, prérequis, styles par classe)
@@ -91,6 +92,8 @@ export default function CharacterDescriptionTab({ character, charId, onSaved, on
     for (const f of PHYSICAL_FIELDS) d[f.key] = (character[f.key] as string) ?? '';
     for (const f of PERSONALITY_FIELDS) d[f.key] = (character[f.key] as string) ?? '';
     d.appearance = character.appearance ?? '';
+    d.backstory = character.backstory ?? '';
+    d.alliesOrganizations = character.alliesOrganizations ?? '';
     setDrafts(d);
     setRaceDraft(character.race ?? '');
     setBgDraft(character.background ?? '');
@@ -551,6 +554,36 @@ export default function CharacterDescriptionTab({ character, charId, onSaved, on
             </label>
           ))}
         </div>
+      </section>
+
+      {/* Backstory (distinct de l'« Historique » de l'identité — le stat 5e « Sage ») */}
+      <section className="card p-4 sm:p-5 space-y-3">
+        <h2 className="section-title">Historique</h2>
+        <label className="block">
+          <span className="label">Histoire du personnage</span>
+          <textarea
+            className="input min-h-[120px] resize-y"
+            value={drafts.backstory ?? ''}
+            placeholder="Née dans un village de pêcheurs, elle quitta tout lorsque la flotte mourut…"
+            onChange={(e) => setDrafts((d) => ({ ...d, backstory: e.target.value }))}
+            onBlur={() => commitField('backstory')}
+          />
+        </label>
+      </section>
+
+      {/* Allies & organizations */}
+      <section className="card p-4 sm:p-5 space-y-3">
+        <h2 className="section-title">Alliés et organisations</h2>
+        <label className="block">
+          <span className="label">Alliés, mentors, guildes et factions</span>
+          <textarea
+            className="input min-h-[80px] resize-y"
+            value={drafts.alliesOrganizations ?? ''}
+            placeholder="La Confrérie du Givre, Harshnag le géant…"
+            onChange={(e) => setDrafts((d) => ({ ...d, alliesOrganizations: e.target.value }))}
+            onBlur={() => commitField('alliesOrganizations')}
+          />
+        </label>
       </section>
 
       {/* Visibility — the owner's call alone (secret prep) */}
