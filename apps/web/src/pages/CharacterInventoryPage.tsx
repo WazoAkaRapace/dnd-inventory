@@ -291,7 +291,7 @@ export default function CharacterInventoryPage() {
   const hasQuery = !!(debouncedSearch.trim() || catalogCategory || catalogRarity);
 
   const catalogQuery = useInfiniteQuery({
-    queryKey: ['catalog', debouncedSearch.trim(), catalogCategory, catalogRarity],
+    queryKey: ['catalog', Number(partyId), debouncedSearch.trim(), catalogCategory, catalogRarity],
     enabled: hasQuery,
     // Catalog is best-effort — fail silently like the old manual fetch
     retry: false,
@@ -301,6 +301,9 @@ export default function CharacterInventoryPage() {
       const params: Record<string, string | number> = {
         limit: CATALOG_PAGE_SIZE,
         offset: pageParam,
+        // Party context: SRD + this party's custom items — never another
+        // party's, even ones the user belongs to elsewhere.
+        partyId: Number(partyId),
       };
       if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
       if (catalogCategory) params.category = catalogCategory;

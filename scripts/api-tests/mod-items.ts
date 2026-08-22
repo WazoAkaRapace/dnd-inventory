@@ -103,11 +103,71 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
   eq(custom.source, 'custom', 'custom source');
   eq(custom.partyId, P, 'attached to party');
 
-  // party-scoped listing: only that party's custom items
+  // party context: SRD catalog + this party's customs — and nothing from
+  // other parties, even for a user member of both (DM here, player there)
   r = await api(base, 'GET', `/api/items?partyId=${P}`, { token: fx.gm.token });
-  eq(r.data.total, 1, 'party filter returns only custom items');
+  eq(r.status, 200, 'party context lists items');
+  ok(r.data.total > 1, 'party context includes the SRD catalog');
+  ok(
+    r.data.items.every((i: any) => i.partyId === null || i.partyId === P),
+    'party context shows SRD + own customs only',
+  );
+  r = await api(base, 'GET', `/api/items?partyId=${P}&search=lame`, { token: fx.gm.token });
+  ok(
+    r.data.items.some((i: any) => i.id === custom.id),
+    'own custom item present in its party context',
+  );
+  r = await api(base, 'GET', `/api/items?partyId=${P}&source=custom`, { token: fx.gm.token });
+  eq(r.data.total, 1, 'party + source=custom → own customs only (dashboard tab)');
   r = await api(base, 'GET', `/api/items?partyId=${P}`, { token: fx.outsider.token });
   eq(r.status, 403, 'party filter non-member → 403');
+
+  // cross-party: our GM joins zoe's party as a player — neither search may
+  // leak the other party's custom items, and the inventory refuses them by id
+  const zoe = await registerUser(base, 'zoe');
+  r = await api(base, 'POST', '/api/parties', { token: zoe.token, body: { name: 'Autre groupe' } });
+  const Z = r.data.party.id as number;
+  const zoeInvite = r.data.party.inviteCode as string;
+  r = await api(base, 'POST', '/api/parties/join', {
+    token: fx.gm.token,
+    body: { inviteCode: zoeInvite },
+  });
+  eq(r.status, 201, 'GM joins the other party as a player');
+  r = await api(base, 'POST', `/api/parties/${Z}/items`, {
+    token: zoe.token,
+    body: { name: 'Relique de Zoe' },
+  });
+  eq(r.status, 201, 'zoe creates a custom item in her party');
+  const zoeItem = r.data.item;
+
+  r = await api(base, 'GET', `/api/items?partyId=${Z}&search=relique`, { token: fx.gm.token });
+  ok(
+    r.data.items.some((i: any) => i.id === zoeItem.id),
+    "other party's custom shows in its own context",
+  );
+  ok(
+    !r.data.items.some((i: any) => i.id === custom.id),
+    "GM-as-player there does not see our party's custom item",
+  );
+  r = await api(base, 'GET', `/api/items?partyId=${P}&search=relique`, { token: fx.gm.token });
+  ok(
+    !r.data.items.some((i: any) => i.id === zoeItem.id),
+    "our party context does not see the other party's item",
+  );
+
+  // inventory guard: another party's item cannot enter our characters (the
+  // legit add path is covered by mod-inventory — a 201 here would also skew
+  // its global 'add' transaction count)
+  r = await api(base, 'POST', `/api/characters/${fx.charAlya.id}/inventory`, {
+    token: fx.gm.token,
+    body: { itemId: zoeItem.id, quantity: 1 },
+  });
+  eq(r.status, 403, 'adding another party item to inventory → 403');
+  r = await api(base, 'POST', `/api/characters/${fx.charAlya.id}/inventory`, {
+    token: fx.gm.token,
+    body: { itemId: 999999, quantity: 1 },
+  });
+  eq(r.status, 404, 'adding an unknown item → 404');
 
   // single item: srd + custom + foreign custom
   const someItem = srv.query('SELECT id FROM items ORDER BY id LIMIT 1');

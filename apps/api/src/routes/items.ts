@@ -44,13 +44,15 @@ export async function itemRoutes(app: FastifyInstance) {
       const drizzle = getDrizzle();
       const where: Array<SQL | undefined> = [];
 
-      // If filtering by a specific party (e.g. GM dashboard custom items),
-      // return only that party's items — no SRD items.
+      // A party context (inventory search, GM dashboard) scopes the catalog:
+      // SRD items + THAT party's customs only — a member of several parties
+      // never sees another party's items. Compose with source=custom for the
+      // party's own items alone (GM dashboard custom-items tab).
       if (partyIdFilter) {
         if (!isPartyMember(Number(partyIdFilter), userId)) {
           return reply.code(403).send({ error: 'not a member' });
         }
-        where.push(eq(items.partyId, Number(partyIdFilter)));
+        where.push(or(isNull(items.partyId), eq(items.partyId, Number(partyIdFilter))));
       } else {
         // Default: show global SRD items + custom items from the user's parties
         const userPartyIds = (

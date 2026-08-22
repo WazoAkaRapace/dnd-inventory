@@ -803,7 +803,9 @@ function CustomItemsTab({ partyId }: { partyId: string }) {
 
   const loadCustomItems = useCallback(async () => {
     try {
-      const res = await api.get('/api/items', { params: { partyId, limit: 200 } });
+      const res = await api.get('/api/items', {
+        params: { partyId, source: 'custom', limit: 200 },
+      });
       setCustomItems(res.data.items || []);
     } catch {
       setCustomItems([]);

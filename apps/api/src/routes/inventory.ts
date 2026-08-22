@@ -327,6 +327,18 @@ export async function inventoryRoutes(app: FastifyInstance) {
       const equipped = body.equipped ? 1 : 0;
       const notes = body.notes || null;
 
+      // A custom item only exists inside its party — it can't enter another
+      // party's inventory, even by direct id (search scoping is not enough).
+      const addedItem = drizzle
+        .select(cols(items))
+        .from(items)
+        .where(eq(items.id, body.itemId))
+        .get() as any;
+      if (!addedItem) return reply.code(404).send({ error: 'item not found' });
+      if (addedItem.party_id != null && addedItem.party_id !== char.party_id) {
+        return reply.code(403).send({ error: 'this item belongs to another party' });
+      }
+
       // Resolve storage location (default to carried)
       const { ensureCarriedLocation } = await import('./locations.ts');
       const carriedId = ensureCarriedLocation(char.id);
