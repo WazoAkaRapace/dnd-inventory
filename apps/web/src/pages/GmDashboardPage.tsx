@@ -249,12 +249,89 @@ export default function GmDashboardPage() {
       )}
 
       {tab === 'settings' && isGm && (
-        <DisbandPartySection
-          partyId={partyId!}
-          name={party.party.name}
-          onDone={() => navigate('/parties')}
-        />
+        <>
+          <RenamePartySection
+            key={party.party.id + ':' + party.party.name}
+            partyId={partyId!}
+            name={party.party.name}
+            onRenamed={() => load(true)}
+          />
+          <DisbandPartySection
+            partyId={partyId!}
+            name={party.party.name}
+            onDone={() => navigate('/parties')}
+          />
+        </>
       )}
+    </div>
+  );
+}
+
+/**
+ * Renommer le groupe — PATCH /api/parties/:id { name }. Répond un 400 si le
+ * nom est vide/blanc ; l'événement 'stats' du PATCH rattrape les autres pages
+ * de groupe ouvertes. Pas de confirmation : réversible en re-renommant.
+ */
+function RenamePartySection({
+  partyId,
+  name,
+  onRenamed,
+}: {
+  partyId: string;
+  name: string;
+  onRenamed: () => void;
+}) {
+  const { t } = useTranslation();
+  const [draft, setDraft] = useState(name);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function rename() {
+    const trimmed = draft.trim();
+    if (!trimmed || trimmed === name || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.patch(`/api/parties/${partyId}`, { name: trimmed });
+      onRenamed();
+    } catch (err: any) {
+      setError(err.response?.data?.error || t('md.renommage.impossible'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card p-4">
+      <h3 className="section-title">{t('md.renommer.le.groupe')}</h3>
+      <label htmlFor="gm-rename-party" className="label mt-3 block">
+        {t('md.nom.du.groupe')}
+      </label>
+      <div className="mt-1 flex gap-2">
+        <input
+          id="gm-rename-party"
+          className="input"
+          value={draft}
+          maxLength={80}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              rename();
+            }
+          }}
+          disabled={busy}
+        />
+        <button
+          type="button"
+          onClick={rename}
+          disabled={busy || !draft.trim() || draft.trim() === name}
+          className="btn-primary shrink-0 disabled:opacity-50"
+        >
+          {busy ? '…' : t('common.save')}
+        </button>
+      </div>
+      {error && <div className="mt-2 text-sm text-red-600">{error}</div>}
     </div>
   );
 }

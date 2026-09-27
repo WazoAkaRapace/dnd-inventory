@@ -21,6 +21,7 @@ import { Link } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../auth';
 import { ErrorMsg, Modal, RegisterHead, SkeletonRegister } from '../components/ui';
+import { useSyncEvent } from '../sync';
 import { copyText, formatSince, toRoman } from '../utils';
 
 // ---------- Small helpers ----------
@@ -202,6 +203,18 @@ export default function PartiesPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Renommage à chaud : le MD renomme depuis SA Table du MD → l'entrée du
+  // registre change. Rechargement silencieux, la liste est petite et l'événement
+  // est rare (une frappe de PATCH, pas un flux).
+  useSyncEvent(
+    (event) => {
+      if (event.type === 'party:change' && event.action === 'rename') {
+        load();
+      }
+    },
+    [load],
+  );
 
   function copyCode(partyId: number, code: string) {
     copyText(code).then((ok) => {

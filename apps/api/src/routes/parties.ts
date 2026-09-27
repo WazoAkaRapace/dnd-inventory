@@ -464,7 +464,18 @@ export async function partyRoutes(app: FastifyInstance) {
       if (name !== undefined) {
         if (!name.trim())
           return reply.code(400).send({ error: apiMsg(req, 'name cannot be empty') });
-        drizzle.update(parties).set({ name: name.trim() }).where(eq(parties.id, partyId)).run();
+        const trimmed = name.trim();
+        const current = drizzle
+          .select({ name: parties.name })
+          .from(parties)
+          .where(eq(parties.id, partyId))
+          .get() as any;
+        if (current && current.name !== trimmed) {
+          drizzle.update(parties).set({ name: trimmed }).where(eq(parties.id, partyId)).run();
+          // Action dédiée : le registre (/parties) recharge SA liste dessus —
+          // les pages de groupe/Table du MD se rattrapent sur le 'stats' final.
+          bus.emitChange({ type: 'party:change', partyId, action: 'rename', actorUserId: userId });
+        }
       }
       if (encumbranceMode !== undefined) {
         if (!['variant', 'standard', 'slots'].includes(encumbranceMode)) {
