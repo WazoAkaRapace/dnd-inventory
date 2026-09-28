@@ -102,11 +102,12 @@ function freshState(): MockGmaState {
           { style: 'short_summary', text: 'Le groupe atteint le port.', updated_at: iso() },
           {
             style: 'default',
-            text: 'Le groupe atteint le port de Baldur après trois jours de mer.',
+            text: 'Le groupe atteint le port de Baldur après trois jours de mer. Auberge « Chez Marlène &amp; Fils » — 3&#39; pièces d&#x27;or.',
             updated_at: iso(),
           },
         ],
       ],
+      ['sess-2', [{ style: 'default', text: 'RAS &amp; rien à signaler.', updated_at: iso() }]],
     ]),
     moments: new Map([
       [
