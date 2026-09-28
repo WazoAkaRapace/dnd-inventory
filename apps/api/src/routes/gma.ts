@@ -74,6 +74,36 @@ function isFresh(marker: string | null | undefined): boolean {
   return Number.isFinite(t) && Date.now() - t < gmaCacheTtlMs();
 }
 
+/**
+ * GMA serves HTML-escaped text (&amp; &#39; &quot;…). We cache PLAIN text —
+ * every consumer renders it as text nodes (React escapes again), so a stored
+ * &amp; would display literally. Decode ONCE at cache-write; &amp; LAST so a
+ * double-encoded &amp;amp; round-trips to &amp;, not &.
+ */
+function decodeGmaText(s: unknown): string {
+  return String(s ?? '')
+    .replace(/&#(\d+);/g, (_, d: string) => {
+      const cp = Number(d);
+      return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : `&#${d};`;
+    })
+    .replace(/&#x([0-9a-f]+);/gi, (_, h: string) => {
+      const cp = Number.parseInt(h, 16);
+      return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : `&#x${h};`;
+    })
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, '\u00a0')
+    .replace(/&hellip;/g, '…')
+    .replace(/&mdash;/g, '—')
+    .replace(/&ndash;/g, '–')
+    .replace(/&laquo;/g, '«')
+    .replace(/&raquo;/g, '»')
+    .replace(/&amp;/g, '&');
+}
+
 // ---------- local state helpers ----------
 
 function getUserKeyRow(userId: number): any | null {
@@ -290,7 +320,7 @@ async function syncSessions(partyId: number, link: any, key: string): Promise<st
         .values({
           partyId,
           sessionId: String(s.id),
-          title: String(s.title ?? 'Séance sans titre'),
+          title: decodeGmaText(s.title ?? 'Séance sans titre'),
           playedAt: s.played_at ?? null,
           sortOrder: Number.isInteger(s.order) ? s.order : 0,
           recapsFetchedAt: oldRecapsAt.get(String(s.id)) ?? null,
@@ -385,7 +415,7 @@ async function syncRecaps(
           partyId,
           sessionId,
           style: String(e.style),
-          text: String(e.text ?? ''),
+          text: decodeGmaText(e.text ?? ''),
           updatedAt: e.updated_at ?? null,
         })
         .run();
@@ -403,9 +433,9 @@ async function syncRecaps(
           momentId: String(m.id),
           isQuote: m.is_quote ? 1 : 0,
           type: m.type ?? null,
-          description: String(m.description ?? ''),
-          speaker: m.speaker ?? null,
-          context: m.context ?? null,
+          description: decodeGmaText(m.description ?? ''),
+          speaker: m.speaker != null ? decodeGmaText(m.speaker) : null,
+          context: m.context != null ? decodeGmaText(m.context) : null,
           sortOrder: Number.isInteger(m.order) ? m.order : 0,
         })
         .run();
@@ -538,15 +568,16 @@ async function syncEntities(partyId: number, link: any, key: string): Promise<st
     if (!cur?.fromCampaign) {
       merged.set(k, {
         entityId: String(e.id),
-        name: String(e.name ?? 'Sans nom'),
-        description: e.description ?? cur?.description ?? null,
+        name: decodeGmaText(e.name ?? 'Sans nom'),
+        description:
+          e.description != null ? decodeGmaText(e.description) : (cur?.description ?? null),
         sortOrder: Number.isInteger(e.order) ? e.order : 0,
         fromCampaign: true,
         sessions: cur?.sessions ?? new Set(),
       });
     } else if (cur.entityId === String(e.id)) {
       // Same canonical row refreshed.
-      cur.description = e.description ?? cur.description;
+      cur.description = e.description != null ? decodeGmaText(e.description) : cur.description;
       if (Number.isInteger(e.order)) cur.sortOrder = e.order;
     }
   }
@@ -558,7 +589,7 @@ async function syncEntities(partyId: number, link: any, key: string): Promise<st
       if (!cur) {
         cur = {
           entityId: `sn:${k.replace(/ /g, '-')}`,
-          name: String(sn.name ?? 'Sans nom'),
+          name: decodeGmaText(sn.name ?? 'Sans nom'),
           description: null,
           // Session-derived rows sort after the campaign cast.
           sortOrder: 1000,
@@ -568,7 +599,7 @@ async function syncEntities(partyId: number, link: any, key: string): Promise<st
         merged.set(k, cur);
       }
       cur.sessions.add(sessionId);
-      const desc = sn.description ?? null;
+      const desc = sn.description != null ? decodeGmaText(sn.description) : null;
       if (
         desc &&
         (!cur.description || (!cur.fromCampaign && desc.length > cur.description.length))

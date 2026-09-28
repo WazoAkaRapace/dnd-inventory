@@ -125,6 +125,14 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
   eq(r.data.recaps.length, 2, 'both styles cached');
   eq(r.data.recaps[0].style, 'default', 'default recap served first');
   ok(r.data.recaps[0].text.includes('Baldur'), 'default recap text');
+  ok(
+    r.data.recaps[0].text.includes('Marlène & Fils'),
+    'GMA HTML entities decoded at cache-write (& → &)',
+  );
+  ok(
+    r.data.recaps[0].text.includes(`3' pièces`) && !r.data.recaps[0].text.includes('&#'),
+    "numeric entities decoded too (&#39; &#x27; → ')",
+  );
   eq(r.data.moments.length, 2, 'memorable moments cached with the recaps');
   eq(r.data.moments[0].id, 'mom-1', 'moments in user-arranged order');
   eq(r.data.moments[0].isQuote, true, 'quote moment shaped');
