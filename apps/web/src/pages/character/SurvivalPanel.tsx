@@ -446,7 +446,7 @@ export function SurvivalPanel({
                   </VitalButton>
                   <input
                     type="number"
-                    className="w-16 text-center text-lg font-bold font-mono bg-white border border-green-200 rounded-lg py-1 focus:outline-none focus:border-green-500 text-green-900"
+                    className="w-16 text-center text-lg font-bold font-mono bg-raised border border-green-200 rounded-lg py-1 focus:outline-none focus:border-green-500 text-green-900"
                     value={shapeHpDraft ?? String(shapeHp)}
                     onChange={(e) => setShapeHpDraft(e.target.value)}
                     onBlur={commitShapeHp}

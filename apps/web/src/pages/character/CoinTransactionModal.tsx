@@ -168,7 +168,7 @@ export function CoinTransactionModal({
               onClick={() => switchMode(m)}
               className={`h-11 rounded-xl border text-sm font-medium transition-colors ${
                 mode === m
-                  ? 'bg-ink-800 text-parchment-50 border-ink-800'
+                  ? 'bg-night-800 text-night-50 border-night-800'
                   : 'bg-parchment-50 text-ink-600 border-parchment-300 hover:border-parchment-400'
               }`}
             >

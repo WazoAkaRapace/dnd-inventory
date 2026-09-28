@@ -347,6 +347,23 @@
       })();
     </script>
 
+    <!-- Mode bougie : AVANT la première peinture — pas de flash. Suit le
+         système par défaut, l'option posée dans Mon compte (localStorage
+         « ts-theme » = 'light' | 'dark') prime sur lui. -->
+    <script>
+      (function () {
+        try {
+          var pref = localStorage.getItem('ts-theme');
+          var dark = pref ? pref === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (dark) document.documentElement.classList.add('ts-dark');
+        } catch {
+          /* priv strict : suit le système */
+          if (window.matchMedia('(prefers-color-scheme: dark)').matches)
+            document.documentElement.classList.add('ts-dark');
+        }
+      })();
+    </script>
+
     <!-- Title -->
     <title>Table Sync</title>
 

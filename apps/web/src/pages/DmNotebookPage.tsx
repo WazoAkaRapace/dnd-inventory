@@ -1005,7 +1005,7 @@ function QuestsTab({ campaign, partyId, reload, onError }: TabProps) {
                             onClick={() => patchQuest(quest.id, { status: s })}
                             className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
                               quest.status === s
-                                ? 'bg-ink-800 text-parchment-50'
+                                ? 'bg-night-800 text-night-50'
                                 : 'bg-parchment-100 text-ink-500 hover:bg-parchment-200'
                             }`}
                           >

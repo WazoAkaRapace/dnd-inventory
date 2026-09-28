@@ -224,7 +224,7 @@ export function InventoryRow({
                   <input
                     type="number"
                     min={1}
-                    className="w-10 h-8 text-center text-sm bg-white border border-parchment-300 rounded-md focus:outline-none focus:border-blood-500"
+                    className="w-10 h-8 text-center text-sm bg-raised border border-parchment-300 rounded-md focus:outline-none focus:border-blood-500"
                     value={draftQty}
                     disabled={busy}
                     onChange={(e) => setDraftQty(e.target.value)}
@@ -282,7 +282,7 @@ export function InventoryRow({
                   <input
                     type="number"
                     min={1}
-                    className="w-8 h-7 text-center text-sm bg-white border border-parchment-300 rounded-md focus:outline-none focus:border-blood-500"
+                    className="w-8 h-7 text-center text-sm bg-raised border border-parchment-300 rounded-md focus:outline-none focus:border-blood-500"
                     value={draftQty}
                     disabled={busy}
                     onChange={(e) => setDraftQty(e.target.value)}

@@ -54,7 +54,7 @@ function SyncIndicator() {
   // (connecting/disconnected) so the state is never color-only.
   return (
     <span
-      className="inline-flex items-center gap-1.5 text-xs text-ink-300"
+      className="inline-flex items-center gap-1.5 text-xs text-night-100"
       role="status"
       aria-live="polite"
     >
@@ -113,7 +113,7 @@ function Nav() {
       : null;
 
   return (
-    <header className="sticky top-0 z-30 bg-ink-900 text-parchment-50 shadow-md pt-[env(safe-area-inset-top)]">
+    <header className="sticky top-0 z-30 bg-night-900 text-night-50 shadow-md pt-[env(safe-area-inset-top)]">
       <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
           {headerBack ? (
@@ -122,7 +122,7 @@ function Nav() {
                 <button
                   type="button"
                   onClick={headerBack.onClick}
-                  className="btn-ghost text-parchment-50 hover:bg-ink-700 text-sm shrink-0 min-h-11 min-w-11 justify-center"
+                  className="btn-ghost text-night-50 hover:bg-night-700 text-sm shrink-0 min-h-11 min-w-11 justify-center"
                   aria-label={i18next.t('nav.retour')}
                 >
                   {headerBack.label}
@@ -130,7 +130,7 @@ function Nav() {
               ) : (
                 <Link
                   to={headerBack.to!}
-                  className="btn-ghost text-parchment-50 hover:bg-ink-700 text-sm shrink-0 min-h-11 min-w-11 justify-center"
+                  className="btn-ghost text-night-50 hover:bg-night-700 text-sm shrink-0 min-h-11 min-w-11 justify-center"
                   aria-label={i18next.t('nav.retour')}
                 >
                   {headerBack.label}
@@ -156,7 +156,7 @@ function Nav() {
           {override?.action && (
             <Link
               to={override.action.to}
-              className="btn-ghost text-parchment-50 hover:bg-ink-700 text-sm min-h-11"
+              className="btn-ghost text-night-50 hover:bg-night-700 text-sm min-h-11"
             >
               <span className="hidden sm:inline">{override.action.label}</span>
               <span className="sm:hidden">{override.action.short}</span>
@@ -165,7 +165,7 @@ function Nav() {
           {loc.pathname.startsWith('/party/') && !routeTitle?.backTo && (
             <Link
               to="/parties"
-              className="btn-ghost text-parchment-50 hover:bg-ink-700 text-sm min-h-11"
+              className="btn-ghost text-night-50 hover:bg-night-700 text-sm min-h-11"
             >
               <span className="hidden sm:inline">{t('app.mes.groupes')}</span>
               <span className="sm:hidden">🏠</span>
@@ -175,7 +175,7 @@ function Nav() {
               icône prend le relais pour le mobile, où le nom est masqué. */}
           <Link
             to="/compte"
-            className="text-sm text-parchment-200 hidden sm:inline-flex items-center min-h-11 hover:text-parchment-50 hover:underline underline-offset-4"
+            className="text-sm text-night-100 hidden sm:inline-flex items-center min-h-11 hover:text-night-50 hover:underline underline-offset-4"
             title={t('app.mon.compte')}
           >
             {user.displayName}
@@ -184,7 +184,7 @@ function Nav() {
           {loc.pathname === '/parties' && (
             <Link
               to="/compte"
-              className="btn-ghost text-parchment-50 hover:bg-ink-700 flex items-center justify-center w-11 h-11"
+              className="btn-ghost text-night-50 hover:bg-night-700 flex items-center justify-center w-11 h-11"
               title={t('app.mon.compte')}
               aria-label={t('app.mon.compte')}
             >
@@ -206,7 +206,7 @@ function Nav() {
             <button
               type="button"
               onClick={logout}
-              className="btn-ghost text-parchment-50 hover:bg-ink-700 flex items-center justify-center w-11 h-11"
+              className="btn-ghost text-night-50 hover:bg-night-700 flex items-center justify-center w-11 h-11"
               title={t('app.logout')}
               aria-label={t('app.logout')}
             >

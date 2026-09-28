@@ -209,7 +209,7 @@ export function HpTracker({
             −1
           </VitalButton>
           <NumberField
-            className={`w-16 text-center text-lg font-bold font-mono bg-white border border-parchment-300 rounded-lg py-1 focus:outline-none focus:border-blood-500 ${hpColor}`}
+            className={`w-16 text-center text-lg font-bold font-mono bg-raised border border-parchment-300 rounded-lg py-1 focus:outline-none focus:border-blood-500 ${hpColor}`}
             value={currentHp}
             min={0}
             onChange={setCurrentHp}
@@ -241,7 +241,7 @@ export function HpTracker({
         <div className="flex items-center justify-center gap-1.5">
           <span className="text-xs text-ink-500 font-medium">{t('hp.pv.temp')}</span>
           <NumberField
-            className={`w-14 text-center text-sm font-medium font-mono bg-white border border-parchment-300 rounded-lg py-1 focus:outline-none focus:border-blood-500 ${tempNum > 0 ? 'text-blue-700' : 'text-ink-400'}`}
+            className={`w-14 text-center text-sm font-medium font-mono bg-raised border border-parchment-300 rounded-lg py-1 focus:outline-none focus:border-blood-500 ${tempNum > 0 ? 'text-blue-700' : 'text-ink-400'}`}
             value={tempHp}
             min={0}
             onChange={setTempHp}

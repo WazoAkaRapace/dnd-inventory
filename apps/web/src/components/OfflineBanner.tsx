@@ -23,7 +23,7 @@ export function OfflineBanner() {
   if (!offline) return null;
   return (
     <div
-      className="fixed inset-x-0 top-0 z-[70] bg-ink-900/95 text-parchment-100 text-center text-sm py-1.5 px-4"
+      className="fixed inset-x-0 top-0 z-[70] bg-night-900/95 text-night-100 text-center text-sm py-1.5 px-4"
       role="status"
       aria-live="polite"
     >

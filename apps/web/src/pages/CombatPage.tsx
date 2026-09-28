@@ -1306,7 +1306,7 @@ function InitiativeRail({
                     <span
                       aria-hidden="true"
                       className="h-2 w-2 shrink-0 rounded-full border border-black/10"
-                      style={{ backgroundColor: c.cardColor }}
+                      style={{ backgroundColor: cardColorDisplay(c.cardColor) }}
                     />
                   )}
                   <span
@@ -1402,7 +1402,7 @@ function DamageChipDock({
           onClick={onToggleHalf}
           className={`min-h-[44px] rounded-lg px-3 py-2 text-sm font-bold transition-colors ${
             chip.half
-              ? 'bg-ink-900 text-parchment-50'
+              ? 'bg-night-900 text-night-50'
               : 'bg-parchment-100 text-ink-600 hover:bg-parchment-200'
           }`}
           aria-pressed={chip.half}
@@ -1440,6 +1440,30 @@ const CARD_COLORS = [
   '#fee2e2', // red
   '#e0e7ff', // indigo
 ];
+
+/* Les pastilles de couleur portent un IDENTIFIANT stocké (cardColor en
+   base) : les valeurs hex ci-dessus sont l'identité lumineuse. En mode
+   bougie on éclaircit la même teinte (le cuir sombre mangerait les
+   pastilles pastel — la couleur doit rester un repère lisible). */
+const CARD_COLORS_DARK: Record<string, string> = {
+  '#fef3c7': '#8a6d1d',
+  '#dcfce7': '#2e6b3f',
+  '#dbeafe': '#2f5a94',
+  '#fce7f3': '#99436f',
+  '#f3e8ff': '#6f4e99',
+  '#fed7aa': '#9c5d22',
+  '#fee2e2': '#9c3030',
+  '#e0e7ff': '#4a51a3',
+};
+
+function cardColorDisplay(hex: string): string {
+  return (
+    (typeof document !== 'undefined' &&
+      document.documentElement.classList.contains('ts-dark') &&
+      CARD_COLORS_DARK[hex]) ||
+    hex
+  );
+}
 
 /** Color marks — i18n keys announced when picking a swatch. */
 const CARD_COLOR_NAMES: Record<string, string> = {
@@ -1831,7 +1855,7 @@ function StagePanel({
                     ? 'border-blood-600 ring-2 ring-blood-300'
                     : 'border-parchment-200 hover:border-parchment-300'
                 } ${color === null ? 'bg-white' : ''}`}
-                style={color ? { backgroundColor: color } : undefined}
+                style={color ? { backgroundColor: cardColorDisplay(color) } : undefined}
                 title={color === null ? t('combat.par.defaut') : color}
                 aria-label={
                   color === null

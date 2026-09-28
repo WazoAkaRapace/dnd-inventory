@@ -938,7 +938,7 @@ function SlotPips({ max, remaining }: { max: number; remaining: number }) {
       <span
         key={i}
         className={`h-2.5 w-2.5 rounded-full transition-colors duration-500 ${
-          i < remaining ? 'bg-ink-700' : 'border border-parchment-400'
+          i < remaining ? 'bg-night-700' : 'border border-parchment-400'
         }`}
       />,
     );

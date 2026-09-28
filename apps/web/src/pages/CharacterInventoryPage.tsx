@@ -1037,7 +1037,7 @@ export default function CharacterInventoryPage() {
           hubCombat && (
             <Link
               to={`/party/${hubCombat.partyId}/combat?enc=${hubCombat.encounterId}`}
-              className="relative block mb-[-1px] mx-auto w-fit max-w-full px-3 py-1.5 rounded-t-xl rounded-b-md text-xs font-semibold shadow-md border border-b-0 transition-colors bg-ink-900 text-parchment-200 border-ink-700"
+              className="relative block mb-[-1px] mx-auto w-fit max-w-full px-3 py-1.5 rounded-t-xl rounded-b-md text-xs font-semibold shadow-md border border-b-0 transition-colors bg-night-900 text-night-100 border-night-700"
               aria-label={t('inv.combat.en.cours.ouvrir.le.traqueur')}
             >
               {hubCombat.currentCombatantName
@@ -1084,7 +1084,7 @@ export default function CharacterInventoryPage() {
           };
           return (
             <div
-              className={`dock-rise relative flex items-center gap-1 bg-white/95 backdrop-blur rounded-full shadow-xl border border-parchment-200 px-2 py-1.5 ${
+              className={`dock-rise relative flex items-center gap-1 bg-raised/95 backdrop-blur rounded-full shadow-xl border border-parchment-200 px-2 py-1.5 ${
                 hubCombat?.isMyTurn ? 'combat-turn-glow' : ''
               }`}
               data-tuto="dock"
@@ -1103,7 +1103,7 @@ export default function CharacterInventoryPage() {
                 data-tuto="dock-hub"
                 className={`hub-button relative z-10 mx-1 -my-3 w-12 h-12 shrink-0 rounded-full shadow-lg flex items-center justify-center text-xl leading-none active:scale-90 border-4 border-parchment-50 ${
                   moreOpen
-                    ? 'bg-ink-900 rotate-90 text-white'
+                    ? 'bg-night-900 rotate-90 text-white'
                     : hubCombat?.isMyTurn
                       ? 'bg-blood-700 text-white'
                       : hubCombat?.needsInitiative
