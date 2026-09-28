@@ -18,6 +18,7 @@ import {
 } from '../push';
 import { resetTutorial } from '../tutorial/serverSync';
 import { formatSince } from '../utils';
+import { isDark, setThemePref, themePref } from '../theme';
 
 /**
  * Mon compte — nom affiché, adresse e-mail (optionnelle pour les comptes
@@ -43,6 +44,9 @@ export default function AccountPage() {
   // Renvoi du lien de vérification d'adresse (état ci-dessous : les hooks
   // doivent rester au-dessus du garde `if (!user)`).
   const [resendingVerify, setResendingVerify] = useState(false);
+  // Mode bougie : l'état local ne fait que réveiller le rendu (la classe
+  // ts-dark vit sur <html>, posée par theme.ts + le script d'amorçage).
+  const [, setDark] = useState(isDark);
 
   // Notifications push — état de CE navigateur. Le useEffect reste au-dessus
   // du garde `if (!user)` : les hooks doivent tourner avant tout retour anticipé.
@@ -348,7 +352,7 @@ export default function AccountPage() {
               aria-pressed={(i18n.resolvedLanguage ?? 'fr') === l.code}
               className={`px-4 min-h-11 rounded-md text-sm font-medium transition-colors ${
                 (i18n.resolvedLanguage ?? 'fr') === l.code
-                  ? 'bg-ink-800 text-parchment-50 shadow-sm'
+                  ? 'bg-night-800 text-night-50 shadow-sm'
                   : 'text-ink-600 hover:text-ink-900'
               }`}
             >
@@ -357,6 +361,44 @@ export default function AccountPage() {
           ))}
         </div>
         <p className="text-xs text-ink-400 mt-3">{t('account.langue.aide')}</p>
+      </section>
+
+      {/* ---------- Apparence (mode bougie) ---------- */}
+      <section className="card p-5 sm:p-6" aria-labelledby="account-theme-title">
+        <h2 id="account-theme-title" className="section-title mb-4">
+          {t('account.apparence')}
+        </h2>
+        <div
+          className="inline-flex rounded-lg border border-parchment-200 bg-parchment-100 p-1"
+          role="group"
+          aria-label={t('account.apparence')}
+        >
+          {(
+            [
+              { key: null, label: t('account.apparence.systeme') },
+              { key: 'light', label: t('account.apparence.clair') },
+              { key: 'dark', label: t('account.apparence.bougie') },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.key ?? 'system'}
+              type="button"
+              onClick={() => {
+                setThemePref(opt.key);
+                setDark(isDark());
+              }}
+              aria-pressed={opt.key === null ? themePref() === null : themePref() === opt.key}
+              className={`px-4 min-h-11 rounded-md text-sm font-medium transition-colors ${
+                (opt.key === null ? themePref() === null : themePref() === opt.key)
+                  ? 'bg-night-800 text-night-50 shadow-sm'
+                  : 'text-ink-600 hover:text-ink-900'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-ink-400 mt-3">{t('account.apparence.aide')}</p>
       </section>
 
       {/* ---------- Notifications push (par appareil) ---------- */}

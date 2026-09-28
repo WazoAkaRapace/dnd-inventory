@@ -76,7 +76,7 @@ export function ItemVignette({
     <div>
       {failed ? (
         // Échec : le plateau reste à hauteur fixe, le panneau reste utilisable.
-        <div className="flex h-40 flex-col items-center justify-center gap-2 rounded-lg border border-parchment-300 bg-parchment-50 p-1.5 shadow-sm">
+        <div className="flex h-40 flex-col items-center justify-center gap-2 rounded-lg border border-parchment-300 bg-raised p-1.5 shadow-sm">
           <span className="text-xs text-ink-400">{t('image.illustration.indisponible')}</span>
           <button type="button" onClick={retry} className="btn-ghost text-xs">
             {t('image.reessayer')}
@@ -86,7 +86,7 @@ export function ItemVignette({
         <button
           type="button"
           onClick={() => setViewerOpen(true)}
-          className="block w-full cursor-zoom-in rounded-lg border border-parchment-300 bg-parchment-50 p-1.5 shadow-sm transition-transform active:scale-[0.98]"
+          className="block w-full cursor-zoom-in rounded-lg border border-parchment-300 bg-raised p-1.5 shadow-sm transition-transform active:scale-[0.98]"
           aria-label={t('image.agrandir.l.illustration.de.name', { name: name })}
         >
           <span className={`relative flex items-center justify-center ${loaded ? '' : 'h-40'}`}>
@@ -114,7 +114,7 @@ export function ItemVignette({
             {loaded && (
               <span
                 aria-hidden="true"
-                className="absolute right-2.5 top-2.5 rounded-full bg-ink-900/55 px-1.5 py-0.5 text-xs text-parchment-50"
+                className="absolute right-2.5 top-2.5 rounded-full bg-night-900/55 px-1.5 py-0.5 text-xs text-night-50"
               >
                 🔍
               </span>
@@ -759,7 +759,7 @@ export function ItemImageViewer({
         setSelectedStampId(null);
         setSelectedNoteId(null);
       }}
-      className={`flex h-11 w-11 items-center justify-center rounded-full text-lg text-parchment-50 transition-colors hover:bg-white/10 ${
+      className={`flex h-11 w-11 items-center justify-center rounded-full text-lg text-night-50 transition-colors hover:bg-white/10 ${
         tool === toolId ? 'bg-white/20' : ''
       }`}
     >
@@ -1164,13 +1164,13 @@ export function ItemImageViewer({
           pointer-events-none sur le bandeau, auto sur ✕ — les tapes passent
           au travers vers l'image (la zone ne vole aucun pixel d'interaction). */}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between gap-3 pt-[calc(0.75rem+env(safe-area-inset-top))] pl-4 pr-2">
-        <span className="min-w-0 truncate font-display text-sm text-parchment-50">{name}</span>
+        <span className="min-w-0 truncate font-display text-sm text-night-50">{name}</span>
         <button
           ref={closeBtnRef}
           type="button"
           onClick={() => requestCloseRef.current()}
           aria-label={t('image.fermer')}
-          className="pointer-events-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xl text-parchment-50 transition-colors hover:bg-white/10"
+          className="pointer-events-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xl text-night-50 transition-colors hover:bg-white/10"
         >
           ✕
         </button>
@@ -1315,7 +1315,7 @@ export function ItemImageViewer({
           onChange={(e) => setDraft(e.target.value)}
           placeholder={t('image.ecris.ta.note')}
           aria-label={t('image.texte.de.la.note')}
-          className="fixed z-10 w-44 select-text rounded-lg border border-gold-400 bg-parchment-50 px-2 py-1.5 text-sm text-ink-900 shadow-xl"
+          className="fixed z-10 w-44 select-text rounded-lg border border-gold-400 bg-raised px-2 py-1.5 text-sm text-ink-900 shadow-xl"
           style={{
             left: Math.min(pendingText.sx, window.innerWidth - 180),
             top: Math.max(pendingText.sy - 44, 56),
@@ -1346,7 +1346,7 @@ export function ItemImageViewer({
           {discardConfirm && (
             <p
               role="alert"
-              className="pointer-events-auto rounded-full bg-ink-900/85 px-4 py-2 text-sm text-parchment-50 backdrop-blur"
+              className="pointer-events-auto rounded-full bg-night-900/85 px-4 py-2 text-sm text-night-50 backdrop-blur"
             >
               {t('image.annotations.non.enregistrees')}{' '}
               <button
@@ -1360,7 +1360,7 @@ export function ItemImageViewer({
               <button
                 type="button"
                 onClick={() => setDiscardConfirm(false)}
-                className="font-semibold text-parchment-50 underline"
+                className="font-semibold text-night-50 underline"
               >
                 {t('image.rester')}
               </button>
@@ -1374,7 +1374,7 @@ export function ItemImageViewer({
                   géré à la main (les pointer events arrivent toujours), et un
                   glissé avale le clic qui suit pour ne pas sélectionner. */}
               <div
-                className="pointer-events-auto flex max-w-[calc(100vw-1rem)] items-center gap-1 overflow-x-auto rounded-full bg-ink-900/70 p-1.5 backdrop-blur [scrollbar-width:none]"
+                className="pointer-events-auto flex max-w-[calc(100vw-1rem)] items-center gap-1 overflow-x-auto rounded-full bg-night-900/70 p-1.5 backdrop-blur [scrollbar-width:none]"
                 onPointerDown={(e) => {
                   galleryDragRef.current = {
                     pointerId: e.pointerId,
@@ -1423,10 +1423,10 @@ export function ItemImageViewer({
               {/* Taille : glisseur continu — recadre le tampon sélectionné en
                   direct pendant le glissement, sinon règle le prochain posé.
                   Bornes en ‰ de la largeur ; carrés en guise de mini/maxi. */}
-              <div className="pointer-events-auto flex h-11 w-60 items-center gap-3 rounded-full bg-ink-900/70 px-4 backdrop-blur">
+              <div className="pointer-events-auto flex h-11 w-60 items-center gap-3 rounded-full bg-night-900/70 px-4 backdrop-blur">
                 <span
                   aria-hidden="true"
-                  className="h-2 w-2 shrink-0 rounded-[2px] bg-parchment-50/70"
+                  className="h-2 w-2 shrink-0 rounded-[2px] bg-night-50/70"
                 />
                 <input
                   type="range"
@@ -1439,10 +1439,7 @@ export function ItemImageViewer({
                   aria-valuetext={`${Math.round(stampSizeValue * 100)} %`}
                   className="h-11 flex-1 accent-gold-300"
                 />
-                <span
-                  aria-hidden="true"
-                  className="h-4 w-4 shrink-0 rounded-[3px] bg-parchment-50"
-                />
+                <span aria-hidden="true" className="h-4 w-4 shrink-0 rounded-[3px] bg-night-50" />
               </div>
             </>
           )}
@@ -1451,7 +1448,7 @@ export function ItemImageViewer({
               {/* Épaisseur du pinceau : 3 crans discrets, mêmes 44px états
                   pressés que le reste de la barre. */}
               {tool === 'draw' && (
-                <div className="pointer-events-auto flex items-center gap-1 rounded-full bg-ink-900/70 p-1.5 backdrop-blur">
+                <div className="pointer-events-auto flex items-center gap-1 rounded-full bg-night-900/70 p-1.5 backdrop-blur">
                   {STROKE_WIDTHS.map((w) => (
                     <button
                       type="button"
@@ -1464,7 +1461,7 @@ export function ItemImageViewer({
                       }`}
                     >
                       <span
-                        className="w-5 rounded-full bg-parchment-50"
+                        className="w-5 rounded-full bg-night-50"
                         style={{ height: Math.max(3, w.value) }}
                       />
                     </button>
@@ -1476,10 +1473,10 @@ export function ItemImageViewer({
                   prochaine pose. T en guise de mini/maxi, or sur la piste pour
                   rester dans le monde. */}
               {tool === 'text' && (
-                <div className="pointer-events-auto flex h-11 w-60 items-center gap-3 rounded-full bg-ink-900/70 px-4 backdrop-blur">
+                <div className="pointer-events-auto flex h-11 w-60 items-center gap-3 rounded-full bg-night-900/70 px-4 backdrop-blur">
                   <span
                     aria-hidden="true"
-                    className="font-display text-[11px] leading-none text-parchment-50/70"
+                    className="font-display text-[11px] leading-none text-night-50/70"
                   >
                     T
                   </span>
@@ -1496,13 +1493,13 @@ export function ItemImageViewer({
                   />
                   <span
                     aria-hidden="true"
-                    className="font-display text-xl leading-none text-parchment-50"
+                    className="font-display text-xl leading-none text-night-50"
                   >
                     T
                   </span>
                 </div>
               )}
-              <div className="pointer-events-auto flex items-center gap-1 rounded-full bg-ink-900/70 p-1.5 backdrop-blur">
+              <div className="pointer-events-auto flex items-center gap-1 rounded-full bg-night-900/70 p-1.5 backdrop-blur">
                 {STROKE_COLORS.map((c) => (
                   <button
                     type="button"
@@ -1525,7 +1522,7 @@ export function ItemImageViewer({
               </div>
             </>
           )}
-          <div className="pointer-events-auto flex items-center gap-1 rounded-full bg-ink-900/70 p-1.5 backdrop-blur">
+          <div className="pointer-events-auto flex items-center gap-1 rounded-full bg-night-900/70 p-1.5 backdrop-blur">
             {toolButton('navigate', t('image.outil.naviguer'), '🖐')}
             {toolButton('draw', t('image.outil.dessiner'), '✏️')}
             {toolButton('text', t('image.outil.ecrire'), 'T')}
@@ -1535,7 +1532,7 @@ export function ItemImageViewer({
               aria-label={t('image.annuler.la.derniere.annotation')}
               disabled={annotations.length === 0}
               onClick={() => setAnnotations((list) => list.slice(0, -1))}
-              className="flex h-11 w-11 items-center justify-center rounded-full text-lg text-parchment-50 transition-colors hover:bg-white/10 disabled:opacity-40"
+              className="flex h-11 w-11 items-center justify-center rounded-full text-lg text-night-50 transition-colors hover:bg-white/10 disabled:opacity-40"
             >
               ↩︎
             </button>
@@ -1543,7 +1540,7 @@ export function ItemImageViewer({
               onConfirm={() => setAnnotations([])}
               ariaLabel={t('image.effacer.les.annotations')}
               confirmChildren={<span className="text-xs">{t('image.effacer.confirm')}</span>}
-              className="flex h-11 min-w-11 items-center justify-center rounded-full px-1 text-base text-parchment-50 transition-colors hover:bg-white/10"
+              className="flex h-11 min-w-11 items-center justify-center rounded-full px-1 text-base text-night-50 transition-colors hover:bg-white/10"
               armedClassName="bg-red-600"
             >
               🗑
@@ -1569,31 +1566,23 @@ export function ItemImageViewer({
           jamais en flux (l'image ne doit pas être repoussée). */}
       <div className="pointer-events-none absolute inset-x-0 bottom-1 z-0 pb-[env(safe-area-inset-bottom)] pt-2 text-center">
         {loaded && tool === 'navigate' && !zoomed && (
-          <p className="text-[11px] text-parchment-50/70">
-            {t('image.touche.deux.fois.pour.zoomer')}
-          </p>
+          <p className="text-[11px] text-night-50/70">{t('image.touche.deux.fois.pour.zoomer')}</p>
         )}
         {loaded && tool === 'draw' && (
-          <p className="text-[11px] text-parchment-50/70">
-            {t('image.trace.ton.doigt.sur.l.image')}
-          </p>
+          <p className="text-[11px] text-night-50/70">{t('image.trace.ton.doigt.sur.l.image')}</p>
         )}
         {loaded && tool === 'text' && !pendingText && (
-          <p className="text-[11px] text-parchment-50/70">
-            {t('image.touche.l.image.pour.poser.un')}
-          </p>
+          <p className="text-[11px] text-night-50/70">{t('image.touche.l.image.pour.poser.un')}</p>
         )}
         {loaded && tool === 'stamp' && (
-          <p className="text-[11px] text-parchment-50/70">
+          <p className="text-[11px] text-night-50/70">
             {t('image.touche.la.carte.pour.poser.un.tampon')}
           </p>
         )}
       </div>
       {!loaded && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <span className="animate-pulse text-sm text-parchment-50/70">
-            {t('image.chargement')}
-          </span>
+          <span className="animate-pulse text-sm text-night-50/70">{t('image.chargement')}</span>
         </div>
       )}
       <div aria-live="polite" className="sr-only">

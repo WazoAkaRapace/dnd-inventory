@@ -53,7 +53,7 @@ export function UnreadBadge({
   if (count <= 0) return null;
   return (
     <span
-      className={`flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-parchment-50 bg-ink-900 px-1 text-[10px] font-bold text-parchment-50 ${className}`}
+      className={`flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-night-50 bg-night-900 px-1 text-[10px] font-bold text-night-50 ${className}`}
       aria-label={label}
       title={label}
       role="status"

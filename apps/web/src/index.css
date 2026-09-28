@@ -50,7 +50,137 @@
   --font-display: "Cinzel", Georgia, serif;
   --font-body: "Iowan Old Style", Palatino, Georgia, serif;
   --font-sans: "Inter", system-ui, sans-serif;
+
+  /* Rampe « nuit » — surfaces DÉLIBÉRÉMENT sombres dans les deux modes :
+     bandeau applicatif, badge de messages non-lus, visionneuse d'images,
+     OfflineBanner, pilules actives du traqueur. En clair elle coïncide
+     avec l'encre (zéro changement visuel) ; en bougie elle ne bouge PAS
+     quand les ramps parchment/ink se retournent — l'horizon sombre du
+     grimoire reste sombre. */
+  --color-night-50: #fdfaf3;
+  --color-night-100: #f7f0e1;
+  --color-night-300: #ddcb9e;
+  --color-night-600: #5b4733;
+  --color-night-700: #4a3825;
+  --color-night-800: #3a2b1c;
+  --color-night-900: #2a1f14;
+
+  /* Surface levée pure (champs, modales) : blanche en clair, cuir clair
+     en bougie. bg-white des composants pointe ici via bg-raised. */
+  --color-raised: #ffffff;
 }
+
+/* ============================================================
+   MODE BOUGIE — « le même grimoire, à la lueur de la bougie »
+   Un seul monde visuel à deux niveaux de lumière. Les ramps
+   SÉMANTIQUES se retournent (parchment = fond → cuir sombre ;
+   ink = texte → lisible parchemin ; blood/gold s'adaptent), les
+   nuances gardent leur RÔLE (50 = page, 200 = filet, 900 = texte
+   fort). La rampe night ci-dessus ne bouge pas. Ratios vérifiés
+   par script : ink-900→14.8:1, ink-400 (méta)→5.5:1 sur la page ;
+   blood-600 choisi au frontièreau double-usage (texte 4.3:1 /
+     blanc dessus 4.2:1) — l'app claire elle-même expédie 3.8:1
+   sur ses pires pills (or/rouge). Mode clair = défaut inchangé.
+   ============================================================ */
+html.ts-dark {
+  color-scheme: dark;
+
+  /* Parchemin → cuir de la table éclairé à la bougie */
+  --color-parchment-50: #1a1512;
+  --color-parchment-100: #262019;
+  --color-parchment-200: #382d1f;
+  --color-parchment-300: #4d3f2b;
+  --color-parchment-400: #8a744b;
+
+  /* Encre → encre lisible : chaque nuance reste son rôle de texte. Les
+     nuances discrètes (300/400) montent d'un cran — sur le cuir sombre,
+     « imprimé discret » doit rester LU, pas deviné. */
+  --color-ink-100: #463a2b;
+  --color-ink-300: #9a8264;
+  --color-ink-400: #ab9472;
+  --color-ink-500: #b39a75;
+  --color-ink-600: #c4ad86;
+  --color-ink-700: #d4bf9c;
+  --color-ink-800: #e6d5b8;
+  --color-ink-900: #f3e7d0;
+
+  /* Sang : gardé profond pour les fonds (blanc dessus 8+), éclairci
+     pour le texte — même frontière que l'app claire. */
+  --color-blood-50: #2e1a1a;
+  --color-blood-100: #43262a;
+  --color-blood-200: #5e3236;
+  --color-blood-300: #e08585;
+  --color-blood-500: #b56c6c;
+  --color-blood-600: #a76b6b;
+  --color-blood-700: #9a5252;
+
+  /* Or : la bougie le nourrit — plus lumineux, jamais criard */
+  --color-gold-100: #3a2f16;
+  --color-gold-300: #e8cd7d;
+  --color-gold-400: #d9b854;
+  --color-gold-500: #c4a24e;
+
+  /* Surface levée : cuir clair (champs, modales) */
+  --color-raised: #2a221a;
+
+  /* Couleurs de règle (palette standard Tailwind, usage sémantique
+     PV/encombrance/conditions) : les nuances PORTÉES EN TEXTE
+     s'éclaircissent pour tenir sur le cuir (≥4.5:1 calculé) ; les
+     nuances claires (fonds de pastilles) s'assombrissent pour porter
+     du texte foncé. Fond/texte restent appariés par pastille. */
+  --color-red-100: #42242a;
+  --color-red-200: #5a2e33;
+  --color-red-50: #311c1f;
+  --color-red-600: #e45656;
+  --color-red-700: #cf6565;
+  --color-red-800: #be6d6d;
+  --color-green-100: #22301f;
+  --color-green-200: #2f442a;
+  --color-green-50: #1c2619;
+  --color-green-600: #4fc06e;
+  --color-green-700: #3a945c;
+  --color-green-800: #57906d;
+  --color-green-900: #648d74;
+  --color-yellow-100: #33290f;
+  --color-yellow-200: #453717;
+  --color-yellow-50: #282009;
+  --color-yellow-500: #e8c545;
+  --color-yellow-700: #b07b2f;
+  --color-yellow-800: #a77f51;
+  --color-orange-100: #37230f;
+  --color-orange-200: #4a2f14;
+  --color-orange-50: #2b1b0b;
+  --color-orange-700: #ce673d;
+  --color-orange-800: #ba755e;
+  --color-blue-100: #1e2942;
+  --color-blue-200: #293a5a;
+  --color-blue-50: #17202f;
+  --color-blue-700: #5c80e3;
+  --color-blue-800: #6a81ca;
+  --color-purple-100: #2b1e42;
+  --color-purple-200: #3b2a57;
+  --color-purple-50: #201630;
+  --color-purple-600: #ab60ef;
+  --color-purple-700: #a769de;
+  --color-purple-800: #a071c7;
+  --color-purple-900: #9b77b7;
+  --color-indigo-100: #1e2138;
+  --color-indigo-200: #2b2f52;
+  --color-indigo-50: #16182a;
+  --color-indigo-600: #7d76ec;
+  --color-indigo-700: #7f78db;
+  --color-amber-100: #33260e;
+  --color-amber-200: #463413;
+  --color-amber-50: #271c09;
+  --color-amber-700: #c27235;
+  --color-amber-800: #b37956;
+  --color-amber-900: #a67a61;
+  --color-pink-700: #d25d8e;
+  --color-cyan-800: #578b9c;
+  --color-emerald-700: #369379;
+  --color-gray-600: #7d858f;
+}
+
 
 :root {
   /* Light theme only — the app is parchment-themed, not dark-mode */
@@ -85,6 +215,14 @@ body {
     radial-gradient(at 20% 0%, rgba(184, 151, 90, 0.06) 0px, transparent 50%),
     radial-gradient(at 80% 100%, rgba(122, 31, 31, 0.04) 0px, transparent 50%);
   background-attachment: fixed;
+}
+
+/* En bougie les halos respirent davantage sur le cuir sombre — même
+   geste, intensités recalées (le cuir absorbe, la bougle perce). */
+html.ts-dark body {
+  background-image:
+    radial-gradient(at 20% 0%, rgba(217, 184, 84, 0.07) 0px, transparent 50%),
+    radial-gradient(at 80% 100%, rgba(167, 107, 107, 0.06) 0px, transparent 50%);
 }
 
 /* Mobile-first: large tap targets, prevent iOS zoom */
@@ -150,10 +288,17 @@ input[type="number"] {
    seul le flou disparaît ; les couches VRAIMENT flottantes (dock, bandeau)
    gardent leur backdrop-blur propre. */
 .card {
-  @apply bg-white/85 rounded-2xl border border-parchment-200;
+  @apply bg-raised/85 rounded-2xl border border-parchment-200;
   box-shadow:
     0 1px 2px rgba(42, 31, 20, 0.04),
     0 4px 12px rgba(42, 31, 20, 0.03);
+}
+/* En bougie l'ombre s'assombrit avec le cuir (le relief existe, sans
+   éclairer) — mêmes géométries, teinte nuit. */
+html.ts-dark .card {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.35),
+    0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
 /* The card currently being dragged — it rises above its siblings with a
@@ -197,7 +342,7 @@ input[type="number"] {
 }
 
 .input {
-  @apply w-full bg-white border border-parchment-300 rounded-xl px-3 py-2.5 text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-blood-500/30 focus:border-blood-500;
+  @apply w-full bg-raised border border-parchment-300 rounded-xl px-3 py-2.5 text-ink-900 placeholder:text-ink-400 focus:outline-none focus:ring-2 focus:ring-blood-500/30 focus:border-blood-500;
 }
 
 .label {

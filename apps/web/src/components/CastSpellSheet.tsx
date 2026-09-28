@@ -133,7 +133,7 @@ export default function CastSpellSheet({
       onClick={onClose}
     >
       <div
-        className="card w-full sm:max-w-md rounded-b-none sm:rounded-2xl p-4 sheet-enter bg-white max-h-[88vh] overflow-y-auto overscroll-contain"
+        className="card w-full sm:max-w-md rounded-b-none sm:rounded-2xl p-4 sheet-enter bg-raised max-h-[88vh] overflow-y-auto overscroll-contain"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -217,7 +217,7 @@ export default function CastSpellSheet({
                     )}
                   </span>
                   <span
-                    className={`shrink-0 ${selected ? 'text-parchment-100' : isPact ? 'text-gold-600' : 'text-ink-400'}`}
+                    className={`shrink-0 ${selected ? 'text-night-100' : isPact ? 'text-gold-600' : 'text-ink-400'}`}
                   >
                     {isPact ? (
                       <span title={t('cast.emplacement.de.pacte.recharge.au.repos')}>

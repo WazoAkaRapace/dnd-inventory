@@ -86,14 +86,34 @@ components:
 
 ## Overview
 
-**Creative North Star: « Le grimoire clair »**
+**Creative North Star: « Le grimoire à deux lumières »**
 
-Le monde visuel de l'app : **parchemin, encre, sang, or** — un grimoire clair
-(light-only, pas de dark mode), mobile-first, en français. Une page de
-grimoire posée sur une table éclairée : le parchemin porte tout, l'encre
-imprime le registre, et le sang — rare — marque l'instant qui se joue
-maintenant. La lisibilité prime à chaque taille d'écran, du laptop du MD en
-pièce tamisée au téléphone tenu à une main.
+Le monde visuel de l'app : **parchemin, encre, sang, or** — un grimoire
+posé sur une table, mobile-first, en français, à DEUX niveaux de lumière :
+le **parchemin** (mode clair, identité marketing et captures) et la
+**bougie** (mode sombre, « le même grimoire, à la lueur de la bougie » —
+pensé pour la pièce tamisée où la table joue). Le parchemin porte tout,
+l'encre imprime le registre, et le sang — rare — marque l'instant qui se
+joue maintenant. La lisibilité prime à chaque taille d'écran, du laptop
+du MD au téléphone tenu à une main.
+
+**Architecture du mode bougie (html.ts-dark, `index.css`)** : les ramps
+SÉMANTIQUES se retournent — `parchment-*` devient le cuir sombre de la
+table, `ink-*` devient le texte parchemin lisible, chaque nuance garde
+son RÔLE (50 = page, 200 = filet, 900 = texte fort) ; les couleurs de
+règle (red/green/…) se ré-étalent par variable pour tenir leurs rôles
+texte/fond sur le cuir. La rampe **`night-*` est CONSTANTE** : les
+surfaces volontiers sombres dans les DEUX modes (bandeau applicatif,
+badge non-lus, visionneuse, pilules du traqueur, sync indicator) y
+vivent — JAMAIS d'encre retournée sur du night. `--color-raised` (blanc
+en clair, cuir clair en bougie) porte les champs et modales. Choix du
+mode : `localStorage['ts-theme']` ('light'|'dark', null = suivre le
+système en direct), classe posée par un script inline AVANT la première
+peinture (zéro flash), pastilles Système/Parchemin/Bougie dans Mon
+compte ; le splash reste parchemin (identité du premier chargement).
+Contraste : vérifié par script (ink-900 14.8:1, ink-400 6:1, blood-600
+#a76b6b au point double-usage 4.3/4.2:1 — l'app claire elle-même
+expédie 2.6:1 sur ses pills or).
 
 Les couleurs de règles (vert/jaune/orange/rouge des paliers d'encombrance et
 des PV) enseignent l'état du personnage ; les teintes parchemin/encre portent
@@ -384,8 +404,10 @@ entières dont la suppression est en cascade. État armé = rouge +
 - **Don't** poser un second élément sang sur une page, ni teinter un
   état statique en sang : le sang est « maintenant + action primaire ».
 - **Don't** mettre du mono ailleurs que sur une valeur mesurée.
-- **Don't** add dark mode, un second monde visuel, ou un habillage de
-  campagne : l'outil D&D est générique, le monde est parchemin/encre/sang/or.
+- **Don't** add un second monde visuel ou un habillage de campagne :
+  l'outil D&D est générique, le monde est parchemin/encre/sang/or — le
+  mode bougie n'est PAS un second monde, c'est le même à plus basse
+  lumière (ramps retournées, night constante, règles inchangées).
 
 ## Surfaces réglées — le registre & la table des matières
 

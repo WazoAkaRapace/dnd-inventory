@@ -230,7 +230,7 @@ export default function CharacterStatsTab({
                   type="number"
                   min={1}
                   max={30}
-                  className="block mx-auto w-16 min-h-11 text-center text-sm font-semibold tabular-nums bg-white border border-parchment-300 rounded-md py-1 focus:outline-none focus:border-blood-500"
+                  className="block mx-auto w-16 min-h-11 text-center text-sm font-semibold tabular-nums bg-raised border border-parchment-300 rounded-md py-1 focus:outline-none focus:border-blood-500"
                   value={draftVal}
                   onChange={(e) => setAbilityDrafts((d) => ({ ...d, [ability]: e.target.value }))}
                   onBlur={() => commitAbility(ability)}
@@ -256,7 +256,7 @@ export default function CharacterStatsTab({
               <input
                 type="number"
                 min={0}
-                className="block mx-auto w-14 min-h-11 text-center text-xl font-bold tabular-nums text-ink-800 bg-white border border-parchment-300 rounded-md py-1 focus:outline-none focus:border-blood-500"
+                className="block mx-auto w-14 min-h-11 text-center text-xl font-bold tabular-nums text-ink-800 bg-raised border border-parchment-300 rounded-md py-1 focus:outline-none focus:border-blood-500"
                 value={acDraft}
                 onChange={(e) => setAcDraft(e.target.value)}
                 onBlur={commitAC}
@@ -498,7 +498,7 @@ function DerivedStat({
           type="number"
           min={0}
           step={0.5}
-          className="block mx-auto w-16 min-h-11 text-center text-lg font-bold tabular-nums text-ink-800 bg-white border border-parchment-300 rounded-md py-1 focus:outline-none focus:border-blood-500"
+          className="block mx-auto w-16 min-h-11 text-center text-lg font-bold tabular-nums text-ink-800 bg-raised border border-parchment-300 rounded-md py-1 focus:outline-none focus:border-blood-500"
           value={draftValue ?? ''}
           onChange={(e) => onChange?.(e.target.value)}
           onBlur={onBlur}

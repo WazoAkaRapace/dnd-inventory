@@ -217,8 +217,8 @@ export default function CombatWidget() {
         isMyTurn
           ? 'border-blood-500 bg-blood-900/40 combat-turn-glow combat-turn-beat'
           : needsInitiative
-            ? 'border-yellow-500 bg-ink-800'
-            : 'border-ink-600 bg-ink-800'
+            ? 'border-yellow-500 bg-night-800'
+            : 'border-night-600 bg-night-800'
       }`}
     >
       {/* Encounter — the door to the tracker (deep link opens it directly) */}
@@ -231,13 +231,13 @@ export default function CombatWidget() {
           ⚔
         </span>
         <span
-          className="text-xs font-semibold text-parchment-100 truncate max-w-40 group-hover:text-parchment-50 transition-colors"
+          className="text-xs font-semibold text-night-100 truncate max-w-40 group-hover:text-night-50 transition-colors"
           title={combat.encounter.name}
         >
           {combat.encounter.name}
         </span>
       </Link>
-      <span className="w-px h-5 bg-parchment-50/20 shrink-0" aria-hidden="true" />
+      <span className="w-px h-5 bg-night-50/20 shrink-0" aria-hidden="true" />
 
       {/* Turn status — the live region (transitions announce themselves);
           controls stay OUTSIDE it so typing never re-announces */}
@@ -245,17 +245,17 @@ export default function CombatWidget() {
         <span
           className={`text-xs whitespace-nowrap truncate ${
             isMyTurn
-              ? 'font-bold text-parchment-50'
+              ? 'font-bold text-night-50'
               : needsInitiative
                 ? 'font-bold text-yellow-300'
-                : 'text-parchment-200'
+                : 'text-night-100'
           }`}
         >
           {statusText}
         </span>
         {combat.myCombatant.initiative !== null && (
           <span
-            className="font-mono text-[11px] text-parchment-300 bg-ink-900/60 border border-ink-600 rounded px-1.5 py-0.5 shrink-0"
+            className="font-mono text-[11px] text-night-100 bg-night-900/60 border border-night-600 rounded px-1.5 py-0.5 shrink-0"
             title={t('widget.mon.initiative')}
           >
             init {combat.myCombatant.initiative}

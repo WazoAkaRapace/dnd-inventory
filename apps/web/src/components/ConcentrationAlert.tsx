@@ -90,7 +90,7 @@ export default function ConcentrationAlert({
           <button
             type="button"
             onClick={onDone}
-            className="flex-1 px-3 py-2 rounded-lg text-sm font-semibold bg-white text-green-700 border border-green-300 hover:bg-green-50 transition-colors"
+            className="flex-1 px-3 py-2 rounded-lg text-sm font-semibold bg-raised text-green-700 border border-green-300 hover:bg-green-50 transition-colors"
           >
             {t('concentration.reussi.je.maintiens')}
           </button>
