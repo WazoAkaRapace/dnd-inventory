@@ -797,7 +797,16 @@ async function seed(
 async function newSession(
   browser: Browser,
   session: Session,
-  opts: { tours?: boolean; viewport?: { width: number; height: number }; desktop?: boolean } = {},
+  opts: {
+    tours?: boolean;
+    viewport?: { width: number; height: number };
+    desktop?: boolean;
+    /** Mode bougie : pose la préférence explicite AVANT le premier
+     *  chargement — le script inline d'index.html lit ts-theme et pose
+     *  ts-dark avant la première peinture (zéro flash, comme un joueur
+     *  qui aurait choisi Bougie dans Mon compte). */
+    dark?: boolean;
+  } = {},
 ): Promise<BrowserContext> {
   const tours = opts.tours ?? true;
   const ctx = await browser.newContext({
@@ -825,8 +834,9 @@ async function newSession(
     },
   ]);
   await ctx.addInitScript(
-    ({ user, langCode, tours }) => {
+    ({ user, langCode, tours, dark }) => {
       localStorage.setItem('dnd-inv-user', JSON.stringify(user));
+      if (dark) localStorage.setItem('ts-theme', 'dark');
       if (tours) {
         localStorage.setItem('dnd-inv-tour-seen', '1');
         // Visites propres d'onglet éteintes elles aussi : sans cette clé, le
@@ -852,7 +862,7 @@ async function newSession(
       // l'app en déduit l'en-tête Accept-Language des payloads mono-locale.
       if (langCode === 'en') localStorage.setItem('dnd-inv-lang', 'en');
     },
-    { user: session.user, langCode: lang, tours },
+    { user: session.user, langCode: lang, tours, dark: opts.dark ?? false },
   );
   return ctx;
 }
@@ -993,6 +1003,7 @@ const GM_SHOTS = new Set([
   '13-bloc-stats.png',
   '24-traqueur-bureau.png',
   '31-groupe-pupitre.png',
+  '33-bougie-traqueur.png',
 ]);
 
 // Captures tardives : elles clorent l'embuscade et dressent « Embuscade
@@ -1724,6 +1735,56 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
           .waitFor({ timeout: 10_000 });
         await page.waitForTimeout(400);
         await shoot(page, '30-initiative-tablette.png');
+        await page.close();
+      } finally {
+        await ctx.close();
+      }
+    },
+  },
+  {
+    file: '32-bougie-fiche.png',
+    async run(c) {
+      // La fiche du joueur À LA BOUGIE (mobile) : le même grimoire, à la
+      // lueur de la bougie — les ramps retournées (parchemin → cuir sombre,
+      // encre → texte parchemin), le bandeau applicatif et le dock sur la
+      // rampe night constante. Le choix « Bougie » est posé AVANT le
+      // premier chargement (comme un joueur l'ayant choisi dans Mon compte) :
+      // aucune bascule visible, la page naît sombre.
+      const ctx = await newSession(c.browser, c.sessions.aurore, { dark: true });
+      try {
+        const page = await openSheet(ctx, c.webPort, c.refs.partyId, c.refs.chars.lyra);
+        await page.getByText(S('❤️ Vitalité', '❤️ Vitality')).first().waitFor({ timeout: 10_000 });
+        await page.waitForTimeout(300);
+        await shoot(page, '32-bougie-fiche.png');
+        await page.close();
+      } finally {
+        await ctx.close();
+      }
+    },
+  },
+  {
+    file: '33-bougie-traqueur.png',
+    async run(c) {
+      // Le traqueur de combat du MD À LA BOUGIE (1440×900) : la salle
+      // tamisée où la table joue — rail d'initiative, scène du tour et
+      // bloc de stats sur le cuir sombre, les couleurs de règle (PV,
+      // conditions) ré-étalées pour rester lisibles à basse lumière.
+      const ctx = await newSession(c.browser, c.sessions.md, {
+        viewport: { width: 1440, height: 900 },
+        desktop: true,
+        dark: true,
+      });
+      try {
+        const page = await ctx.newPage();
+        await page.goto(
+          webUrl(c.webPort, `/party/${c.refs.partyId}/combat?enc=${c.refs.encounterId}`),
+          { waitUntil: 'networkidle', timeout: 90_000 },
+        );
+        await settle(page, 600);
+        await page.getByText(S('Tour suivant', 'Next turn')).first().waitFor({ timeout: 10_000 });
+        await page.getByText('Ogre').first().waitFor({ timeout: 10_000 });
+        await page.waitForTimeout(300);
+        await shoot(page, '33-bougie-traqueur.png');
         await page.close();
       } finally {
         await ctx.close();

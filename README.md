@@ -17,6 +17,13 @@ La fiche de personnage — ici sur tablette, avec le dock de navigation et l'ind
 
 ![Fiche de personnage sur tablette](docs/screenshots/23-fiche-tablette.png)
 
+Et quand la salle est tamisée, le même grimoire s'ouvre **à la lueur de la bougie** — fiche du joueur et traqueur du MD, un seul monde à deux lumières (choix dans *Mon compte → Apparence*, ou suivi du système) :
+
+<p>
+  <img src="docs/screenshots/32-bougie-fiche.png" width="280" alt="Fiche de personnage en mode bougie" />
+  <img src="docs/screenshots/33-bougie-traqueur.png" width="560" alt="Traqueur de combat du MD en mode bougie" />
+</p>
+
 ## Fonctionnalités
 
 - **Fiche de personnage** — PV, dés de vie, états avec durées, épuisement, concentration, repos court/long, ressources de classe, forme sauvage du Druide
