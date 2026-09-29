@@ -372,6 +372,80 @@ interface SeedRefs {
   chars: { lyra: number; kael: number; mira: number; vesper: number };
 }
 
+/** Dresse « Embuscade gobeline » en pleine morsure : initiatives posées,
+ *  tour de Lyra, dégâts déjà échangés (miroir fiche ↔ traqueur), gobelin
+ *  effrayé, ogre marqué. Partagé entre le semis initial et les captures
+ *  de combat qui recréent la rencontre après une pause (ensureAmbushMidFight). */
+async function stageAmbushMidFight(
+  api: Api,
+  partyId: number,
+  chars: { lyra: number; kael: number; mira: number },
+): Promise<number> {
+  // — Rencontre « Embuscade gobeline » : setup, initiatives, démarrage —
+  const { encounter } = await api<{ encounter: { id: number } }>(
+    'POST',
+    `/api/parties/${partyId}/encounters`,
+    { name: S('Embuscade gobeline', 'Goblin Ambush') },
+  );
+  const enc = encounter.id;
+  await api('POST', `/api/encounters/${enc}/combatants/monster`, {
+    monsterSlug: 'gobelin',
+    count: 3,
+    // Le nom du combattant est stocké au POST depuis name_fr (« Gobelin 1… »)
+    // sans re-localisation à la lecture — en EN on nomme « Goblin » (l'overlay
+    // EN du slug « gobelin » est d'ailleurs erroné en base : « Dum-Dum Goblin »).
+    name: S('Gobelin', 'Goblin'),
+  });
+  await api('POST', `/api/encounters/${enc}/combatants/monster`, {
+    monsterSlug: 'ogre',
+    count: 1,
+  });
+  await api('POST', `/api/encounters/${enc}/combatants/player`, {
+    characterIds: [chars.lyra, chars.kael, chars.mira],
+  });
+
+  const { encounter: full } = await api<{
+    encounter: {
+      combatants: {
+        id: number;
+        name: string;
+        monsterSlug: string | null;
+        characterId: number | null;
+      }[];
+    };
+  }>('GET', `/api/encounters/${enc}`);
+  const cbs = full.combatants;
+  const byCharacter = (cid: number) => cbs.find((c) => c.characterId === cid);
+  const goblins = cbs
+    .filter((c) => c.monsterSlug === 'gobelin')
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const ogre = cbs.find((c) => c.monsterSlug === 'ogre');
+
+  // Initiatives (le MD peut tout saisir) : Lyra 18, gobelins 14, Kael 12,
+  // Mira 10, ogre 8 — puis premier next-turn : round 1, tour de Lyra.
+  const setInit = (cid: number, initiative: number) =>
+    api('PATCH', `/api/encounters/${enc}/combatants/${cid}/initiative`, { initiative });
+  await setInit(byCharacter(chars.lyra)!.id, 18);
+  await setInit(goblins[0].id, 14);
+  await setInit(byCharacter(chars.kael)!.id, 12);
+  await setInit(byCharacter(chars.mira)!.id, 10);
+  await setInit(ogre!.id, 8);
+  await api('POST', `/api/encounters/${enc}/next-turn`);
+
+  // Le combat a déjà mordu : dégâts (miroir fiche ↔ traqueur), un gobelin
+  // effrayé, l'ogre marqué en rouge — un état vivant pour les captures.
+  const patchC = (cid: number, body: unknown) => api('PATCH', `/api/combatants/${cid}`, body);
+  await patchC(byCharacter(chars.lyra)!.id, { hitPoints: 31 });
+  await patchC(byCharacter(chars.kael)!.id, { hitPoints: 38 });
+  await patchC(goblins[0].id, { hitPoints: 3 });
+  await patchC(goblins[1].id, {
+    hitPoints: 5,
+    conditions: [{ name: S('Effrayé', 'Frightened'), duration: 1 }],
+  });
+  await patchC(ogre!.id, { hitPoints: 41, cardColor: '#fee2e2' });
+  return enc;
+}
+
 async function seed(
   apiPort: number,
   gmaMock: MockGmaHandle['state'],
@@ -512,46 +586,6 @@ async function seed(
     await addItem(auCall, mira.id, name, equipped);
   }
 
-  // — Rencontre « Embuscade gobeline » : setup, initiatives, démarrage —
-  const { encounter } = await mdCall<{ encounter: { id: number } }>(
-    'POST',
-    `/api/parties/${party.id}/encounters`,
-    { name: S('Embuscade gobeline', 'Goblin Ambush') },
-  );
-  const enc = encounter.id;
-  await mdCall('POST', `/api/encounters/${enc}/combatants/monster`, {
-    monsterSlug: 'gobelin',
-    count: 3,
-    // Le nom du combattant est stocké au POST depuis name_fr (« Gobelin 1… »)
-    // sans re-localisation à la lecture — en EN on nomme « Goblin » (l'overlay
-    // EN du slug « gobelin » est d'ailleurs erroné en base : « Dum-Dum Goblin »).
-    name: S('Gobelin', 'Goblin'),
-  });
-  await mdCall('POST', `/api/encounters/${enc}/combatants/monster`, {
-    monsterSlug: 'ogre',
-    count: 1,
-  });
-  await mdCall('POST', `/api/encounters/${enc}/combatants/player`, {
-    characterIds: [lyra.id, kael.id, mira.id],
-  });
-
-  const { encounter: full } = await mdCall<{
-    encounter: {
-      combatants: {
-        id: number;
-        name: string;
-        monsterSlug: string | null;
-        characterId: number | null;
-      }[];
-    };
-  }>('GET', `/api/encounters/${enc}`);
-  const cbs = full.combatants;
-  const byCharacter = (cid: number) => cbs.find((c) => c.characterId === cid);
-  const goblins = cbs
-    .filter((c) => c.monsterSlug === 'gobelin')
-    .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-  const ogre = cbs.find((c) => c.monsterSlug === 'ogre');
-
   // — Vesper, Occultiste 5 (fielon) / Magicien 3 (évocation) : la fiche
   // multiclassée de la capture 14 — DEUX pools d'emplacements (incantation
   // + magie de pacte), DD par classe lancente, sorts à classe d'origine.
@@ -593,28 +627,13 @@ async function seed(
     });
   }
 
-  // Initiatives (le MD peut tout saisir) : Lyra 18, gobelins 14, Kael 12,
-  // Mira 10, ogre 8 — puis premier next-turn : round 1, tour de Lyra.
-  const setInit = (cid: number, initiative: number) =>
-    mdCall('PATCH', `/api/encounters/${enc}/combatants/${cid}/initiative`, { initiative });
-  await setInit(byCharacter(lyra.id)!.id, 18);
-  await setInit(goblins[0].id, 14);
-  await setInit(byCharacter(kael.id)!.id, 12);
-  await setInit(byCharacter(mira.id)!.id, 10);
-  await setInit(ogre!.id, 8);
-  await mdCall('POST', `/api/encounters/${enc}/next-turn`);
-
-  // Le combat a déjà mordu : dégâts (miroir fiche ↔ traqueur), un gobelin
-  // effrayé, l'ogre marqué en rouge — un état vivant pour les captures.
-  const patchC = (cid: number, body: unknown) => mdCall('PATCH', `/api/combatants/${cid}`, body);
-  await patchC(byCharacter(lyra.id)!.id, { hitPoints: 31 });
-  await patchC(byCharacter(kael.id)!.id, { hitPoints: 38 });
-  await patchC(goblins[0].id, { hitPoints: 3 });
-  await patchC(goblins[1].id, {
-    hitPoints: 5,
-    conditions: [{ name: S('Effrayé', 'Frightened'), duration: 1 }],
+  // — Rencontre « Embuscade gobeline » : dressée par le partagé (voir
+  // stageAmbushMidFight) : initiatives, tour de Lyra, morsure du combat. —
+  const enc = await stageAmbushMidFight(mdCall, party.id, {
+    lyra: lyra.id,
+    kael: kael.id,
+    mira: mira.id,
   });
-  await patchC(ogre!.id, { hitPoints: 41, cardColor: '#fee2e2' });
 
   // — GM Assistant : le vrai parcours MD, contre le mock — clé du compte puis
   // init (la campagne « Les Héros de Chult » + les 3 PJ de table naissent
@@ -961,6 +980,39 @@ async function ensureInitiativeEncounter(c: ShotCtx): Promise<void> {
   });
 }
 
+/** Termine TOUTES les rencontres non closes (actives comme en préparation) :
+ *  les captures d'onglet montrent la fiche HORS combat — l'état vrai d'une
+ *  table sans rencontre. Le chrome de combat (bandeau header, carte dockée,
+ *  ligne de bandeau) n'y a alors rien à faire : il ne s'affiche QUE pendant
+ *  une rencontre, on laisse le produit être son propre juge de paix. */
+async function endFights(c: ShotCtx): Promise<void> {
+  const list = await c.mdApi<{ encounters: { id: number; name: string; status: string }[] }>(
+    'GET',
+    `/api/parties/${c.refs.partyId}/encounters`,
+  );
+  for (const e of list.encounters) {
+    if (e.status !== 'ended') {
+      await c.mdApi('PATCH', `/api/encounters/${e.id}`, { status: 'ended' });
+    }
+  }
+}
+
+/** « Embuscade gobeline » vivante pour les captures de combat (05 widget,
+ *  12/24/33 traqueur, 31 pupitre) : recréée à l'identique si une pause
+ *  (endFights) l'a close — initiatives, tour de Lyra, morsure du combat. */
+async function ensureAmbushMidFight(c: ShotCtx): Promise<void> {
+  const name = S('Embuscade gobeline', 'Goblin Ambush');
+  const list = await c.mdApi<{ encounters: { id: number; name: string; status: string }[] }>(
+    'GET',
+    `/api/parties/${c.refs.partyId}/encounters`,
+  );
+  if (list.encounters.some((e) => e.name === name && e.status === 'active')) return;
+  await endFights(c);
+  // les captures de traqueur ouvrent /combat?enc=<refs.encounterId> : la
+  // rencontre recréée prend la place de l'ancienne dans les refs
+  c.refs.encounterId = await stageAmbushMidFight(c.mdApi, c.refs.partyId, c.refs.chars);
+}
+
 async function shoot(page: Page, file: string, opts: { animations?: 'allow' | 'disabled' } = {}) {
   await page.screenshot({
     path: path.join(OUT_DIR, file),
@@ -1030,6 +1082,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
   {
     file: '02-inventaire.png',
     async run(c) {
+      await endFights(c);
       const page = await openSheet(c.aurore, c.webPort, c.refs.partyId, c.refs.chars.lyra);
       await openTab(page, S('Inventaire', 'Inventory'));
       await expandInventoryCategories(page);
@@ -1046,6 +1099,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
     async run(c) {
       // Le catalogue en feuille du bas (FAB mobile) : recherche instantanée
       // « corde » — résultats avec poids en kg, prix et badge de rareté.
+      await endFights(c);
       const page = await openSheet(c.aurore, c.webPort, c.refs.partyId, c.refs.chars.lyra);
       await openTab(page, S('Inventaire', 'Inventory'));
       await page
@@ -1072,6 +1126,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
     async run(c) {
       // La bourse dépliée, figures au repos : les cinq coupures (Lyra : 60 PC,
       // 24 PO), le total en pièces d'or, les portes Encaisser / Dépenser.
+      await endFights(c);
       const page = await openSheet(c.aurore, c.webPort, c.refs.partyId, c.refs.chars.lyra);
       await openTab(page, S('Inventaire', 'Inventory'));
       // Attendre les groupes : sur une page froide, react-query n'a pas encore
@@ -1136,6 +1191,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
       // Le changeur : dépenser 15 PA sans une pièce d'argent sur soi — la
       // bourse casse 1 PO en 10 PA, rend la monnaie et affiche le comptoir
       // avant → après. La démonstration du rendu de monnaie AUTOMATIQUE.
+      await endFights(c);
       const page = await openSheet(c.aurore, c.webPort, c.refs.partyId, c.refs.chars.lyra);
       await openTab(page, S('Inventaire', 'Inventory'));
       const purse = page.locator('[data-tuto="inv-bourse"]');
@@ -1160,6 +1216,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
   {
     file: '03-arme-calcul.png',
     async run(c) {
+      await endFights(c);
       const page = await openSheet(c.bastien, c.webPort, c.refs.partyId, c.refs.chars.kael);
       await openTab(page, S('Inventaire', 'Inventory'));
       await expandInventoryCategories(page);
@@ -1181,6 +1238,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
   {
     file: '04-survie-attaques.png',
     async run(c) {
+      await endFights(c);
       const page = await openSheet(c.bastien, c.webPort, c.refs.partyId, c.refs.chars.kael);
       await openTab(page, S('Survie', 'Survival'));
       const section = page.getByText(S('⚔ Attaques', '⚔ Attacks')).first();
@@ -1195,6 +1253,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
     file: '05-widget-combat.png',
     async run(c) {
       // Tour de Lyra : la carte de combat au-dessus du dock clignote « À toi ».
+      await ensureAmbushMidFight(c);
       const page = await openSheet(c.aurore, c.webPort, c.refs.partyId, c.refs.chars.lyra);
       await page
         .getByText(S('⚔ À toi de jouer !', '⚔ Your turn!'))
@@ -1208,6 +1267,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
   {
     file: '06-sorts.png',
     async run(c) {
+      await endFights(c);
       const page = await openSheet(c.aurore, c.webPort, c.refs.partyId, c.refs.chars.lyra);
       await openTab(page, S('Sorts', 'Spells'));
       await page.getByText(S('Vague tonnante', 'Thunderwave')).first().waitFor({ timeout: 10_000 });
@@ -1218,6 +1278,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
   {
     file: '07-lancer-sort.png',
     async run(c) {
+      await endFights(c);
       const page = await openSheet(c.aurore, c.webPort, c.refs.partyId, c.refs.chars.lyra);
       await openTab(page, S('Sorts', 'Spells'));
       const cast = page
@@ -1241,6 +1302,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
   {
     file: '08-caracteristiques.png',
     async run(c) {
+      await endFights(c);
       const page = await openSheet(c.aurore, c.webPort, c.refs.partyId, c.refs.chars.lyra);
       await openTab(page, S('Caractéristiques', 'Abilities'));
       await page
@@ -1254,6 +1316,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
   {
     file: '09-forme-sauvage.png',
     async run(c) {
+      await endFights(c);
       const page = await openSheet(c.aurore, c.webPort, c.refs.partyId, c.refs.chars.lyra);
       await openTab(page, S('Survie', 'Survival'));
       const section = page.getByText(S('🐾 Forme sauvage', '🐾 Wild shape')).first();
@@ -1267,6 +1330,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
   {
     file: '10-formes.png',
     async run(c) {
+      await endFights(c);
       const page = await openSheet(c.aurore, c.webPort, c.refs.partyId, c.refs.chars.lyra);
       await openTab(page, S('Survie', 'Survival'));
       const take = page.getByRole('button', {
@@ -1302,6 +1366,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
   {
     file: '12-traqueur.png',
     async run(c) {
+      await ensureAmbushMidFight(c);
       const page = await c.md.newPage();
       await page.goto(
         webUrl(c.webPort, `/party/${c.refs.partyId}/combat?enc=${c.refs.encounterId}`),
@@ -1353,6 +1418,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
       // Sorts de Vesper (Occultiste 5 / Magicien 3) : deux rails étiquetés —
       // Incantation (4/2, 2+1 dépensés) et Magie de pacte en or (2× niv. 2,
       // 1 dépensé), bandeau DD par classe, sorts à classe d'origine.
+      await endFights(c);
       const page = await openSheet(c.bastien, c.webPort, c.refs.partyId, c.refs.chars.vesper);
       await openTab(page, S('Sorts', 'Spells'));
       await page
@@ -1443,6 +1509,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
   {
     file: '18-correspondance.png',
     async run(c) {
+      await endFights(c);
       const page = await openSheet(c.aurore, c.webPort, c.refs.partyId, c.refs.chars.lyra);
       await openTab(page, S('Messages', 'Messages'));
       await page
@@ -1461,6 +1528,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
   {
     file: '19-banniere-correspondance.png',
     async run(c) {
+      await endFights(c);
       const page = await openSheet(c.aurore, c.webPort, c.refs.partyId, c.refs.chars.lyra);
       await openTab(page, S('Inventaire', 'Inventory')); // un onglet neutre : la bannière tombe « où que tu sois »
       await c.sendAsMd(
@@ -1511,6 +1579,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
       // compte avant d'ouvrir la session vierge, sinon la convergence
       // AuthProvider éteint la visite et la capture attend indéfiniment.
       await c.auApi('PATCH', '/api/auth/me', { tutorialSeenAt: null });
+      await endFights(c);
       const page = await openSheet(c.auroreFresh, c.webPort, c.refs.partyId, c.refs.chars.lyra);
       await page
         .getByText(S('Bienvenue sur ta fiche !', 'Welcome to your sheet!'))
@@ -1526,6 +1595,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
     async run(c) {
       // Avancer jusqu'à l'étape 4 (mobile) : le spotlight sur le bouton
       // central du dock — l'onglet Messages y vit aussi.
+      await endFights(c);
       const page = await openSheet(c.auroreFresh, c.webPort, c.refs.partyId, c.refs.chars.lyra);
       // « Suivant » du tutoriel uniquement — l'aria-label de la carte de
       // combat (« passer au combattant suivant ») matche aussi le nom.
@@ -1556,6 +1626,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
         viewport: { width: 820, height: 1180 },
       });
       try {
+        await endFights(c);
         const page = await openSheet(ctx, c.webPort, c.refs.partyId, c.refs.chars.lyra);
         await openTab(page, S('Caractéristiques', 'Abilities'));
         await page
@@ -1580,6 +1651,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
         viewport: { width: 1180, height: 820 },
       });
       try {
+        await endFights(c);
         const page = await openSheet(ctx, c.webPort, c.refs.partyId, c.refs.chars.lyra);
         await page.getByText(S('❤️ Vitalité', '❤️ Vitality')).first().waitFor({ timeout: 10_000 });
         await page.waitForTimeout(300);
@@ -1596,6 +1668,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
       // L'écran du MD sur ordinateur (1440×900) : la page Combat s'ouvre en
       // trois colonnes — rail d'initiative à gauche, scène du tour au centre,
       // bloc de stats amarré à droite (clic « 📜 Stats » sur l'ogre focalisé).
+      await ensureAmbushMidFight(c);
       const ctx = await newSession(c.browser, c.sessions.md, {
         viewport: { width: 1440, height: 900 },
         desktop: true,
@@ -1641,6 +1714,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
       // capture se prend en plein combat gobelin), annexes réglées et code
       // d'invitation en pied de registre. Cadre : la section centrée, la
       // queue du roster de II visible au-dessus.
+      await ensureAmbushMidFight(c);
       const ctx = await newSession(c.browser, c.sessions.md, {
         viewport: { width: 1440, height: 900 },
         desktop: true,
@@ -1752,6 +1826,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
       // aucune bascule visible, la page naît sombre.
       const ctx = await newSession(c.browser, c.sessions.aurore, { dark: true });
       try {
+        await endFights(c);
         const page = await openSheet(ctx, c.webPort, c.refs.partyId, c.refs.chars.lyra);
         await page.getByText(S('❤️ Vitalité', '❤️ Vitality')).first().waitFor({ timeout: 10_000 });
         await page.waitForTimeout(300);
@@ -1769,6 +1844,7 @@ const SHOTS: { file: string; run: (c: ShotCtx) => Promise<void> }[] = [
       // tamisée où la table joue — rail d'initiative, scène du tour et
       // bloc de stats sur le cuir sombre, les couleurs de règle (PV,
       // conditions) ré-étalées pour rester lisibles à basse lumière.
+      await ensureAmbushMidFight(c);
       const ctx = await newSession(c.browser, c.sessions.md, {
         viewport: { width: 1440, height: 900 },
         desktop: true,
