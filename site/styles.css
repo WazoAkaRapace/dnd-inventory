@@ -1,7 +1,10 @@
 /* ------------------------------------------------------------------
    Site marketing — Table Sync
-   Le monde visuel de l'app, hérité tel quel : parchemin, encre, sang, or.
-   Tokens = copie exacte de apps/web/src/index.css @theme.
+   « La table, la nuit » : le monde visuel de l'app (parchemin, encre,
+   sang, or — tokens exacts de apps/web/src/index.css @theme) joué sur
+   ses surfaces sombres : la séance au coin de la lampe. Les panneaux
+   parchemin deviennent des écrans luisants, l'or porte le fil temps
+   réel, le sang reste le verbe et le tour courant.
    ------------------------------------------------------------------ */
 
 :root {
@@ -46,16 +49,23 @@
   --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
 
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --shadow-card: 0 1px 2px rgba(42, 31, 20, 0.04), 0 4px 12px rgba(42, 31, 20, 0.03);
-  --shadow-raised: 0 4px 8px rgba(42, 31, 20, 0.08), 0 14px 32px rgba(42, 31, 20, 0.14);
+
+  /* La nuit : ombres chaudes et profondes, jamais de noir pur */
+  --shadow-card: 0 2px 5px rgba(16, 11, 6, 0.45), 0 12px 32px rgba(16, 11, 6, 0.4);
+  --shadow-raised: 0 4px 9px rgba(16, 11, 6, 0.5), 0 24px 56px rgba(16, 11, 6, 0.55);
+  --shadow-lamp: 0 3px 8px rgba(16, 11, 6, 0.4), 0 26px 64px rgba(16, 11, 6, 0.6);
+
+  /* Filets sur la nuit : des hairlines d'encre claire */
+  --line-night: rgba(233, 225, 212, 0.14);
+  --line-night-soft: rgba(233, 225, 212, 0.09);
 }
 
-/* Le monde est clair, comme l'app — jamais de sombre automatique */
+/* Le monde est sombre, comme la séance — jamais de bascule claire automatique */
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 }
 
-/* ---------- Base ---------- */
+/* ---------- Base : la nuit, éclairée de la table ---------- */
 
 *,
 *::before,
@@ -70,16 +80,27 @@ html {
 body {
   margin: 0;
   min-height: 100%;
-  color: var(--ink-900);
+  color: var(--parchment-200);
   font-family: var(--font-body);
   font-size: 1.0625rem;
   line-height: 1.65;
-  background-color: var(--parchment-50);
+  background-color: var(--ink-900);
   background-image:
-    radial-gradient(at 20% 0%, rgba(184, 151, 90, 0.06) 0px, transparent 50%),
-    radial-gradient(at 80% 100%, rgba(122, 31, 31, 0.04) 0px, transparent 50%);
+    radial-gradient(at 18% -4%, rgba(212, 175, 55, 0.11) 0px, transparent 52%),
+    radial-gradient(at 86% 106%, rgba(139, 26, 26, 0.12) 0px, transparent 55%);
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Le vignettage de la lampe : la page est la table vue de près, la
+   lumière tombe dessus, les bords reculent dans la pièce */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 34%, transparent 46%, rgba(16, 11, 6, 0.5) 100%);
 }
 
 h1,
@@ -90,6 +111,7 @@ h3 {
   line-height: 1.2;
   margin: 0;
   text-wrap: balance;
+  color: var(--parchment-50);
 }
 
 p {
@@ -97,13 +119,13 @@ p {
 }
 
 a {
-  color: var(--blood-600);
+  color: var(--blood-200);
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
 
 a:hover {
-  color: var(--blood-500);
+  color: var(--blood-100);
 }
 
 img {
@@ -121,12 +143,13 @@ code {
 }
 
 :focus-visible {
-  outline: 2px solid var(--blood-500);
+  outline: 2px solid var(--gold-400);
   outline-offset: 2px;
 }
 
 ::selection {
-  background: var(--gold-100);
+  background: var(--gold-700);
+  color: var(--parchment-50);
 }
 
 .wrap {
@@ -148,6 +171,27 @@ code {
   letter-spacing: 0.02em;
 }
 
+/* ---------- Dé(s) — le glyphe polyédrique du site ----------
+   Face découpée au clip-path, point central par radial-gradient ;
+   la grammaire des jalons de la marge du registre, posée partout où
+   le hasard parle. */
+.die {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2.5px;
+  background-color: var(--gold-400);
+  background-image: radial-gradient(
+    circle at var(--pip-x, 50%) var(--pip-y, 50%),
+    var(--ink-900) 1.9px,
+    transparent 2px
+  );
+}
+
+.die-d20 {
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+}
+
 /* ---------- Langue du site (FR par défaut · EN au choix) ----------
    Paires [lang] dans le HTML : la langue inactive est masquée par CSS — la
    page reste intégralement lisible en français sans JS. La langue est posée
@@ -162,8 +206,8 @@ html[lang="en"] [lang="fr"] {
   display: none;
 }
 
-/* La bascule FR|EN : pilule du dock de l'app — bordée parchemin sur blanc
-   65 %, segment actif encre pleine (le sang reste réservé aux CTA) */
+/* La bascule FR|EN : pilule sombre bordée d'encre, segment actif
+   lamplit (parchemin plein) — le sang reste réservé aux CTA */
 .lang-nav {
   position: fixed;
   top: 0.9rem;
@@ -178,9 +222,9 @@ html[lang="en"] [lang="fr"] {
 
 .lang-toggle {
   display: flex;
-  border: 1px solid var(--parchment-300);
+  border: 1px solid var(--line-night);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.65);
+  background: rgba(26, 19, 12, 0.86);
   box-shadow: var(--shadow-card);
   overflow: hidden;
 }
@@ -191,7 +235,7 @@ html[lang="en"] [lang="fr"] {
   padding: 0 0.85rem;
   border: none;
   background: transparent;
-  color: var(--ink-600);
+  color: var(--ink-300);
   font-family: var(--font-display);
   font-size: 0.78rem;
   font-weight: 700;
@@ -202,27 +246,27 @@ html[lang="en"] [lang="fr"] {
 }
 
 .lang-btn:hover {
-  color: var(--ink-900);
+  color: var(--parchment-100);
 }
 
 .lang-btn.is-active {
-  background: var(--ink-800);
-  color: var(--parchment-50);
+  background: var(--parchment-100);
+  color: var(--ink-900);
 }
 
-/* ---------- Carte (surface de travail, recette .card de l'app) ---------- */
+/* ---------- Panneau (l'écran luisant sur la table) ---------- */
 
 .panel {
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid var(--parchment-200);
+  background: var(--parchment-100);
+  border: 1px solid var(--parchment-300);
   border-radius: 16px;
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-lamp);
 }
 
-/* ---------- Double règle de tête (grammaire du registre) ---------- */
+/* ---------- Double règle de tête (grammaire du registre, dorée la nuit) ---------- */
 
 .rule-head {
-  border-top: 2px solid var(--parchment-400);
+  border-top: 2px solid var(--gold-700);
 }
 
 .rule-head::after {
@@ -230,121 +274,104 @@ html[lang="en"] [lang="fr"] {
   display: block;
   height: 0;
   margin-top: 3px;
-  border-top: 1px solid var(--parchment-300);
+  border-top: 1px solid var(--line-night);
 }
 
-/* ---------- En-tête de fiche (hero) ---------- */
+/* ---------- Hero : la séance vient de commencer ----------
+   Le premier écran doit tenir la scène entière : pastille, nom, slogan,
+   offre, verbes, téléphones — et la bande FOR→CHA qui affleure le bord. */
 
 .hero {
-  padding-block: 2.5rem 3.5rem;
+  position: relative;
+  padding-block: clamp(2.1rem, 5vh, 3.4rem) clamp(1.5rem, 4vh, 2.4rem);
 }
 
-.hero-card {
-  padding: clamp(1.5rem, 4vw, 3rem);
+.hero-copy {
   display: grid;
-  gap: 2rem;
-}
-
-.hero-identity {
-  display: grid;
-  gap: 1.75rem;
-  grid-template-columns: 1fr;
+  gap: 0;
   align-items: start;
 }
 
-/* À partir du desktop, la fiche s'ouvre : identité à gauche, portrait à
-   droite — la mise en page d'une vraie feuille de personnage */
-@media (min-width: 1024px) {
-  .hero-identity {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 25rem);
-    gap: 3rem;
-  }
+/* La pastille de rencontre : mono doré, l'affichage du traqueur */
+.round-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1.1rem;
+  padding: 0.32rem 0.9rem;
+  border: 1px solid rgba(227, 199, 102, 0.32);
+  border-radius: 999px;
+  background: rgba(227, 199, 102, 0.07);
+  color: var(--gold-300);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  justify-self: start;
 }
 
-.seal {
-  width: 5.5rem;
-  height: 5.5rem;
-  margin-bottom: 1rem;
-  border-radius: 999px;
-  object-fit: cover;
-  border: 2px solid var(--parchment-300);
-  box-shadow: var(--shadow-card);
+/* le dé de la pastille se lit comme un dé, pas comme une tache */
+.round-chip .die {
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
 }
 
 .hero-name {
-  font-size: clamp(2.1rem, 5.5vw, 3.4rem);
+  font-size: clamp(2.7rem, 7vw, 4.4rem);
+  font-weight: 700;
   letter-spacing: -0.02em;
+  line-height: 1.04;
 }
 
-/* Le slogan : une ligne d'italique entre le nom et l'offre */
+/* Le slogan : une ligne d'italique doré entre le nom et l'offre */
 .hero-tagline {
-  margin-top: 0.45rem;
+  margin-top: 0.6rem;
   font-style: italic;
-  font-size: 1.08rem;
-  color: var(--ink-600);
+  font-size: clamp(1.05rem, 2vw, 1.25rem);
+  color: var(--gold-100);
 }
 
 .hero-offer {
-  margin-top: 0.9rem;
-  max-width: 34rem;
-  color: var(--ink-700);
-  font-size: 1.15rem;
+  margin-top: 0.85rem;
+  max-width: 32rem;
+  color: var(--parchment-200);
+  font-size: clamp(1rem, 1.5vw, 1.12rem);
 }
 
-/* Champs de fiche : Classe / Historique / Taille / Alignement */
-.sheet-fields {
-  margin-top: 1.4rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem 2.2rem;
-  border-top: 1px solid var(--parchment-200);
-  padding-top: 0.9rem;
-}
-
-.sheet-fields div {
-  display: flex;
-  gap: 0.5rem;
-  align-items: baseline;
-}
-
-.sheet-fields dt {
-  font-family: var(--font-display);
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  color: var(--ink-500);
-}
-
-.sheet-fields dd {
-  margin: 0;
-  font-size: 0.95rem;
-  color: var(--ink-700);
-}
-
-/* Portrait de fiche = la vraie app, dans son cadre */
-/* La paire posée sur la table : le traqueur du MD derrière, le registre du
-   joueur devant — deux écrans, une seule table, dès le premier regard */
+/* Portrait = deux téléphones posés sur la table, écrans allumés dans
+   la nuit. À partir du desktop, la fiche s'ouvre : texte à gauche,
+   téléphones à droite. */
 .portrait-pair {
   position: relative;
+  margin-top: 2.2rem;
   justify-self: center;
-  width: min(25rem, 100%);
+  width: min(20.5rem, 100%);
+}
+
+/* La lumière des écrans sur la table sombre */
+.portrait-pair::before {
+  content: "";
+  position: absolute;
+  inset: -12% -16%;
+  z-index: 0;
+  background: radial-gradient(58% 44% at 56% 40%, rgba(212, 175, 55, 0.16), transparent 72%);
+  pointer-events: none;
 }
 
 .portrait-back {
   position: absolute;
-  top: -5%;
-  left: -10%;
-  width: 66%;
+  top: -4%;
+  left: -9%;
+  width: 62%;
   transform: rotate(-8deg);
   z-index: 1;
-  box-shadow: var(--shadow-raised);
   animation: pair-back-in 0.55s var(--ease) 0.08s backwards;
 }
 
 .portrait-front {
   position: relative;
   margin-left: auto;
-  width: 80%;
+  width: 78%;
   z-index: 2;
   animation: pair-front-in 0.5s var(--ease) 0.18s backwards;
 }
@@ -375,18 +402,18 @@ html[lang="en"] [lang="fr"] {
 }
 
 .portrait-pair figcaption {
-  margin-top: 0.6rem;
+  margin-top: 0.7rem;
   text-align: center;
   font-size: 0.82rem;
-  color: var(--ink-500);
+  color: var(--ink-300);
 }
 
 .portrait-frame {
   border-radius: 20px;
-  border: 1px solid var(--parchment-300);
+  border: 1px solid rgba(233, 225, 212, 0.16);
   background: var(--parchment-100);
   padding: 8px;
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-raised);
 }
 
 .portrait-frame img {
@@ -395,13 +422,31 @@ html[lang="en"] [lang="fr"] {
   height: auto;
 }
 
+@media (min-width: 1024px) {
+  .hero-copy {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 20rem);
+    gap: 3.2rem;
+    align-items: center;
+  }
+
+  .hero-copy > :not(.portrait-pair) {
+    grid-column: 1;
+  }
+
+  .portrait-pair {
+    grid-column: 2;
+    grid-row: 1 / span 6;
+    margin-top: 0;
+  }
+}
+
 /* ---------- Boutons (membres du système de l'app) ---------- */
 
 .cta-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
-  margin-top: 1.75rem;
+  margin-top: 1.5rem;
 }
 
 .btn {
@@ -409,8 +454,8 @@ html[lang="en"] [lang="fr"] {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  min-height: 44px;
-  padding: 0.55rem 1.25rem;
+  min-height: 48px;
+  padding: 0.6rem 1.35rem;
   border-radius: 12px;
   font-weight: 500;
   font-size: 1rem;
@@ -419,6 +464,7 @@ html[lang="en"] [lang="fr"] {
   transition:
     background-color 0.2s var(--ease),
     border-color 0.2s var(--ease),
+    box-shadow 0.2s var(--ease),
     transform 0.15s var(--ease);
 }
 
@@ -426,24 +472,32 @@ html[lang="en"] [lang="fr"] {
   transform: scale(0.98);
 }
 
+/* Le verbe sang : il se soulève de la nuit, porté par sa propre lueur */
 .btn-primary {
   background: var(--blood-600);
   color: #fff;
+  box-shadow:
+    0 2px 5px rgba(101, 21, 21, 0.55),
+    0 12px 30px rgba(122, 31, 31, 0.4);
 }
 
 .btn-primary:hover {
-  background: var(--blood-700);
+  background: var(--blood-500);
   color: #fff;
+  box-shadow:
+    0 2px 5px rgba(101, 21, 21, 0.6),
+    0 16px 38px rgba(139, 26, 26, 0.5);
 }
 
 .btn-secondary {
-  background: var(--parchment-200);
-  color: var(--ink-900);
+  background: rgba(233, 225, 212, 0.07);
+  border-color: var(--line-night);
+  color: var(--parchment-100);
 }
 
 .btn-secondary:hover {
-  background: var(--parchment-300);
-  color: var(--ink-900);
+  background: rgba(233, 225, 212, 0.13);
+  color: var(--parchment-50);
 }
 
 /* Sous la tablette, les deux verbes se posent en barres pleine largeur —
@@ -462,84 +516,129 @@ html[lang="en"] [lang="fr"] {
   margin-block: -0.75em;
 }
 
-/* ---------- Caractéristiques (six tuiles) ---------- */
+/* ---------- La bande des mesures (pied du hero) ----------
+   Les quatre chiffres du SRD vivent DANS le hero : la première scène
+   porte la preuve — les comptes montent dès l'arrivée (main.js). */
 
-.abilities {
+.hero .statband {
+  border-block: none;
+  border-top: 1px solid var(--line-night);
+  background: transparent;
+  padding-block: 0;
+  padding-top: clamp(1.2rem, 3vh, 1.8rem);
+  margin-top: clamp(1.4rem, 3.5vh, 2.2rem);
+}
+
+/* ---------- Le signal de descente : le dé roule, le tour commence ---------- */
+
+.scrollcue {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: clamp(1.4rem, 3.5vh, 2.2rem);
+  padding-block: 0.7rem;
+  text-decoration: none;
+  color: var(--ink-300);
+  transition: color 0.25s var(--ease);
+}
+
+.scrollcue:hover,
+.scrollcue:focus-visible {
+  color: var(--parchment-100);
+}
+
+.scrollcue .die {
+  width: 17px;
+  height: 17px;
+  border-radius: 3.5px;
+}
+
+.scrollcue-label {
+  font-family: var(--font-display);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/* ---------- La bande des mesures (SRD monumental) ---------- */
+
+.statband {
+  padding-block: clamp(2.2rem, 5vw, 3.4rem);
+  border-block: 1px solid var(--line-night-soft);
+  background: rgba(233, 225, 212, 0.025);
+}
+
+
+.stats {
+  margin: 0;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 0.9rem;
-  border-top: 1px solid var(--parchment-200);
-  padding-top: 1.75rem;
+  gap: 1.4rem 1rem;
 }
 
-@media (min-width: 640px) {
-  .abilities {
-    grid-template-columns: repeat(3, 1fr);
+@media (min-width: 900px) {
+  .stats {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+  }
+
+  .stat {
+    border-left: 1px solid var(--line-night-soft);
+  }
+
+  .stat:first-child {
+    border-left: none;
   }
 }
 
-@media (min-width: 1024px) {
-  .abilities {
-    grid-template-columns: repeat(6, 1fr);
-  }
-}
-
-.ability {
+.stat {
   text-align: center;
-  padding: 1rem 0.6rem 1.1rem;
-  background: rgba(255, 255, 255, 0.6);
-  border: 1px solid var(--parchment-200);
-  border-radius: 12px;
+  padding-inline: 0.8rem;
 }
 
-.ability dt {
-  font-family: var(--font-display);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  color: var(--ink-500);
+@media (max-width: 899px) {
+  .stat:nth-child(n + 3) {
+    border-top: 1px solid var(--line-night-soft);
+    padding-top: 1.4rem;
+  }
 }
 
-/* Le dd UA porte margin-inline-start: 40px — sans remise à zéro, score et
-   fait se centrent dans une boîte décalée : la tuile entière penche à droite */
-.ability dd {
+.stat-value {
   margin: 0;
-}
-
-.ability .score {
-  display: block;
   font-family: var(--font-display);
-  font-size: 2.2rem;
-  font-weight: 600;
-  color: var(--ink-800);
-  line-height: 1.15;
-  margin-block: 0.15rem 0.35rem;
+  font-weight: 700;
+  /* le wordmark du hero garde la couronne : la mesure reste monumentale,
+    nettement au-dessus du corps, jamais au niveau du nom */
+  font-size: clamp(2.3rem, 5vw, 3.6rem);
+  line-height: 1.05;
+  color: var(--gold-300);
 }
 
-.ability .fact {
+.stat-label {
   display: block;
+  margin-top: 0.45rem;
   font-size: 0.82rem;
   line-height: 1.45;
-  color: var(--ink-500);
+  color: var(--ink-300);
+  max-width: 24ch;
+  margin-inline: auto;
 }
 
-/* DEX porte la différenciatrice (temps réel) : la tuile courante passe au sang */
-.ability.is-lead .score {
-  color: var(--blood-600);
-}
-
-/* ---------- Registre des capacités (sections) ---------- */
+/* ---------- Registre des capacités (sections = tours) ---------- */
 
 .entry {
-  padding-block: clamp(2.5rem, 6vw, 4.5rem);
+  padding-block: clamp(2.4rem, 5vw, 3.6rem);
+  scroll-margin-top: 1.2rem;
 }
 
 .entry-head {
   display: flex;
   align-items: baseline;
-  gap: 1rem;
+  gap: 1.1rem;
   padding-bottom: 0.9rem;
-  margin-bottom: 2rem;
+  margin-bottom: 1.7rem;
   position: relative;
 }
 
@@ -550,25 +649,25 @@ html[lang="en"] [lang="fr"] {
   left: 0;
   right: 0;
   bottom: 0;
-  border-bottom: 1px solid var(--parchment-200);
+  border-bottom: 1px solid var(--line-night);
 }
 
 .entry-ordinal {
   font-family: var(--font-display);
-  font-size: 1.25rem;
-  color: var(--ink-300);
-  min-width: 2.5rem;
+  font-size: 1.5rem;
+  color: var(--gold-300);
+  min-width: 2.7rem;
   text-align: right;
 }
 
 .entry.is-lead .entry-ordinal {
-  color: var(--blood-500);
-  font-size: 1.6rem;
+  color: var(--blood-300);
+  font-size: 1.9rem;
 }
 
 .entry-title {
-  font-size: clamp(1.35rem, 3vw, 1.75rem);
-  letter-spacing: -0.01em;
+  font-size: clamp(1.9rem, 4vw, 2.7rem);
+  letter-spacing: -0.015em;
 }
 
 /* Variante compacte : tête de section logée dans un panneau (Repos long) */
@@ -579,19 +678,49 @@ html[lang="en"] [lang="fr"] {
 
 .entry-body {
   display: grid;
-  gap: 2rem;
+  gap: 2.2rem;
   align-items: start;
 }
 
 @media (min-width: 1024px) {
   .entry-body {
-    grid-template-columns: minmax(0, 1fr) 380px;
+    grid-template-columns: minmax(0, 1fr) 400px;
   }
 
   /* L'entrée I donne sa scène à la démo : deux colonnes égales, les panneaux
      TRAQUEUR/FICHE se posent côte à côte avec la place de respirer */
   .entry-body.with-demo {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+/* ---------- La copie en feuille (entrées à poste de consultation) ----------
+   Toutes les entrées qui vivent une histoire épinglée étalent leur copie
+   en deux colonnes de feuille : dense, réglée, lue avant l'écran. */
+
+@media (min-width: 900px) {
+  .entry-copy--folio {
+    max-width: none;
+  }
+
+  .entry-copy--folio .subentries {
+    columns: 2;
+    column-gap: 3.5rem;
+  }
+
+  .entry-copy--folio .subentries li {
+    break-inside: avoid;
+  }
+}
+
+/* ---------- Mobile : casser le tunnel de téléphones ----------
+   Pleine largeur, chaque capture avalerait l'écran ; on les garde un
+   souffle en dessous du bord pour que la page respire entre deux tours. */
+@media (max-width: 639px) {
+  .shot-pair .shot {
+    max-width: 340px;
+    margin-inline: auto;
+    width: 100%;
   }
 }
 
@@ -603,13 +732,13 @@ html[lang="en"] [lang="fr"] {
   max-width: 62ch;
 }
 
-/* Preuves mesurées : tampons mono sur parchemin */
+/* Preuves mesurées : tampons mono sur la nuit */
 .proof {
   list-style: none;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin: 1.4rem 0 0;
+  margin: 1.3rem 0 0;
   padding: 0;
 }
 
@@ -617,14 +746,18 @@ html[lang="en"] [lang="fr"] {
   font-family: var(--font-mono);
   font-size: 0.78rem;
   letter-spacing: 0.05em;
-  color: var(--ink-700);
-  background: var(--parchment-100);
-  border: 1px solid var(--parchment-200);
+  color: var(--parchment-200);
+  background: rgba(233, 225, 212, 0.05);
+  border: 1px solid var(--line-night-soft);
   border-radius: 8px;
   padding: 0.3rem 0.6rem;
 }
 
-/* Sous-entrées réglées : à même le parchemin, séparées par des filets */
+/* Sous-entrées réglées : à même la nuit, séparées par des filets.
+   La copie feuille SUIT L'ÉCRAN : pendant l'histoire de son entrée, la
+   sous-entrée correspondant à la vue affichée porte l'encre pleine et le
+   dé or (la grammaire du tour de table), les autres s'estompent d'un
+   cran SANS perdre le plancher de contraste (ink-300 ≈ 5,5:1). */
 .subentries {
   list-style: none;
   margin: 0;
@@ -632,44 +765,78 @@ html[lang="en"] [lang="fr"] {
 }
 
 .subentries li {
-  padding-block: 1.4rem;
-  border-bottom: 1px solid var(--parchment-200);
+  padding-block: 1.05rem;
+  border-bottom: 1px solid var(--line-night-soft);
+  transition: color 0.35s var(--ease);
 }
 
 .subentries li:first-child {
-  padding-top: 0.2rem;
+  padding-top: 0.15rem;
+}
+
+.subentries li.is-sync-dim h3,
+.subentries li.is-sync-dim p {
+  color: var(--ink-300);
+}
+
+.subentries li.is-current h3 {
+  color: var(--parchment-50);
+}
+
+.subentries li.is-current p {
+  color: var(--parchment-200);
+}
+
+/* le dé or marque la sous-entrée qui joue — le jalon du tour courant */
+.subentries li.is-current h3::before {
+  content: "";
+  display: inline-block;
+  vertical-align: baseline;
+  width: 11px;
+  height: 11px;
+  margin-right: 0.5rem;
+  border-radius: 2.5px;
+  background-color: var(--gold-400);
+  background-image: radial-gradient(
+    circle at 50% 50%,
+    var(--ink-900) 1.8px,
+    transparent 1.9px
+  );
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
 }
 
 .subentries h3 {
-  font-size: 1.1rem;
+  font-size: 1.2rem;
   margin-bottom: 0.45rem;
 }
 
 .subentries p {
-  color: var(--ink-700);
+  color: var(--parchment-200);
   font-size: 1rem;
 }
 
-/* ---------- Captures en cadre téléphone ---------- */
+/* ---------- Captures en cadre téléphone : des écrans dans la nuit ---------- */
 
-/* Toute série multi-captures vit en poste de consultation (.phonepost) ;
-   .shot reste l'exception d'une capture unique (entrée I) */
 .shot {
   margin: 0;
 }
 
-/* La capture sous la démo (entrée I) garde la mesure des autres cadres
-   téléphone — posée après .shot pour éviter la spécificité descendante */
-@media (min-width: 1024px) {
-  .entry-body.with-demo .shot {
-    max-width: 380px;
-    margin-inline: auto;
+.shot-pair {
+  display: grid;
+  gap: 1.2rem;
+  margin-top: 1.4rem;
+}
+
+@media (min-width: 640px) {
+  .shot-pair {
+    grid-template-columns: 1fr 1fr;
+    gap: 1.6rem;
   }
 }
 
 .shot-frame {
   border-radius: 30px;
-  border: 1px solid var(--parchment-300);
+  border: 1px solid rgba(233, 225, 212, 0.16);
   background: var(--parchment-100);
   padding: 9px;
   box-shadow: var(--shadow-card);
@@ -693,22 +860,90 @@ html[lang="en"] [lang="fr"] {
   margin-top: 0.55rem;
   text-align: center;
   font-size: 0.8rem;
-  color: var(--ink-500);
+  color: var(--ink-300);
+}
+
+/* ----- Les grandes vues s'écrivent aussi -----
+   Les captures tablette et bureau vivent la même plume que les histoires :
+   quand la vue élargie entre à l'écran, la capture S'ÉCRIT sous le
+   balayage d'encre diagonal, le front or chevauchant le bord — le cadre
+   (matelas, barre de fenêtre) reste posé, seul l'ÉCRAN s'encre, comme le
+   poste de consultation. Déclenché une fois par figure : l'encre sèche,
+   remonter ne réécrit pas la grande vue. */
+.js .entry-wide .shot-frame {
+  position: relative;
+}
+
+.deskframe-screen {
+  position: relative;
+}
+
+.js .entry-wide .shot-frame::after,
+.js .entry-wide .deskframe-screen::after {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border-radius: 21px;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 2;
+}
+
+.js .entry-wide .deskframe-screen::after {
+  inset: 0;
+  border-radius: 8px;
+}
+
+.js .entry-wide .shot-frame img,
+.js .entry-wide .deskframe img {
+  opacity: 0;
+}
+
+.js .entry-wide.reveal.is-risen .shot-frame img,
+.js .entry-wide.reveal.is-risen .deskframe img {
+  opacity: 1;
+  animation: wide-ink 0.6s var(--ease) both;
+  mask-image: linear-gradient(
+    104deg,
+    #000 calc(var(--story-ink) - 22%),
+    rgba(0, 0, 0, 0.35) calc(var(--story-ink) - 7%),
+    transparent var(--story-ink)
+  );
+}
+
+@keyframes wide-ink {
+  from {
+    --story-ink: -12%;
+  }
+  to {
+    --story-ink: 150%;
+  }
+}
+
+.js .entry-wide.reveal.is-risen .shot-frame::after,
+.js .entry-wide.reveal.is-risen .deskframe-screen::after {
+  opacity: 1;
+  background: linear-gradient(
+    104deg,
+    transparent calc(var(--story-edge) - 3%),
+    rgba(212, 175, 55, 0.75) var(--story-edge),
+    rgba(246, 236, 210, 0.5) calc(var(--story-edge) + 0.8%),
+    transparent calc(var(--story-edge) + 4%)
+  );
+  animation: ink-edge 0.6s var(--ease) both;
 }
 
 /* ---------- Vues élargies : la tablette du joueur, l'écran du MD ----------
-   La même app sur un plus grand verre : la fiche du joueur posée à plat sur
-   tablette (23 en portrait, 25 en paysage sans dock) et la rencontre du MD
-   entière sur ordinateur (24). Les vues vivent sous le poste de consultation
-   de leur entrée, pleine largeur (`.entry-wide`, `grid-column: 1/-1`). */
+   La même app sur un plus grand verre, posée pleine largeur sous le poste
+   de consultation de son entrée (`.entry-wide`, `grid-column: 1/-1`). */
 
 .entry-wide {
   grid-column: 1 / -1;
+  margin-top: 1.4rem;
 }
 
 /* La paire tablette : le portrait (Caractéristiques) et le paysage (Survie)
-   côte à côte, le vocabulaire du cadre téléphone simplement posé plus large.
-   Sous ~50rem d'air, la paire se replie empilée, centrée */
+   côte à côte. Sous ~50rem d'air, la paire se replie empilée, centrée */
 .tablet-pair {
   display: flex;
   flex-wrap: wrap;
@@ -729,7 +964,7 @@ html[lang="en"] [lang="fr"] {
   flex: 0 1 30rem;
 }
 
-/* L'ordinateur du MD : une fenêtre de navigateur — trois pastilles parchemin,
+/* L'ordinateur du MD : une fenêtre de navigateur — trois pastilles d'encre,
    l'adresse en mono, comme le terminal du Repos long parle au MD qui héberge */
 .shot-desk {
   max-width: 56rem;
@@ -738,7 +973,7 @@ html[lang="en"] [lang="fr"] {
 
 .deskframe {
   border-radius: 14px;
-  border: 1px solid var(--parchment-300);
+  border: 1px solid rgba(233, 225, 212, 0.16);
   background: var(--parchment-100);
   padding: 0.45rem;
   box-shadow: var(--shadow-card);
@@ -768,7 +1003,7 @@ html[lang="en"] [lang="fr"] {
   width: 0.55rem;
   height: 0.55rem;
   border-radius: 999px;
-  background: var(--parchment-300);
+  background: var(--parchment-400);
 }
 
 .deskframe-url {
@@ -792,9 +1027,12 @@ html[lang="en"] [lang="fr"] {
   height: auto;
 }
 
-/* ---------- Le poste de consultation (saisons de captures ≥ 3) ----------
-   Un seul téléphone vivant : les vues superposées dans le cadre, un dock de
-   pilules dessous — le vocabulaire du dock de l'app, la pile remplacée. */
+/* ---------- Le poste épinglé (séries de captures = histoires) ----------
+   Chaque série de captures vit en HISTOIRE ÉPINGLÉE : le téléphone prend
+   la hauteur de l'écran, le défilement y reste captif pendant que les vues
+   se suivent une à une — la page ne repart qu'après la dernière vue. Sans
+   JS (ou en mouvement réduit), le poste redevient classique : grand cadre
+   posé, dock de pilules, bascule directe. */
 .phonepost {
   margin: 0;
   display: grid;
@@ -802,23 +1040,409 @@ html[lang="en"] [lang="fr"] {
   justify-items: center;
 }
 
+.story {
+  display: block;
+  width: 100%;
+}
+
+.story-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.1rem;
+  padding-block: 1rem;
+}
+
+.story-side {
+  max-width: 40ch;
+  /* mobile : la légende vit SOUS le téléphone — elle suit l'écran, la
+     voix juste après l'image ; au bureau elle regagne la narration à
+     gauche (ordre rétabli dans le media query ≥1024px) */
+  order: 2;
+}
+
+.story-phone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.8rem;
+  width: 100%;
+}
+
+/* Sans JS : toutes les vues se lisent — l'écran devient un bandeau vertical
+   de captures posées les unes sous les autres, le dock (inerte sans JS)
+   disparaît. Rien de la série ne manque au visiteur sans JavaScript. */
+html:not(.js) .story .phonepost-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+html:not(.js) .story .phonepost-view {
+  position: static;
+  grid-area: auto;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+html:not(.js) .story .phonepost-dock {
+  display: none;
+}
+
+.story:not(.story--wide) .shot-frame {
+  width: min(24rem, 100%);
+}
+
+.story-track {
+  display: none;
+}
+
+/* ----- Les histoires LARGES (tablette, fenêtres bureau) -----
+   Même épinglage, même encre — mais le média vit dans un SLOT : une pile
+   grid centrée dont l'empreinte est celle de la PLUS GRANDE vue. Chaque
+   capture s'y centre à son aspect naturel : quand une tablette portrait
+   se change en paysage, le mobilier de la scène (slot, rail, dock, voix,
+   légende) NE BOUGE PAS — les vues se fondent sous l'encre, tailles
+   différentes comprises. Le front or chevauche le slot entier : mobilier
+   de scène, géométrie fixe. */
+.story--wide .story-slot {
+  width: 100%;
+}
+
+.story--wide .story-slot-frame {
+  max-width: 100%;
+}
+
+.story--wide .phonepost-view {
+  place-self: center;
+}
+
+.story--wide .phonepost-view .shot-frame,
+.story--wide .phonepost-view .deskframe {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.story--wide .phonepost-view img {
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Plafond de hauteur CALIBRÉ par main.js (--img-cap) : la scène mesure
+   son propre chrome (paddings, écarts, rail, dock, chrome du cadre,
+   bloc texte réservé) et soustrait — la colonne ne déborde JAMAIS le
+   stage, le flex ne comprime rien, le centrage ne bouge pas d'une vue
+   à l'autre. Recalibré au resize, aux fontes et à la langue. */
+.js .story--wide .phonepost-view img {
+  max-width: min(92vw, 62rem);
+  max-height: var(--img-cap, 26rem);
+}
+
+.story--wide .story-slot-frame,
+.story--wide .story-side {
+  flex-shrink: 0;
+}
+
+/* l'histoire large reste en colonne à toute largeur : la voix et la
+   légende se tiennent SOUS la fenêtre, la scène au monde entier.
+   Le centrage vit sur le SLOT SEUL (margin auto, colonne ancrée en
+   haut) : sa position ne dépend que du bloc texte réservé et de sa
+   propre hauteur constante — le recentrage vertical ne peut plus
+   dériver d'une vue à l'autre. */
+.story--wide .story-stage {
+  flex-direction: column;
+}
+
+.js .story--wide .story-stage {
+  justify-content: flex-start;
+}
+
+.js .story--wide .story-slot {
+  margin-block: auto;
+}
+
+/* La hauteur du bloc texte est RÉSERVÉE (main.js mesure la pire des
+   sous-entrées → --text-h) : le paragraphe change d'une vue à l'autre,
+   la pile centrée ne se recentre jamais — l'écran ne bouge pas. */
+.story--wide .story-side {
+  order: 2;
+  max-width: 52ch;
+}
+
+.js .story--wide .story-side {
+  height: var(--text-h, auto);
+}
+
+/* le front d'encre du slot large : il chevauche toute la scène */
+.story--wide .story-slot-frame::after {
+  inset: 0;
+  border-radius: 18px;
+}
+
+/* Le téléphone devient la taille de l'écran : le cadre vise la hauteur du
+   viewport, amputée du dock, du rail et de la légende qui vivent dessous.
+   dvh quand le moteur le parle (la barre d'adresse iOS ne mange plus le
+   bas de l'écran), vh pour les autres */
+.js .story {
+  height: calc(100vh + var(--views, 3) * 70vh);
+  height: calc(100dvh + var(--views, 3) * 70vh);
+}
+
+.js .story-stage {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100dvh;
+}
+
+.js .story:not(.story--wide) .shot-frame {
+  width: min(24rem, 100%, calc((100vh - 13rem) * 0.4621));
+  width: min(24rem, 100%, calc((100dvh - 13rem) * 0.4621));
+}
+
+/* La bande du tour peut chevaucher le bas de l'écran mobile : le centre de
+   gravité de l'histoire remonte d'un souffle pour lui laisser la place */
+@media (max-width: 1359px) {
+  .js .story-stage {
+    padding-bottom: 4.5rem;
+  }
+}
+
+/* Au bureau, la légende devient NARRATION : la voix de la section (h3 +
+   paragraphe de la vue courante) et la légende se tiennent à gauche du
+   téléphone, alignées à gauche pour la lecture — la captivité du regard
+   reste à l'écran. Les histoires larges restent en colonne (règle
+   dédiée plus haut) : leur média occupe toute la scène. */
+@media (min-width: 1024px) {
+  .story:not(.story--wide) .story-stage {
+    flex-direction: row;
+    gap: 4rem;
+  }
+
+  .story:not(.story--wide) .story-side {
+    order: 0;
+    max-width: 21rem;
+    text-align: left;
+  }
+
+  /* en narration, la légende respire toute la largeur de sa colonne —
+    le plafond 34ch du mobile la scalperait de moitié */
+  .story-side .phonepost-caption {
+    max-width: none;
+  }
+
+  .story-phone {
+    width: auto;
+  }
+}
+
+/* Le rail d'histoire : un segment par vue, le remplissage doré suit le
+   doigt — la grammaire des stories, au fil de la plume. Le rail large
+   suit la scène entière */
+.js .story:not(.story--wide) .story-track {
+  display: flex;
+  gap: 0.3rem;
+  width: min(24rem, 100%, calc((100vh - 13rem) * 0.4621));
+  width: min(24rem, 100%, calc((100dvh - 13rem) * 0.4621));
+}
+
+.js .story--wide .story-track {
+  display: flex;
+  gap: 0.3rem;
+  width: min(48rem, 100%);
+}
+
+.story-seg {
+  flex: 1;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--ink-700);
+  overflow: hidden;
+}
+
+.story-seg i {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: var(--gold-400);
+}
+
+/* Mouvement réduit : pas de captivité — le poste redevient un grand cadre
+   posé, les pilules basculent les vues directement. Repli calme (vieux
+   moteur sans observateur) : même poste posé. */
+@media (prefers-reduced-motion: reduce) {
+  .js .story {
+    height: auto;
+  }
+
+  .js .story-stage {
+    position: static;
+    height: auto;
+  }
+}
+
+.js .story.is-calm {
+  height: auto;
+}
+
+.js .story.is-calm .story-stage {
+  position: static;
+  height: auto;
+}
+
+.js .story.is-calm .story-track {
+  display: none;
+}
+
 .phonepost-screen {
   display: grid;
   overflow: hidden;
+  position: relative;
 }
 
 .phonepost-view {
   grid-area: 1 / 1;
   opacity: 0;
-  transform: translateY(6px);
-  transition:
-    opacity 0.25s var(--ease),
-    transform 0.25s var(--ease);
+  transition: opacity 0.3s var(--ease);
 }
 
 .phonepost-view.is-active {
   opacity: 1;
-  transform: translateY(0);
+}
+
+/* ----- L'encre tourne la page -----
+   Le changement de vue d'une histoire est le geste signé de la surface :
+   la nouvelle capture S'ÉCRIT sous un balayage d'encre diagonal (la plume
+   du registre, portée à l'écran), un front or court au bord de l'écran,
+   et la vue sortante s'efface SOUS l'encre — géométrie immobile : deux
+   captures consécutives partagent leur chrome d'app, le moindre glissement
+   se lirait en tremblement. Seuls le masque et le fondu bougent.
+   La légende suit la plume (même balayage, même rythme). Le tout ne vit
+   que si JS arme la classe .is-inking (main.js la repose à chaque
+   changement de vue). */
+@property --story-ink {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 150%;
+}
+
+@property --story-edge {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 150%;
+}
+
+@property --story-cap {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 150%;
+}
+
+.js .phonepost-view.is-active {
+  animation: view-ink 0.5s var(--ease) both;
+  mask-image: linear-gradient(
+    104deg,
+    #000 calc(var(--story-ink) - 26%),
+    rgba(0, 0, 0, 0.35) calc(var(--story-ink) - 8%),
+    transparent var(--story-ink)
+  );
+}
+
+@keyframes view-ink {
+  0% {
+    --story-ink: -14%;
+  }
+  100% {
+    --story-ink: 150%;
+  }
+}
+
+/* Le front or : un éclat oblique qui chevauche le bord du balayage — la
+   comète de braise du splash, au bord de la page qui s'écrit */
+.phonepost-screen::after {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border-radius: 21px;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 2;
+}
+
+.js .phonepost.is-inking .phonepost-screen::after {
+  opacity: 1;
+  background: linear-gradient(
+    104deg,
+    transparent calc(var(--story-edge) - 3%),
+    rgba(212, 175, 55, 0.75) var(--story-edge),
+    rgba(246, 236, 210, 0.5) calc(var(--story-edge) + 0.8%),
+    transparent calc(var(--story-edge) + 4%)
+  );
+  animation: ink-edge 0.5s var(--ease) both;
+}
+
+@keyframes ink-edge {
+  0% {
+    --story-edge: -14%;
+  }
+  100% {
+    --story-edge: 150%;
+  }
+}
+
+/* La voix de l'histoire : la sous-entrée de la section correspondant à la
+   vue affichée, clonée dans la narration (main.js). Le texte canonique
+   reste la copie feuille — la narration est aria-hidden. Bureau : h3 +
+   paragraphe ; mobile : h3 seul (le paragraphe ne tiendrait pas sous le
+   téléphone), la copie feuille au-dessus porte le texte entier. */
+.story-voice {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.story-voice h3 {
+  font-size: 1.15rem;
+  color: var(--parchment-50);
+}
+
+.story-voice p {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--parchment-200);
+}
+
+.story-voice + .phonepost-caption {
+  margin-top: 0.35rem;
+}
+
+@media (max-width: 1023px) {
+  .story-voice p {
+    display: none;
+  }
+}
+
+/* La narration suit la plume : la colonne entière (voix + légende) s'écrit
+   avec la vue — même balayage diagonal, même angle, même rythme que
+   l'écran, la plume plus large pour les lettres */
+.js .phonepost.is-inking .story-side {
+  animation: caption-ink 0.5s var(--ease) both;
+  mask-image: linear-gradient(
+    104deg,
+    #000 calc(var(--story-cap) - 40%),
+    transparent var(--story-cap)
+  );
+}
+
+@keyframes caption-ink {
+  from {
+    --story-cap: -20%;
+  }
+  to {
+    --story-cap: 150%;
+  }
 }
 
 .phonepost-dock {
@@ -831,9 +1455,9 @@ html[lang="en"] [lang="fr"] {
 .phonepost-dock button {
   font: inherit;
   font-size: 0.8rem;
-  color: var(--ink-700);
-  background: rgba(255, 255, 255, 0.65);
-  border: 1px solid var(--parchment-300);
+  color: var(--parchment-200);
+  background: rgba(233, 225, 212, 0.05);
+  border: 1px solid var(--line-night-soft);
   border-radius: 999px;
   min-height: 44px;
   padding: 0.35rem 0.9rem;
@@ -845,13 +1469,13 @@ html[lang="en"] [lang="fr"] {
 }
 
 .phonepost-dock button:hover {
-  background: var(--parchment-100);
+  background: rgba(233, 225, 212, 0.11);
 }
 
 .phonepost-dock button.is-active {
-  background: var(--ink-800);
-  border-color: var(--ink-800);
-  color: var(--parchment-50);
+  background: var(--parchment-100);
+  border-color: var(--parchment-100);
+  color: var(--ink-900);
 }
 
 .phonepost-caption {
@@ -859,23 +1483,33 @@ html[lang="en"] [lang="fr"] {
   text-align: center;
   font-size: 0.85rem;
   font-style: italic;
-  color: var(--ink-500);
-  min-height: 2.6em;
+  color: var(--ink-300);
   max-width: 34ch;
+  /* Hauteur FIXE, mesurée sur la pire légende FR+EN (3 lignes, 67px) :
+     la hauteur du bloc ne change jamais d'un texte à l'autre — la pile
+     centrée de l'histoire ne se recentre pas, l'écran ne bouge pas d'un
+     pixel quand la voix change. Fallback em pour les moteurs sans lh
+     (3 × 1,65em) ; lh vit dans le plancher navigateur du projet. */
+  height: 4.95em;
+  height: 3lh;
 }
 
-/* ---------- Démo temps réel (I) ---------- */
+/* ---------- Démo temps réel (I) : la frappe rayonne ---------- */
 
 .demo {
   padding: 1.4rem;
   display: grid;
   gap: 1.1rem;
+  color: var(--ink-900);
+}
+
+.demo h4,
+.demo .demo-note {
+  color: var(--ink-500);
 }
 
 /* Placement explicite : sans lui, le fil (1/-1) entre les deux panneaux dans
-   l'ordre du DOM les empilerait en colonnes même en grille deux colonnes.
-   Sélecteurs nus (sans .demo) : même spécificité que leurs bases plus bas,
-   l'ordre du fichier tranche. */
+   l'ordre du DOM les empilerait en colonnes même en grille deux colonnes */
 @media (min-width: 640px) {
   .demo {
     grid-template-columns: 1fr 1fr;
@@ -902,7 +1536,7 @@ html[lang="en"] [lang="fr"] {
 .demo-panel {
   border: 1px solid var(--parchment-200);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.6);
   padding: 1rem 1.1rem;
   display: flex;
   flex-direction: column;
@@ -1050,11 +1684,12 @@ html[lang="en"] [lang="fr"] {
   margin: 0;
 }
 
-/* Fil reliant les deux panneaux (le WebSocket, littéralement) */
+/* Le fil : le WebSocket, littéralisé — un trait pointillé OR entre les deux
+   écrans, et l'étincelle qui le parcourt quand le MD frappe */
 .wire {
   grid-column: 1 / -1;
   height: 0;
-  border-top: 1px dashed var(--parchment-400);
+  border-top: 1px dashed rgba(212, 175, 55, 0.55);
   position: relative;
   overflow: visible;
   margin-block: 0.2rem;
@@ -1064,18 +1699,45 @@ html[lang="en"] [lang="fr"] {
   content: "temps réel";
   position: absolute;
   left: 50%;
-  top: -0.7em;
+  top: -0.85em;
   transform: translateX(-50%);
-  background: var(--parchment-50);
-  padding-inline: 0.6rem;
-  font-size: 0.72rem;
+  background: var(--ink-800);
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  border-radius: 999px;
+  padding-inline: 0.65rem;
+  font-size: 0.7rem;
   font-style: italic;
-  color: var(--ink-500);
+  color: var(--gold-300);
 }
 
 /* L'étiquette du fil (content CSS) suit la langue du document */
 html[lang="en"] .wire::after {
   content: "real time";
+}
+
+/* L'étincelle : part du traqueur, porte la frappe jusqu'à la fiche —
+   la distance exacte du fil est posée par main.js au coup (--travel) */
+.wire .spark {
+  position: absolute;
+  top: -4.5px;
+  left: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--gold-400);
+  box-shadow:
+    0 0 0 3px rgba(212, 175, 55, 0.22),
+    0 2px 5px rgba(16, 11, 6, 0.45);
+  opacity: 0;
+  transform: translateX(-10px) scale(0.7);
+  transition:
+    transform 0.42s var(--ease),
+    opacity 0.18s linear;
+}
+
+.wire .spark.is-running {
+  opacity: 1;
+  transform: translateX(var(--travel, 300px)) scale(1);
 }
 
 /* ---------- Personnalité (quadrants de fiche) ---------- */
@@ -1093,9 +1755,9 @@ html[lang="en"] .wire::after {
 }
 
 .personality article {
-  border: 1px solid var(--parchment-200);
+  border: 1px solid var(--line-night-soft);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.6);
+  background: rgba(233, 225, 212, 0.035);
   padding: 1.1rem 1.25rem;
 }
 
@@ -1103,21 +1765,28 @@ html[lang="en"] .wire::after {
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.16em;
-  color: var(--ink-500);
+  color: var(--gold-300);
   margin-bottom: 0.5rem;
 }
 
 .personality p {
   font-size: 1rem;
-  color: var(--ink-700);
+  color: var(--parchment-200);
 }
 
-/* ---------- Repos long (auto-hébergement) ---------- */
+/* ---------- Repos long (auto-hébergement) ----------
+   Le panneau lamplit : le seul grand îlot de parchemin après le hero —
+   le repas de fin de séance, près de la lampe. Le terminal y creuse
+   sa fenêtre sombre. */
 
 .deploy {
   padding: clamp(1.5rem, 4vw, 2.5rem);
   display: grid;
+  /* piste bornée dès le mobile : une piste auto implicite s'étire à la
+     ligne mono la plus longue du terminal et fait sortir la page */
+  grid-template-columns: minmax(0, 1fr);
   gap: 1.75rem;
+  color: var(--ink-800);
 }
 
 @media (min-width: 1024px) {
@@ -1127,6 +1796,24 @@ html[lang="en"] .wire::after {
   }
 }
 
+/* La typographie du panneau redevient encre sur parchemin */
+.deploy .entry-title {
+  color: var(--ink-900);
+}
+
+.deploy .entry-ordinal {
+  color: var(--gold-700);
+}
+
+.deploy .entry-head::after {
+  border-bottom-color: var(--parchment-300);
+}
+
+.deploy p,
+.deploy .deploy-notes li {
+  color: var(--ink-700);
+}
+
 .deploy-cta {
   display: flex;
   flex-wrap: wrap;
@@ -1134,12 +1821,29 @@ html[lang="en"] .wire::after {
   margin-top: 1.5rem;
 }
 
+/* Dans le panneau lamplit, le verbe secondaire redevient parchemin */
+.deploy .btn-secondary {
+  background: var(--parchment-200);
+  border-color: var(--parchment-200);
+  color: var(--ink-900);
+  box-shadow: none;
+}
+
+.deploy .btn-secondary:hover {
+  background: var(--parchment-300);
+  color: var(--ink-900);
+}
+
 .terminal {
   border-radius: 12px;
-  border: 1px solid var(--parchment-300);
+  border: 1px solid var(--ink-700);
   background: var(--ink-900);
   color: var(--ink-100);
   overflow: hidden;
+  box-shadow: var(--shadow-card);
+  /* item de grille : sans ce min-width, la ligne mono la plus longue du
+     terminal impose sa largeur mini à la piste et fait sortir la page */
+  min-width: 0;
 }
 
 .terminal-bar {
@@ -1210,14 +1914,24 @@ html[lang="en"] .wire::after {
   border-bottom: none;
 }
 
-/* ---------- Pied de page ---------- */
+/* ---------- Pied de page : la fin de séance ---------- */
 
 .site-footer {
   padding-block: 2.5rem 3.5rem;
 }
 
 .site-footer .rule-head {
-  margin-bottom: 1.6rem;
+  margin-bottom: 1.8rem;
+}
+
+/* La phrase de clôture : la lampe baisse, la table attend */
+.footer-close {
+  text-align: center;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  color: var(--parchment-50);
+  margin-bottom: 2.2rem;
 }
 
 .footer-cols {
@@ -1236,14 +1950,14 @@ html[lang="en"] .wire::after {
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.16em;
-  color: var(--ink-500);
+  color: var(--gold-300);
   margin-bottom: 0.55rem;
 }
 
 .site-footer p,
 .site-footer li {
   font-size: 0.92rem;
-  color: var(--ink-500);
+  color: var(--ink-300);
 }
 
 .site-footer ul {
@@ -1259,7 +1973,7 @@ html[lang="en"] .wire::after {
   display: flex;
   align-items: center;
   gap: 0.8rem;
-  color: var(--ink-500);
+  color: var(--ink-300);
   font-size: 0.85rem;
 }
 
@@ -1267,17 +1981,16 @@ html[lang="en"] .wire::after {
   width: 2.2rem;
   height: 2.2rem;
   border-radius: 999px;
-  border: 1px solid var(--parchment-300);
+  border: 1px solid var(--line-night);
 }
 
 /* ---------- La marge du registre (fil de lecture, ≥1360px) ----------
    Une règle d'encre descend la marge gauche au fil du défilement — la
-   plume (losange or) en pointe — et chaque entrée du registre y porte son
-   ordinal, cliquable : passée en encre, courante en or, l'entrée courante
-   du registre (I) en sang. Bâtie par main.js (rien sans JS), invisible
-   sous 1360px : la marge n'existe qu'au bureau, et les ordinaux y sont
-   LISIBLES (retour utilisateur : à 0.66rem ils se lisaient en tache).
-   Elle ne s'anime pas d'elle-même, elle ne fait que suivre le défilement. */
+   plume (dé or) en pointe — et chaque entrée du registre y porte son
+   ordinal, cliquable : à venir en encre pâle, passée en parchemin,
+   courante en clair, l'entrée I en sang. Bâtie par main.js (rien sans
+   JS), invisible sous 1360px. Elle ne s'anime pas d'elle-même, elle ne
+   fait que suivre le défilement. */
 
 main {
   position: relative;
@@ -1298,14 +2011,13 @@ main {
   }
 }
 
-/* La règle : piste or-parchemin LISIBLE (une piste trop pâle se lit en
-   rayure), remplissage encre — la hauteur suit la ligne de lecture
-   (milieu du viewport), posée par main.js */
+/* La règle : piste d'encre LISIBLE, remplissage doré — la hauteur suit la
+   ligne de lecture (milieu du viewport), posée par main.js */
 .toc-line {
   position: absolute;
   left: -1px;
   width: 2px;
-  background: var(--parchment-500);
+  background: var(--ink-700);
 }
 
 .toc-fill {
@@ -1313,13 +2025,12 @@ main {
   inset: 0;
   transform: scaleY(var(--toc-progress, 0));
   transform-origin: top center;
-  background: var(--ink-600);
+  background: var(--gold-700);
 }
 
 /* La plume voyageuse : or, elle chevauche la pointe du remplissage. Nue,
    c'est la plume (losange) ; dès qu'une entrée est passée elle PREND LA
-   FORME DU DERNIER DÉ franchi (main.js pose .is-die + le type) — la plume
-   écrit, puis devient le jeu */
+   FORME DU DERNIER DÉ franchi (main.js pose .is-die + le type) */
 .toc-nib {
   position: absolute;
   left: -7.5px;
@@ -1328,7 +2039,7 @@ main {
   margin-top: -7.5px;
   rotate: 45deg;
   background: var(--gold-400);
-  box-shadow: var(--shadow-card);
+  box-shadow: 0 1px 3px rgba(16, 11, 6, 0.5);
 }
 
 .toc-nib.is-die {
@@ -1336,11 +2047,10 @@ main {
   box-shadow: none;
   background-image: radial-gradient(
     circle at var(--pip-x, 50%) var(--pip-y, 50%),
-    var(--ink-800) 2.4px,
+    var(--ink-900) 2.4px,
     transparent 2.5px
   );
-  /* l'ombre suit la silhouette découpée (box-shadow serait rogné) */
-  filter: drop-shadow(0 1px 2px rgba(42, 31, 20, 0.3));
+  filter: drop-shadow(0 1px 3px rgba(16, 11, 6, 0.55));
 }
 
 .toc-nib.is-d4,
@@ -1376,16 +2086,14 @@ main {
   clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
 }
 
-/* Chaque entrée : l'ordinal à gauche de la règle, le losange SUR la règle.
-   La cible tactile est l'ancre entière (~44px), pas le seul chiffre.
-   Taille de LECTURE, pas de marge délicate : 0.95rem Cinzel 700 — retour
-   utilisateur deux fois « illisible » à 0.66 puis 0.82rem */
+/* Chaque entrée : l'ordinal à gauche de la règle, le dé SUR la règle.
+   La cible tactile est l'ancre entière (~44px), pas le seul chiffre. */
 .toc-entry {
   position: absolute;
   left: 0;
   transform: translate(-100%, -50%);
   padding: 0.9rem;
-  color: var(--ink-500);
+  color: var(--ink-300);
   text-decoration: none;
   font-family: var(--font-display);
   font-size: 0.95rem;
@@ -1397,26 +2105,26 @@ main {
 
 .toc-entry:hover,
 .toc-entry:focus-visible {
-  color: var(--ink-900);
+  color: var(--parchment-100);
 }
 
 .toc-entry.is-passed {
-  color: var(--ink-700);
+  color: var(--parchment-200);
 }
 
 .toc-entry.is-lead.is-passed {
-  color: var(--blood-500);
+  color: var(--blood-300);
 }
 
 /* L'entrée courante grossit d'un cran : elle se trouve sans la lire */
 .toc-entry.is-current {
-  color: var(--ink-900);
+  color: var(--parchment-50);
   font-size: 1.1rem;
 }
 
 /* Le titre au survol : un ordinal seul est une énigme — le nom complet
-   de l'entrée se dévoile en chip parchemin DROITE de la règle (au-dessus
-   du bord de colonne, c'est un survol), corps lisible pas Cinzel */
+   de l'entrée se dévoile en chip sombre DROITE de la règle (au-dessus
+   du bord de colonne, c'est un survol) */
 .toc-entry::after {
   content: attr(data-toc-title);
   position: absolute;
@@ -1424,11 +2132,11 @@ main {
   top: 50%;
   translate: -4px -50%;
   padding: 0.38rem 0.7rem;
-  border: 1px solid var(--parchment-300);
+  border: 1px solid var(--line-night);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.94);
+  background: rgba(26, 19, 12, 0.96);
   box-shadow: var(--shadow-card);
-  color: var(--ink-800);
+  color: var(--parchment-100);
   font-family: var(--font-body);
   font-size: 0.85rem;
   font-weight: 400;
@@ -1447,11 +2155,9 @@ main {
   translate: 0 -50%;
 }
 
-/* Les jalons sont des DÉS, UN TYPE PAR ENTRÉE (main.js pose .is-d4…is-d20,
-   cycle ascendant de la série polyédrique) : face découpée au clip-path,
-   point central par radial-gradient positionné au centre de gravité de la
-   forme. Le jalon ROULE au fil du défilement (ci-dessous, scroll-driven),
-   sa couleur dit son état. La plume, elle, devient le dernier dé passé */
+/* Les jalons sont des DÉS, UN TYPE PAR ENTRÉE : face découpée au
+   clip-path, point central par radial-gradient. Le jalon ROULE au fil
+   du défilement (ci-dessous, scroll-driven), sa couleur dit son état */
 .toc-tick {
   position: absolute;
   right: -6.5px;
@@ -1460,10 +2166,10 @@ main {
   width: 13px;
   height: 13px;
   border-radius: 3px;
-  background-color: var(--parchment-500);
+  background-color: var(--ink-600);
   background-image: radial-gradient(
     circle at var(--pip-x, 50%) var(--pip-y, 50%),
-    var(--tick-pip, var(--ink-700)) 2.1px,
+    var(--tick-pip, var(--parchment-200)) 2.1px,
     transparent 2.2px
   );
   transition:
@@ -1472,8 +2178,8 @@ main {
 }
 
 .toc-entry.is-passed .toc-tick {
-  background-color: var(--ink-600);
-  --tick-pip: var(--parchment-100);
+  background-color: var(--parchment-300);
+  --tick-pip: var(--ink-900);
 }
 
 .toc-entry.is-lead.is-passed .toc-tick {
@@ -1481,20 +2187,17 @@ main {
   --tick-pip: var(--blood-50);
 }
 
-/* .margin-toc porte le sélecteur au-dessus du cas lead-passé (0,4,0) :
-   l'entrée courante garde son dé or MÊME sur l'entrée I en sang */
+/* .margin-toc porte le sélecteur au-dessus du cas lead-passé : l'entrée
+   courante garde son dé or MÊME sur l'entrée I en sang */
 .margin-toc .toc-entry.is-current .toc-tick {
   background-color: var(--gold-400);
-  --tick-pip: var(--ink-800);
-  /* l'ombre suit la face découpée (box-shadow serait rognée par le clip) */
-  filter: drop-shadow(0 1px 2px rgba(42, 31, 20, 0.3));
+  --tick-pip: var(--ink-900);
+  filter: drop-shadow(0 1px 3px rgba(16, 11, 6, 0.55));
   scale: 1.3;
 }
 
 /* Le dé ROULE au défilement : rotation solidaire du scroll racine, huit
-   tours sur la page — un coup de molette tourne le dé d'un quart de tour,
-   descendre le fait rouler, remonter le rembobine. Scrub purement CSS
-   (scroll-driven) ; Firefox et mouvement réduit gardent la face posée */
+   tours sur la page — descendre le fait rouler, remonter le rembobine */
 @media (prefers-reduced-motion: no-preference) {
   @supports (animation-timeline: scroll()) {
     .js .toc-tick {
@@ -1511,6 +2214,175 @@ main {
   to {
     rotate: 2880deg;
   }
+}
+
+/* ----- Les deux lumières (entrée VII) : la scène qui s'allume -----
+   L'histoire Parchemin↔Bougie joue la bascule du mode sur SA PROPRE
+   scène, au fil du défilement : --candle (posé par main.js, solidaire du
+   rail) mène chaque couleur de la valeur PARCHCEMIN de l'app vers sa
+   valeur BOUGIE (html.ts-dark d'apps/web — les vraies ramps, pas une
+   imitation) par color-mix. L'écran s'encre en bougie PENDANT que la
+   page qui le porte s'assombrit — la bascule du mode, littéralisée.
+   En repli calme, --candle marche par pas (0/1) et les couleurs
+   transitionnent ; sans JS, la scène reste en plein jour. */
+.story--lights {
+  --day-bg: #fdfaf3;
+  --day-panel: #f7f0e1;
+  --day-text: #2a1f14;
+  --day-soft: #6b5640;
+  --day-line: #ddcb9e;
+  --night-bg: #1a1512;
+  --night-panel: #262019;
+  --night-text: #f3e7d0;
+  --night-soft: #9a8264;
+  --night-line: #4d3f2b;
+  --mix-bg: color-mix(in oklab, var(--day-bg), var(--night-bg) calc(var(--candle, 0) * 100%));
+  --mix-panel: color-mix(in oklab, var(--day-panel), var(--night-panel) calc(var(--candle, 0) * 100%));
+  --mix-text: color-mix(in oklab, var(--day-text), var(--night-text) calc(var(--candle, 0) * 100%));
+  --mix-soft: color-mix(in oklab, var(--day-soft), var(--night-soft) calc(var(--candle, 0) * 100%));
+  --mix-line: color-mix(in oklab, var(--day-line), var(--night-line) calc(var(--candle, 0) * 100%));
+}
+
+.story--lights .story-stage {
+  background-color: var(--mix-bg);
+  background-image: radial-gradient(
+    62% 42% at 50% 108%,
+    rgba(212, 175, 55, calc(var(--candle, 0) * 0.16)),
+    transparent 70%
+  );
+  border: 1px solid var(--mix-line);
+  border-radius: 20px;
+  padding-inline: 1rem;
+  color: var(--mix-text);
+}
+
+.story--lights .story-voice h3,
+.story--lights .story-voice p {
+  color: var(--mix-text);
+}
+
+.story--lights .phonepost-caption {
+  color: var(--mix-soft);
+}
+
+.story--lights .shot-frame {
+  background: var(--mix-panel);
+  border-color: var(--mix-line);
+}
+
+.story--lights .phonepost-dock button {
+  background: var(--mix-panel);
+  border-color: var(--mix-line);
+  color: var(--mix-soft);
+}
+
+.story--lights .phonepost-dock button.is-active {
+  background: var(--mix-text);
+  border-color: var(--mix-text);
+  color: var(--mix-bg);
+}
+
+.story--lights .story-seg {
+  background: var(--mix-line);
+}
+
+/* repli calme : la bascule se joue d'un coup, en fondue */
+.story--lights.is-calm .story-stage,
+.story--lights.is-calm .story-voice h3,
+.story--lights.is-calm .story-voice p,
+.story--lights.is-calm .phonepost-caption,
+.story--lights.is-calm .shot-frame,
+.story--lights.is-calm .phonepost-dock button,
+.story--lights.is-calm .story-seg {
+  transition:
+    background-color 0.6s var(--ease),
+    border-color 0.6s var(--ease),
+    color 0.6s var(--ease);
+}
+
+/* ---------- La bande du tour (mobile & tablette, < 1360px) ----------
+   Le tour de table littéral : la pastille du tour courant, posée en bas,
+   et le verbe « tour suivant ». Bâtie par main.js (rien sans JS). */
+
+.turnband {
+  position: fixed;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  max-width: min(92vw, 34rem);
+  min-height: 44px;
+  padding: 0.3rem 0.35rem 0.3rem 0.95rem;
+  border-radius: 999px;
+  border: 1px solid var(--line-night);
+  background: rgba(26, 19, 12, 0.92);
+  box-shadow: var(--shadow-card);
+  color: var(--parchment-200);
+  font-size: 0.85rem;
+  transition:
+    opacity 0.3s var(--ease),
+    translate 0.3s var(--ease);
+}
+
+/* La marge du registre prend le relais au très grand écran */
+@media (min-width: 1360px) {
+  .turnband {
+    display: none;
+  }
+}
+
+.turnband.is-hidden {
+  opacity: 0;
+  translate: 0 12px;
+  pointer-events: none;
+}
+
+.turnband-ordinal {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--gold-300);
+}
+
+.turnband.is-lead .turnband-ordinal {
+  color: var(--blood-300);
+}
+
+.turnband-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.turnband-next {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 36px;
+  padding: 0 0.9rem;
+  border: none;
+  border-radius: 999px;
+  background: var(--blood-600);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 500;
+  transition:
+    background-color 0.2s var(--ease),
+    transform 0.15s var(--ease);
+}
+
+.turnband-next:hover {
+  background: var(--blood-500);
+}
+
+.turnband-next:active {
+  transform: scale(0.97);
 }
 
 /* ---------- Motion : la plume inscrit la page ----------
@@ -1577,6 +2449,23 @@ main {
   animation-delay: var(--reveal-delay, 0ms);
 }
 
+/* Le signal de descente : le dé roule sur lui-même, lentement —
+   le tour est proche */
+@media (prefers-reduced-motion: no-preference) {
+  .die-roll {
+    animation: cue-roll 9s linear infinite;
+  }
+}
+
+@keyframes cue-roll {
+  from {
+    rotate: 0deg;
+  }
+  to {
+    rotate: 360deg;
+  }
+}
+
 /* Le balayage d'encre du wordmark du splash de l'app, porté sur les
    titres du registre : un masque glisse, la lettre apparaît mouillée */
 @property --ink-x {
@@ -1590,10 +2479,9 @@ main {
    scrubbée : le filet se trace et le titre s'encre AU FIL du défilement —
    remonter la page les efface, descendre les réécrit. La tête ne se lève
    plus, elle s'écrit (règle + encre + tampon) ; les entrées réglées
-   continuent de se poser une fois sous la règle, et la paire de
-   téléphones du hero glisse en profondeur quand on tourne la page.
-   Firefox et les moteurs plus anciens gardent le déclenchement une fois
-   par entrée défini plus haut. */
+   continuent de se poser une fois sous la règle, la paire de téléphones
+   du hero glisse en profondeur quand on tourne la page, et les vues
+   élargies dérivent à peine — la parallaxe de la table. */
 @media (prefers-reduced-motion: no-preference) {
   @supports (animation-timeline: view()) {
     .js .entry-head.reveal,
@@ -1606,9 +2494,6 @@ main {
     .js .entry-head.is-risen::after {
       animation: rule-scrub linear both;
       animation-timeline: view();
-      /* en pourcentage de la traversée ENTIÈRE (le range nommé « entry » ne
-         couvre qu'une hauteur d'élément — la plume n'y vivrait pas) : le
-         filet commence à entrer et s'achève vers la ligne de lecture */
       animation-range: 6% 50%;
     }
 
@@ -1620,7 +2505,7 @@ main {
       animation-range: 5% 48%;
     }
 
-    /* La paire se pose en tournant la page : le téléphone du MD glisse
+    /* La paire s'enfuit en tournant la page : le téléphone du MD glisse
        plus loin que celui du joueur — la profondeur de la table */
     .portrait-back {
       animation:
@@ -1640,6 +2525,14 @@ main {
       animation-range:
         normal,
         exit 0% exit 90%;
+    }
+
+    /* Les vues élargies dérivent à peine pendant leur traversée */
+    .entry-wide .shot-frame,
+    .entry-wide .deskframe {
+      animation: wide-drift linear both;
+      animation-timeline: view();
+      animation-range: entry 0% exit 100%;
     }
   }
 }
@@ -1701,6 +2594,15 @@ main {
   }
 }
 
+@keyframes wide-drift {
+  from {
+    translate: 0 10px;
+  }
+  to {
+    translate: 0 -10px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -1730,8 +2632,47 @@ main {
     transition: none;
   }
 
-  .phonepost-view {
-    transform: none;
+  /* Le tour de page ne se joue pas : la vue suivante est posée, sèche */
+  .js .phonepost-view.is-active {
+    animation: none;
+    mask-image: none;
+  }
+
+  /* Les grandes vues non plus : la capture est posée, sèche. Sélecteurs
+     miroir de ceux de l'encre (même spécificité, plus bas dans le fichier)
+     — sans eux, la règle .is-risen garderait masque et animation. */
+  .js .entry-wide.reveal.is-risen .shot-frame img,
+  .js .entry-wide.reveal.is-risen .deskframe img,
+  .js .entry-wide .shot-frame img,
+  .js .entry-wide .deskframe img {
+    opacity: 1;
+    animation: none;
+    mask-image: none;
+  }
+
+  .js .entry-wide.reveal.is-risen .shot-frame::after,
+  .js .entry-wide.reveal.is-risen .deskframe-screen::after {
+    opacity: 0;
+    background: none;
+    animation: none;
+  }
+
+  .js .phonepost.is-inking .phonepost-screen::after {
+    opacity: 0;
+    background: none;
+    animation: none;
+  }
+
+  .js .phonepost.is-inking .story-side {
+    animation: none;
+    mask-image: none;
+  }
+
+  /* le dé et l'estompe ne transitionnent pas : l'état suit, sec */
+  .subentries li,
+  .subentries li h3,
+  .subentries li p {
+    transition: none;
   }
 
   .portrait-back,
@@ -1745,15 +2686,28 @@ main {
     animation: none;
   }
 
+  /* Pas d'étincelle : la frappe est un état, pas un voyage */
+  .wire .spark {
+    display: none;
+  }
+
+  .die-roll {
+    animation: none;
+  }
+
   /* La marge du registre suit le doigt sans jamais transitionner */
   .toc-entry,
   .toc-tick {
     transition: none;
   }
+
+  .turnband {
+    transition: none;
+  }
 }
 
 /* ---------- Visionneuse plein écran ----------
-   La visionneuse de l'app, portée telle quelle : rideau ink qui fond,
+   La visionneuse de l'app, portée telle quelle : rideau nuit qui fond,
    l'image se pose depuis 0.96 — le zoom lui-même ne s'anime jamais. */
 .viewer {
   position: fixed;
@@ -1763,7 +2717,7 @@ main {
   align-items: center;
   justify-content: center;
   padding: 1.5rem;
-  background: rgba(42, 31, 20, 0.88);
+  background: rgba(16, 11, 6, 0.92);
   animation: viewer-fade-in 0.2s ease-out;
 }
 
@@ -1812,7 +2766,7 @@ main {
   min-height: 44px;
   border-radius: 999px;
   border: 1px solid rgba(233, 225, 212, 0.35);
-  background: rgba(42, 31, 20, 0.6);
+  background: rgba(26, 19, 12, 0.7);
   color: var(--ink-100);
   font-size: 1.1rem;
   cursor: pointer;

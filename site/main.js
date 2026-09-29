@@ -1,9 +1,10 @@
 // Site marketing — Table Sync
 // 0) la langue du site (FR par défaut · EN au choix)
-// 1) la démo temps réel (le MD frappe, la fiche répond)
+// 1) la démo temps réel (le MD frappe, l'étincelle court le fil, la fiche répond)
 // 2) les entrées du registre se posent une fois (register-rise), les
-//    ordinaux et les preuves se tamponnent
-// 3) la marge du registre : le fil de lecture descend au fil du scroll
+//    ordinaux et les preuves se tamponnent, les mesures comptent
+// 3) la marge du registre (≥1360px) : le fil de lecture descend au fil du
+//    scroll ; la bande du tour (<1360px) porte le tour courant + « tour suivant »
 //    (styles.css porte en parallèle la couche scrubbée scroll-driven)
 // 4) copier les commandes d'auto-hébergement
 //
@@ -17,10 +18,10 @@
 // (localStorage « site-lang », clé distincte de l'app, ou ?lang=en partageable).
 // Ce module gère le reste : bascule FR|EN, attributs (alt, aria-label),
 // captures EN (assets/screenshots-en/), légendes des postes, <title>/meta
-// et les chaînes pilotées par JS (démo, bouton copier).
+// et les chaînes pilotées par JS (démo, bande du tour, bouton copier).
 
 (() => {
-  // Le JS s'annonce : sans lui, .rise reste visible (le contenu ne se cache jamais par défaut)
+  // Le JS s'annonce : sans lui, .reveal reste visible (le contenu ne se cache jamais par défaut)
   document.documentElement.classList.add('js');
 
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -42,6 +43,9 @@
       copyOk: 'Copié ✓',
       copyFail: 'Copie impossible',
       tocLabel: 'Le registre',
+      turnLabel: 'Le tour en cours',
+      turnNext: 'Tour suivant',
+      turnAria: (title) => `Tour en cours : ${title} — passer au tour suivant`,
     },
     en: {
       title: 'Table Sync — the shared campaign companion, for the GM and the players',
@@ -54,6 +58,9 @@
       copyOk: 'Copied ✓',
       copyFail: 'Copy failed',
       tocLabel: 'The register',
+      turnLabel: 'The current turn',
+      turnNext: 'Next turn',
+      turnAria: (title) => `Current turn: ${title} — skip to the next turn`,
     },
   };
 
@@ -139,9 +146,14 @@
       ?.setAttribute('content', STRINGS[lang].description);
   };
 
-  // La marge du registre (bâtie plus bas) se localise comme le reste :
-  // aria-label du fil + infobulles des ordinaux
+  // La marge du registre et la bande du tour (bâties plus bas) se localisent
+  // comme le reste : aria-labels, infobulles des ordinaux, titre du tour
   let marginTocNav = null;
+  let turnband = null;
+
+  // Les réservations de hauteur des voix larges se recalculent à la bascule
+  // de langue (les paragraphes n'ont pas la même longueur en FR et en EN)
+  const voiceMeasures = [];
 
   function applyLang(next, { persist = false } = {}) {
     lang = next === 'en' ? 'en' : 'fr';
@@ -176,6 +188,12 @@
         }
       });
     }
+    if (turnband) {
+      localizeTurnband();
+    }
+    for (const remeasure of voiceMeasures) {
+      remeasure();
+    }
   }
 
   /* ---------- Démo temps réel ---------- */
@@ -190,6 +208,8 @@
   const fills = demo?.querySelectorAll('[data-hp-fill]');
   const chip = demo?.querySelector('[data-chip]');
   const conc = demo?.querySelector('[data-conc]');
+  const spark = demo?.querySelector('.wire .spark');
+  const wire = demo?.querySelector('.wire');
   let hp = MAX_HP;
   let strikeTimer = null;
 
@@ -234,6 +254,12 @@
     if (!demo || strikeTimer) return; // une frappe à la fois
     const hit = Math.max(0, hp - DAMAGE);
     chip?.classList.add('is-visible');
+    // l'étincelle part du traqueur et court le fil jusqu'à la fiche — la
+    // distance exacte du fil, posée au coup plutôt qu'au rendu (responsive)
+    if (spark && wire && !reduceMotion) {
+      spark.style.setProperty('--travel', `${Math.max(24, wire.offsetWidth - 9)}px`);
+      spark.classList.add('is-running');
+    }
     window.setTimeout(() => {
       hp = hit;
       render(hp);
@@ -243,6 +269,7 @@
       // la séance continue : Lyra se soigne, la démo se réarme
       chip?.classList.remove('is-visible');
       conc?.classList.remove('is-visible');
+      spark?.classList.remove('is-running');
       window.setTimeout(() => {
         hp = MAX_HP;
         render(hp);
@@ -340,32 +367,259 @@
     stampPassedOrdinals();
   }
 
-  /* ---------- register-rise ---------- */
+  /* ---------- Poste de consultation (séries de captures = histoires) ----------
+     Chaque poste est câblé indépendamment. En histoire épinglée (scroll
+     vivant, mouvement non réduit), le téléphone prend la hauteur de l'écran
+     et le DÉFILEMENT avance les vues une à une : la page reste captive
+     jusqu'à la dernière vue. Les pilules naviguent toujours — elles mènent
+     le défilement à la vue choisie. En repli (mouvement réduit, vieux
+     moteur), les pilules basculent les vues directement, sans épingler. */
 
-  /* ---------- Poste de consultation (série de captures, entrée II) ---------- */
-
-  // Chaque poste de consultation (série multi-captures) est câblé indépendamment
   document.querySelectorAll('.phonepost').forEach((post) => {
-    const views = post.querySelectorAll('.phonepost-view');
-    const pills = post.querySelectorAll('.phonepost-dock button');
+    const views = [...post.querySelectorAll('.phonepost-view')];
+    const pills = [...post.querySelectorAll('.phonepost-dock button')];
     const caption = post.querySelector('.phonepost-caption');
+    const track = post.querySelector('.story-track');
+    const count = views.length;
+    if (count === 0) return;
 
-    pills.forEach((pill) => {
-      pill.addEventListener('click', () => {
-        const index = Number.parseInt(pill.dataset.view ?? '0', 10);
-        views.forEach((view, i) => {
-          view.classList.toggle('is-active', i === index);
-        });
-        pills.forEach((p) => {
-          const active = p === pill;
-          p.classList.toggle('is-active', active);
-          p.setAttribute('aria-pressed', active ? 'true' : 'false');
-        });
-        if (caption && (pill.dataset.caption || pill.dataset.enCaption)) {
+    // Le rail : un segment par vue, son remplissage suit le doigt
+    const segs = [];
+    if (track) {
+      for (let i = 0; i < count; i++) {
+        const seg = document.createElement('div');
+        seg.className = 'story-seg';
+        const fill = document.createElement('i');
+        seg.append(fill);
+        track.append(seg);
+        segs.push(fill);
+      }
+    }
+
+    /* ----- La voix suit l'écran -----
+       Le texte de la section vit en sync avec la capture affichée :
+       - la NARRATION (story-side) montre la sous-entrée correspondant à
+         la vue courante — h3 et paragraphe CLONÉS depuis la copie feuille
+         (les paires [lang] voyagent avec, la bascule FR|EN marche seule) ;
+       - la COPIE FEUILLE marque la sous-entrée courante (.is-current,
+         encre pleine + dé or) et estompe les autres (.is-sync-dim) —
+         l'emphase voyage vue après vue. data-story-view porte la
+         correspondance (une sous-entrée peut posséder plusieurs vues,
+         p. ex. « Survie & forme sauvage » couvre deux écrans).
+       Vue sans correspondance : l'emphase reste sur la précédente. */
+    const entryEl = post.closest('.entry');
+    // une entrée peut porter DEUX histoires (téléphone + large) : la
+    // correspondance texte↔vues de l'histoire large vit dans data-wide-view,
+    // celle du poste téléphone dans data-story-view — jamais les mêmes
+    // indices, jamais la même emphase
+    const dataKey = post.classList.contains('story--wide') ? 'wideView' : 'storyView';
+    const subentries = [
+      ...(entryEl?.querySelectorAll(
+        `.subentries li[data-${dataKey === 'wideView' ? 'wide' : 'story'}-view]`,
+      ) ?? []),
+    ];
+    // l'emphase se pose sur TOUTES les sous-entrées de l'entrée : l'histoire
+    // qui joue doit effacer celle de l'autre histoire, pas seulement les siennes
+    const allSubentries = [...(entryEl?.querySelectorAll('.subentries li') ?? [])];
+    const voice = document.createElement('div');
+    voice.className = 'story-voice';
+    voice.setAttribute('aria-hidden', 'true'); // le texte canonique vit dans la copie feuille
+    const side = post.querySelector('.story-side');
+    const stageEl = post.querySelector('.story-stage');
+    let lastMapped = null;
+
+    const subentryFor = (index) => {
+      const key = String(index);
+      return (
+        subentries.find((li) => (li.dataset[dataKey] ?? '').split(/\s+/).includes(key)) ?? null
+      );
+    };
+
+    const syncVoice = (index) => {
+      const li = subentryFor(index) ?? lastMapped;
+      if (li === lastMapped && voice.childElementCount > 0) return; // déjà en place
+      lastMapped = li;
+      const heading = li?.querySelector('h3');
+      const paragraph = li?.querySelector('p');
+      voice.replaceChildren(
+        ...(heading ? [heading.cloneNode(true)] : []),
+        ...(paragraph ? [paragraph.cloneNode(true)] : []),
+      );
+      allSubentries.forEach((item) => {
+        item.classList.toggle('is-current', item === li);
+        item.classList.toggle('is-sync-dim', item !== li);
+      });
+    };
+
+    let current = -1;
+
+    // Les deux lumières : la vue où la scène bascule Parchemin→Bougie.
+    // --candle suit le rail (0 avant la vue, 1 après, la fraction
+    // traverse) — la scène s'assombrit AU FIL du défilement ; en repli
+    // calme, elle marche par pas et les couleurs fondent (CSS).
+    const flipAt = post.dataset.flipOnView ? Number.parseInt(post.dataset.flipOnView, 10) : null;
+
+    const applyCandle = (exactProgress) => {
+      if (flipAt === null || Number.isNaN(flipAt)) return;
+      const c = Math.min(1, Math.max(0, exactProgress - flipAt));
+      post.style.setProperty('--candle', c.toFixed(3));
+    };
+
+    // la narration vit au sommet de la colonne latérale, avant la légende
+    if (side && subentries.length > 0) {
+      side.prepend(voice);
+    }
+
+    // Histoire LARGE : la hauteur du bloc texte (voix + légende) est
+    // RÉSERVÉE sur la pire des sous-entrées — le paragraphe change de
+    // longueur d'une vue à l'autre, la pile centrée ne doit jamais se
+    // recentrer (l'écran ne bouge pas, non plus ici). Le plafond de
+    // hauteur des images est CALIBRÉ sur le chrome mesuré de la scène :
+    // paddings, écarts, rail, dock, matelas/barre du cadre — la colonne
+    // ne déborde jamais le stage, le centrage ne bougle pas.
+    if (post.classList.contains('story--wide') && side && subentries.length > 0) {
+      const reserveAndCalibrate = () => {
+        let worst = 0;
+        const keep = voice.cloneNode(true);
+        for (const li of subentries) {
+          const heading = li.querySelector('h3');
+          const paragraph = li.querySelector('p');
+          voice.replaceChildren(
+            ...(heading ? [heading.cloneNode(true)] : []),
+            ...(paragraph ? [paragraph.cloneNode(true)] : []),
+          );
+          worst = Math.max(worst, side.offsetHeight);
+        }
+        voice.replaceChildren(...keep.children);
+        post.style.setProperty('--text-h', `${Math.ceil(worst)}px`);
+
+        const img = post.querySelector('.phonepost-view img');
+        const frameEl = img?.closest('.shot-frame, .deskframe');
+        const slotEl = post.querySelector('.story-slot');
+        if (stageEl && img && frameEl && slotEl) {
+          const chromeH = frameEl.offsetHeight - img.getBoundingClientRect().height;
+          const slotExtras = slotEl.offsetHeight - frameEl.offsetHeight; // rail + dock + écarts
+          const cs = getComputedStyle(stageEl);
+          const padV =
+            (parseFloat(cs.paddingTop) || 0) +
+            (parseFloat(cs.paddingBottom) || 0) +
+            (parseFloat(cs.columnGap) || parseFloat(cs.gap) || 0);
+          // 8px de mou : une colonne PILE à la hauteur du stage laisse le
+          // centrage aux arrondis sub-pixel — un souffle d'air le fige
+          const cap = stageEl.clientHeight - padV - slotExtras - chromeH - Math.ceil(worst) - 8;
+          post.style.setProperty('--img-cap', `${Math.max(160, Math.floor(cap))}px`);
+        }
+      };
+      reserveAndCalibrate();
+      document.fonts?.ready.then(reserveAndCalibrate);
+      voiceMeasures.push(reserveAndCalibrate);
+      // la scène change de hauteur au resize : le plafond suit (gardé par
+      // filet rAF, comme tout travail lié au scroll)
+      window.addEventListener('resize', frameGuarded(reserveAndCalibrate), { passive: true });
+    }
+
+    const setView = (index) => {
+      if (index === current) return;
+      current = index;
+      views.forEach((view, i) => {
+        view.classList.toggle('is-active', i === index);
+      });
+      pills.forEach((p, i) => {
+        const active = i === index;
+        p.classList.toggle('is-active', active);
+        p.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+      if (caption) {
+        const pill = pills[index];
+        if (pill && (pill.dataset.caption || pill.dataset.enCaption)) {
           caption.textContent = captionFor(pill);
         }
+      }
+      syncVoice(index);
+      // la bougie se pose d'un coup au changement de vue (applyCandle
+      // attend une progression EXACTE : la vue atteinte = flipAt + 1) —
+      // en histoire épinglée, setFill réécrit aussitôt la valeur scrubbée
+      applyCandle(index >= flipAt ? flipAt + 1 : flipAt);
+      // L'encre tourne la page : la classe repart à chaque changement de
+      // vue pour rejouer balayage + front or + légende ré-encrée. Le
+      // reflow explicite réarme l'animation d'un pseudo-élément qui, sans
+      // lui, resterait à son état final (styles.css, « L'encre tourne la
+      // page »). Coupée d'office en mouvement réduit — rien à rejouer.
+      if (!reduceMotion) {
+        post.classList.remove('is-inking');
+        void post.offsetWidth;
+        post.classList.add('is-inking');
+      }
+    };
+
+    const setFill = (index, fraction) => {
+      segs.forEach((fill, i) => {
+        fill.style.width = i < index ? '100%' : i > index ? '0%' : `${Math.round(fraction * 100)}%`;
+      });
+      applyCandle(index + fraction);
+    };
+
+    const isStory =
+      post.classList.contains('story') && !reduceMotion && 'IntersectionObserver' in window;
+
+    if (!isStory) {
+      // Repli calme : pas d'épinglage, le dock bascule les vues. La légende
+      // reste annoncée (polite) — c'est un clic qui la change.
+      post.classList.add('is-calm');
+      pills.forEach((pill) => {
+        pill.addEventListener('click', () => {
+          setView(Number.parseInt(pill.dataset.view ?? '0', 10));
+        });
+      });
+      setView(0);
+      return;
+    }
+
+    // En histoire épinglée, la légende suit le doigt : l'annoncer à chaque
+    // vue deviendrait un flot (≈19 annonces sur la page) — elle reste
+    // visible, silencieuse pour le lecteur d'écran.
+    if (caption) {
+      caption.setAttribute('aria-live', 'off');
+    }
+
+    // Histoire épinglée : la progression vit dans le défilement
+    let top = 0;
+    let span = 1;
+
+    const measure = () => {
+      const rect = post.getBoundingClientRect();
+      top = rect.top + window.scrollY;
+      span = Math.max(1, post.offsetHeight - window.innerHeight);
+      update();
+    };
+
+    const update = () => {
+      // une histoire ne joue que si sa scène est À L'ÉCRAN : sans cette
+      // garde, le saut qui ENTRÉ dans l'histoire large réveille l'histoire
+      // téléphone déjà passée (son dernier setView) et lui vole l'emphase
+      // de la copie feuille — voix et folie désynchronisées
+      const stageRect = stageEl?.getBoundingClientRect();
+      if (stageRect && (stageRect.bottom < 0 || stageRect.top > window.innerHeight)) return;
+      const progress = Math.min(1, Math.max(0, (window.scrollY - top) / span));
+      const exact = progress * count;
+      const index = Math.min(count - 1, Math.floor(exact));
+      setView(index);
+      setFill(index, exact - index);
+    };
+
+    pills.forEach((pill, i) => {
+      pill.addEventListener('click', () => {
+        // la pilule MÈNE le défilement : atterrir au début de sa vue
+        const target = top + (i / count) * span + 1;
+        window.scrollTo({ top: target, behavior: reduceMotion ? 'auto' : 'smooth' });
       });
     });
+
+    window.addEventListener('scroll', frameGuarded(update), { passive: true });
+    window.addEventListener('resize', measure);
+    document.fonts?.ready.then(measure);
+    measure();
+    setView(0);
   });
 
   /* ---------- La plume inscrit la page -----
@@ -390,7 +644,12 @@
   const armEntry = (entry) => {
     const head = entry.querySelector('.entry-head');
     const copy = entry.querySelector('.entry-copy');
-    const media = entry.querySelector('.entry-body > :not(.entry-copy)');
+    // les entrées à histoire épinglée n'ont plus de corps en colonnes : les
+    // postes (téléphone, puis histoire large) sont les enfants visuels
+    // directs de l'entrée, armés en séquence ; l'entrée I garde sa colonne
+    // média (démo + captures)
+    const bodyMedia = entry.querySelector('.entry-body > :not(.entry-copy)');
+    const medias = [...(bodyMedia ? [bodyMedia] : []), ...entry.querySelectorAll('.phonepost')];
     const deployPanel = entry.querySelector('.deploy');
 
     if (head && !deployPanel) {
@@ -422,21 +681,23 @@
           delay += STEP;
         }
       }
-      if (media) {
-        armReveal(media, Math.max(delay, 180));
-      }
-      // Les vues élargies (tablette du joueur, écran du MD) se posent en fin
-      // d'entrée, sous le poste de consultation
+      medias.forEach((m, k) => {
+        armReveal(m, Math.max(delay, 180) + k * STEP);
+      });
+      // Les vues élargies restantes (l'entrée I garde sa fenêtre bureau)
+      // se posent en fin d'entrée
       entry.querySelectorAll('.entry-wide').forEach((wide, i) => {
-        armReveal(wide, Math.max(delay, 180) + STEP * (i + 1));
+        armReveal(wide, Math.max(delay, 180) + STEP * (medias.length + i + 1));
       });
     }
   };
 
-  // La fiche du hero se remplit d'elle-même à l'ouverture : nom, slogan,
-  // offre, champs, verbes, puis les six tuiles FOR→CHA
+  // La séance s'ouvre d'elle-même : pastille de rencontre, nom, slogan,
+  // offre, verbes, puis LES MESURES DU SRD (la bande de chiffres du hero)
+  // et le signal de descente. La paire de téléphones vit sa propre entrée
+  // (pair-in, styles.css).
   const armHero = () => {
-    const pieces = ['.hero-name', '.hero-tagline', '.hero-offer', '.sheet-fields', '.cta-row'];
+    const pieces = ['.round-chip', '.hero-name', '.hero-tagline', '.hero-offer', '.cta-row'];
     let delay = 0;
     for (const selector of pieces) {
       const el = document.querySelector(selector);
@@ -444,10 +705,13 @@
       armReveal(el, delay);
       delay += STEP;
     }
-    document.querySelectorAll('.ability').forEach((tile, i) => {
-      heroArmed.push(tile);
-      armReveal(tile, delay + 60 + i * 60);
+    document.querySelectorAll('.hero .stat').forEach((stat, i) => {
+      heroArmed.push(stat);
+      armReveal(stat, delay + 60 + i * 90);
     });
+    const cue = document.querySelector('.scrollcue');
+    if (cue) heroArmed.push(cue);
+    armReveal(cue, delay + 60 + 4 * 90);
   };
 
   // Les quadrants de personnalité (entrée à part entière, révélés par
@@ -459,11 +723,12 @@
   };
 
   const armFooter = () => {
+    armReveal(document.querySelector('.footer-close'), 0);
     const footerCols = document.querySelectorAll('.site-footer .footer-cols > div');
     footerCols.forEach((col, i) => {
-      armReveal(col, i * 80);
+      armReveal(col, 90 + i * 80);
     });
-    armReveal(document.querySelector('.footer-seal-row'), footerCols.length * 80);
+    armReveal(document.querySelector('.footer-seal-row'), 90 + footerCols.length * 80);
   };
 
   const riseAll = () => {
@@ -488,7 +753,7 @@
     armHero();
     armPersonality();
     document.querySelectorAll('.entry').forEach(armEntry); // armées d'emblée, révélées au scroll
-    riseHero(); // la fiche s'inscrit dès l'arrivée
+    riseHero(); // la séance s'inscrit dès l'arrivée
 
     const entryIo = new IntersectionObserver(
       (entries) => {
@@ -503,10 +768,15 @@
           }
         }
       },
-      { threshold: 0.12, rootMargin: '0px 0px -6% 0px' },
+      // PAS de seuil en RATIO : une entrée à deux histoires mesure ~7000px
+      // — 12 % d'elle ≈ un viewport entier, et une arrivée par ancre
+      // frôlait la falaise sans jamais la franchir (section II muette,
+      // .reveal à opacité 0, aucune erreur). On déclenche sur la GÉOMÉTRIE
+      // : le haut de l'entrée atteint la moitié haute de l'écran.
+      { threshold: 0, rootMargin: '0px 0px -60% 0px' },
     );
-    document.querySelectorAll('.entry').forEach((entry) => {
-      entryIo.observe(entry);
+    document.querySelectorAll('.entry').forEach((section) => {
+      entryIo.observe(section);
     });
 
     // Le pied se lève à son tour quand on y arrive
@@ -528,11 +798,54 @@
     }
   }
 
-  /* ---------- La marge du registre (fil de lecture ≥1280px) ---------- */
+  /* ---------- Les mesures comptent ----------
+     Chaque chiffre monte de 0 à sa valeur quand la bande entre à l'écran —
+     une fois, en accéléré doux. Sans JS ou en mouvement réduit, la valeur
+     finale est déjà dans le HTML : rien ne manque. */
+
+  const countUp = (el) => {
+    const target = Number.parseInt(el.dataset.count ?? el.textContent, 10);
+    if (!Number.isFinite(target) || target <= 0) return;
+    if (reduceMotion) {
+      el.textContent = String(target);
+      return;
+    }
+    const duration = 950;
+    const start = performance.now();
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = String(Math.round(target * eased));
+      if (t < 1) window.requestAnimationFrame(tick);
+    };
+    window.requestAnimationFrame(tick);
+  };
+
+  const statband = document.querySelector('.statband');
+  if (statband && 'IntersectionObserver' in window && !reduceMotion) {
+    let counted = false;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting && !counted) {
+            counted = true;
+            statband.querySelectorAll('.stat-value').forEach((el, i) => {
+              window.setTimeout(() => countUp(el), 90 + i * 90);
+            });
+            io.disconnect();
+          }
+        }
+      },
+      { threshold: 0.35 },
+    );
+    io.observe(statband);
+  }
+
+  /* ---------- La marge du registre (fil de lecture ≥1360px) ---------- */
 
   // Une règle d'encre descend la marge au fil du scroll, la plume en
   // pointe ; chaque entrée du registre y porte son ordinal, cliquable.
-  // Bâtie ici (rien sans JS), masquée sous 1280px par styles.css. Elle ne
+  // Bâtie ici (rien sans JS), masquée sous 1360px par styles.css. Elle ne
   // s'anime jamais d'elle-même : chaque état ne fait que suivre le doigt.
   const buildMarginToc = () => {
     const main = document.querySelector('main');
@@ -650,6 +963,132 @@
 
   buildMarginToc();
 
+  /* ---------- La bande du tour (mobile & tablette, <1360px) ----------
+     Le tour de table littéral : la pastille du tour courant posée en bas,
+     avec le verbe « tour suivant ». Bâtie ici (rien sans JS), cachée au
+     très grand écran où la marge du registre prend le relais. */
+
+  const buildTurnband = () => {
+    const main = document.querySelector('main');
+    const hero = document.querySelector('.hero');
+    const footer = document.querySelector('.site-footer');
+    const entries = [...document.querySelectorAll('main .entry[id]')];
+    if (!main || entries.length === 0) return;
+
+    const band = document.createElement('nav');
+    band.className = 'turnband is-hidden';
+    band.setAttribute('aria-label', STRINGS[lang].turnLabel);
+
+    const ordinal = document.createElement('span');
+    ordinal.className = 'turnband-ordinal';
+    const title = document.createElement('span');
+    title.className = 'turnband-title';
+    const next = document.createElement('button');
+    next.type = 'button';
+    next.className = 'turnband-next';
+
+    band.append(ordinal, title, next);
+    document.body.append(band);
+    turnband = band;
+
+    const heads = entries.map((entry) => ({
+      entry,
+      head: entry.querySelector('.entry-head') ?? entry,
+      fr: entry.querySelector('.entry-title [lang="fr"]')?.textContent ?? '',
+      en: entry.querySelector('.entry-title [lang="en"]')?.textContent ?? '',
+      label: entry.querySelector('.entry-ordinal')?.textContent ?? '',
+      lead: entry.classList.contains('is-lead'),
+      y: 0,
+    }));
+
+    let heroGone = false;
+    let footerNear = false;
+    let currentIdx = -1;
+
+    const updateVisibility = () => {
+      band.classList.toggle('is-hidden', !heroGone || footerNear);
+    };
+
+    if ('IntersectionObserver' in window) {
+      const heroIo = new IntersectionObserver(
+        (observed) => {
+          heroGone = !observed[0].isIntersecting;
+          updateVisibility();
+        },
+        { threshold: 0.12 },
+      );
+      if (hero) heroIo.observe(hero);
+      const footerIo = new IntersectionObserver(
+        (observed) => {
+          footerNear = observed[0].isIntersecting;
+          updateVisibility();
+        },
+        { rootMargin: '0px 0px 25% 0px' },
+      );
+      if (footer) footerIo.observe(footer);
+    } else {
+      heroGone = true;
+      updateVisibility();
+    }
+
+    const update = () => {
+      const reading = window.scrollY + window.innerHeight * 0.5;
+      let idx = -1;
+      for (let i = 0; i < heads.length; i++) {
+        if (reading + 2 >= heads[i].y) idx = i;
+      }
+      if (idx !== currentIdx) {
+        currentIdx = idx;
+        if (idx >= 0) {
+          const item = heads[idx];
+          ordinal.textContent = item.label;
+          title.textContent = lang === 'en' ? item.en || item.fr : item.fr;
+          band.classList.toggle('is-lead', item.lead);
+          band.setAttribute(
+            'aria-label',
+            STRINGS[lang].turnAria(lang === 'en' ? item.en || item.fr : item.fr),
+          );
+        }
+      }
+    };
+
+    const measure = () => {
+      for (const item of heads) {
+        item.y = item.head.getBoundingClientRect().top + window.scrollY;
+      }
+      update();
+    };
+
+    next.addEventListener('click', () => {
+      // le dernier tour boucle vers le premier — la séance est un cercle
+      const nextIdx = (currentIdx + 1 + heads.length) % heads.length;
+      const target = heads[nextIdx].entry;
+      target.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+    });
+
+    window.addEventListener('scroll', frameGuarded(update), { passive: true });
+    window.addEventListener('resize', measure);
+    document.fonts?.ready.then(measure);
+    measure();
+    refreshTurnband = () => {
+      currentIdx = -2; // force le re-render : le titre doit changer de langue
+      update();
+    };
+  };
+
+  // La bande du tour se re-traduit à la bascule FR|EN : le titre courant
+  // change de langue sans attendre le prochain passage de ligne de lecture
+  let refreshTurnband = null;
+
+  const localizeTurnband = () => {
+    if (!turnband) return;
+    turnband.setAttribute('aria-label', STRINGS[lang].turnLabel);
+    turnband.querySelector('.turnband-next').textContent = STRINGS[lang].turnNext;
+    refreshTurnband?.();
+  };
+
+  buildTurnband();
+
   /* ---------- Copier les commandes ---------- */
 
   const copyBtn = document.querySelector('[data-copy]');
@@ -755,7 +1194,11 @@
     });
   });
 
-  // État initial idempotent : aligne bascule, attributs, légendes, <title>
-  // et démo sur la langue posée avant rendu par le script de <head>.
+  // État initial idempotent : aligne bascule, attributs, légendes, <title>,
+  // démo et bande du tour sur la langue posée avant rendu par le script de <head>.
+  const nextBtn = turnband?.querySelector('.turnband-next');
+  if (nextBtn) {
+    nextBtn.textContent = STRINGS[lang].turnNext;
+  }
   applyLang(lang);
 })();
