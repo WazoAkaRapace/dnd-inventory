@@ -124,8 +124,13 @@ par des hairlines d'encre claire. Neuf entrées I–IX (`#table`, `#fiche`,
 | Tête compacte | `.entry-head-compact` (Repos long, dans le panneau) : pb 0.7rem, mb 1.2rem |
 | Copie en feuille | `.entry-copy--folio` : les sous-entrées s'étalent en **deux colonnes de feuille** ≥900px (`columns: 2`, écart 3.5rem, `break-inside: avoid` par `li`) — dense, réglée, lue avant l'écran. La copie simple reste plafonnée 62ch |
 | Sous-entrées réglées | `h3` 1.2rem + paragraphe `parchment-200` 1rem, chaque `li` refermé par un filet `--line-night-soft` — jamais de carte |
-| Preuves (tampons) | `.proof li` : mono 0.78rem espacé 0.05em, `parchment-200` sur verre de nuit 5 % bordé `--line-night-soft`, rayon 8 — un seul traitement pour toutes les preuves, mesures comme phrases |
 | Personnalité (VII) | les quatre quadrants de fiche 5e (TRAITS / IDÉAUX / LIENS / DÉFAUTS), cartes verre de nuit 1→2 colonnes (≥640px), titres Cinzel 0.72rem espacé 0.16em `gold-300` |
+
+Les tampons « preuves » (`.proof li`, mono sur verre de nuit) ont été
+RETIRÉS (2026-09, déduplication) : chaque section répétait ses
+sous-entrées en puces — la feuille parle une fois. Les nombres du SRD ne
+vivent plus QUE dans la bande du hero ; chaque fait unique retombe dans
+la prose (le cache 5 min de la liaison GM Assistant, par exemple).
 
 ## Captures en cadre téléphone et vues élargies
 
@@ -377,7 +382,6 @@ scroll — transform et opacité uniquement, une fois par entrée.
 |---|---|
 | Le filet de tête | `.entry-head::after` : `rule-draw` 0.45s origine gauche — la plume trace la règle |
 | Les entrées réglées | chaque `li` de `.subentries` se pose en stagger ×70 ms (`register-rise`, montée 12 px + fondu 0.35s), plafonné à 6 |
-| Les preuves | `.proof` TAMPOUNNE (`proof-stamp` 0.3s, scale 0.92→1) — « les preuves tamponnent », littéralement |
 | La colonne visuelle | histoire/démo arrive en fin de séquence (`max(delay, 180ms)`), les vues élargies suivent en stagger ×70 ms |
 | Le hero | la séance s'ouvre d'elle-même : pastille → nom → slogan → offre → verbes (×70 ms), puis les six tuiles (×60 ms) et le signal ; la paire de téléphones vit sa propre entrée (pair-in) |
 | Repos long | les enfants du panneau se posent (×70 ms), le terminal clôt (+40 ms) |
@@ -514,22 +518,24 @@ haut). `color-scheme: dark`, `theme-color` `#2a1f14`, `lang` cohérent,
    la copie est manuelle, c'est le seul endroit où le monde peut diverger.
 2. Nouvelle entrée du registre → ordinal romain suivant en Cinzel
    `aria-hidden`, tête sur filet, copie en feuille (`.entry-copy--folio`,
-   deux colonnes ≥900px), preuves en tampons mono ; une seule entrée peut
+   deux colonnes ≥900px) ; une seule entrée peut
    être `.is-lead` (sang). Si elle porte un `id`, la marge du registre ET la
    bande du tour l'accueillent toutes seules — rien à câbler. Une seule
    figure par page peut rester la plus grande : le wordmark (règle de la
-   couronne).
+   couronne). Ne JAMAIS répéter la sous-entrée en puces de synthèse :
+   chaque idée vit une fois, dans la feuille.
 3. Nouvelle série de captures → `.phonepost.story` avec `--views` inline,
    vues superposées `grid-area: 1/1` SANS `loading="lazy"`, pilules
    `data-view` + `data-caption`/`data-en-caption`, légende initiale dans le
-   HTML ; l'épinglage, le rail et les replis calmes se câblent seuls. Toute
-   capture utilisée doit exister dans `docs/screenshots/` ET
+   HTML ; l'épinglage, le rail et les replis calmes se câblent seuls. La
+   légende DÉCRIT l'écran (ce qu'on voit), la sous-entrée FAIT la
+   promesse (pourquoi ça compte) — jamais la même phrase des deux côtés.
+   Toute capture utilisée doit exister dans `docs/screenshots/` ET
    `docs/screenshots-en/`.
-4. Nouvelle preuve → tampon mono `.proof li`, quel que soit son contenu.
-5. Nouvelle section interactive → contenu visible sans JS, animations armées
+4. Nouvelle section interactive → contenu visible sans JS, animations armées
    par la classe `.js`, état final statique lisible en mouvement réduit,
    repli calme sans IntersectionObserver — et `aria-live` coupé sur tout ce
    qui avance au scroll.
-6. Nouvelle image → partir de `docs/screenshots/` (jamais committer dans
+5. Nouvelle image → partir de `docs/screenshots/` (jamais committer dans
    `site/assets/`), cadre téléphone + `width`/`height`, puis redémarrer
    `npm run site`.

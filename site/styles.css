@@ -732,27 +732,6 @@ html[lang="en"] [lang="fr"] {
   max-width: 62ch;
 }
 
-/* Preuves mesurées : tampons mono sur la nuit */
-.proof {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 1.3rem 0 0;
-  padding: 0;
-}
-
-.proof li {
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  letter-spacing: 0.05em;
-  color: var(--parchment-200);
-  background: rgba(233, 225, 212, 0.05);
-  border: 1px solid var(--line-night-soft);
-  border-radius: 8px;
-  padding: 0.3rem 0.6rem;
-}
-
 /* Sous-entrées réglées : à même la nuit, séparées par des filets.
    La copie feuille SUIT L'ÉCRAN : pendant l'histoire de son entrée, la
    sous-entrée correspondant à la vue affichée porte l'encre pleine et le
@@ -2442,13 +2421,6 @@ main {
   animation: ordinal-stamp 0.38s var(--ease) both;
 }
 
-/* Les preuves tamponnent, littéralement : la frappe pose le tampon au
-   lieu de le faire monter — un seul geste pour tout le bloc */
-.js .proof.reveal.is-risen {
-  animation: proof-stamp 0.3s var(--ease) both;
-  animation-delay: var(--reveal-delay, 0ms);
-}
-
 /* Le signal de descente : le dé roule sur lui-même, lentement —
    le tour est proche */
 @media (prefers-reduced-motion: no-preference) {
@@ -2550,17 +2522,6 @@ main {
     opacity: 1;
     transform: scale(1);
     filter: blur(0);
-  }
-}
-
-@keyframes proof-stamp {
-  from {
-    opacity: 0;
-    transform: scale(0.92) translateY(3px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
   }
 }
 
