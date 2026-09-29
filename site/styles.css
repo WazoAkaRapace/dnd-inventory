@@ -208,22 +208,26 @@ html[lang="en"] [lang="fr"] {
 
 /* La bascule FR|EN : pilule sombre bordée d'encre, segment actif
    lamplit (parchemin plein) — le sang reste réservé aux CTA */
+/* La bascule FR|EN vit EN HAUT DE PAGE (pas de l'écran) : une ligne de
+   cartouche au-dessus du hero, calée à droite dans la gouttière du
+   contenu. Elle défile avec la page — aucun chevauchement, ni avec le
+   hero ni avec les scènes épinglées, au mobile comme au bureau. */
 .lang-nav {
-  position: fixed;
-  /* tiens compte des encoches : jamais sous la encoche ni dans le coin arrondi */
-  top: max(0.9rem, env(safe-area-inset-top, 0px));
-  right: max(0.9rem, env(safe-area-inset-right, 0px));
-  z-index: 40;
-  display: none;
-  /* WebKit mobile : sans calque propre, les éléments fixes disparaissent
-     derrière les scènes épinglées (100dvh) pendant le repaint du scroll —
-     la promotion GPU (translateZ) garde la pilule peinte en continu */
-  transform: translateZ(0);
-  backface-visibility: hidden;
+  display: none; /* la bascule vit du JS */
 }
 
 .js .lang-nav {
-  display: block;
+  display: flex;
+  justify-content: flex-end;
+  max-width: 68rem;
+  margin-inline: auto;
+  padding: 0.9rem 1.25rem 0;
+}
+
+@media (min-width: 768px) {
+  .js .lang-nav {
+    padding-inline: 2.5rem; /* la gouttière du .wrap */
+  }
 }
 
 .lang-toggle {
