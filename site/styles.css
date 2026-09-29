@@ -760,10 +760,12 @@ html[lang="en"] [lang="fr"] {
 /* L'encre voyage : quand la vue tourne, l'emphase se déplace de
    sous-entrée en sous-entrée — la couleur COULE (l'encre du registre
    se déplace, elle ne saute pas), l'entrée prend sa pleine encre
-   pendant que les autres la rendent. */
+   pendant que les autres la rendent. Le geste est AMPLI : trois quarts
+   de seconde pour l'encre, et la sous-entrée qui prend le tour est
+   RÉÉCRITE d'un balayage — le même angle de plume que la légende. */
 .subentries li h3,
 .subentries li p {
-  transition: color 0.45s var(--ease);
+  transition: color 0.75s var(--ease);
 }
 
 .subentries li.is-sync-dim h3,
@@ -781,9 +783,10 @@ html[lang="en"] [lang="fr"] {
 
 /* le dé or marque la sous-entrée qui joue — le jalon du tour courant.
    Il se POSE comme un tampon (la grammaire des ordinaux, en miniature) :
-   dé calé d'un quart de tour, plus grand, encore flou — puis posé net.
-   La classe voyageant d'un li à l'autre, chaque prise de tour rejoue
-   le tampon ; un même li couvrant plusieurs vues ne rejoue rien. */
+   dé calé d'un tiers de tour, nettement plus grand, encore flou — puis
+   posé net, sans se presser. La classe voyageant d'un li à l'autre,
+   chaque prise de tour rejoue le tampon ; un même li couvrant plusieurs
+   vues ne rejoue rien. */
 .subentries li.is-current h3::before {
   content: "";
   display: inline-block;
@@ -802,16 +805,40 @@ html[lang="en"] [lang="fr"] {
 }
 
 @media (prefers-reduced-motion: no-preference) {
+  .subentries li.is-current {
+    /* la prise de tour se RÉÉCRIT : la pleine encre balaie la sous-entrée
+       du même geste de plume que la légende (104°, front franc, la plume
+       plus large pour les lettres) */
+    animation: voice-ink 0.7s var(--ease) both;
+    mask-image: linear-gradient(
+      104deg,
+      #000 calc(var(--story-cap) - 45%),
+      transparent var(--story-cap)
+    );
+  }
+
   .subentries li.is-current h3::before {
-    animation: voice-stamp 0.34s var(--ease) both;
+    animation: voice-stamp 0.55s var(--ease) both;
+  }
+}
+
+@keyframes voice-ink {
+  from {
+    --story-cap: -30%;
+  }
+  to {
+    --story-cap: 170%;
   }
 }
 
 @keyframes voice-stamp {
   from {
     opacity: 0;
-    transform: scale(1.55) rotate(-24deg);
-    filter: blur(2px);
+    transform: scale(1.9) rotate(-30deg);
+    filter: blur(3px);
+  }
+  70% {
+    filter: blur(0);
   }
   to {
     opacity: 1;
