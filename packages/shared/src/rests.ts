@@ -53,8 +53,8 @@ export interface RestResult {
  * documented default; the SRD leaves the choice to the player) —, exhaustion
  * −1, death saves cleared, concentration dropped, wild shape uses reset,
  * every catalog counter reset (max recomputed from the formula at the current
- * level). Conditions and food/water are untouched (conditions persist through
- * rests per SRD; survival flow is separate).
+ * level), every active condition cleared (#145). Food/water are untouched
+ * (survival flow is separate).
  */
 export function applyRest(
   character: Character,
@@ -156,6 +156,9 @@ export function applyRest(
     patch.tempHp = 0;
     patch.spellSlotsUsed = [0, 0, 0, 0, 0, 0, 0, 0, 0];
     patch.pactSlotsUsed = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    // Long rest clears every active condition (issue #145): sleep mends the
+    // poisoned and the frightened alike. Exhaustion still decays by 1 on top.
+    if ((character.conditions ?? []).length > 0) patch.conditions = [];
     // Long rest: regain up to half the TOTAL dice pool, minimum 1 (SRD);
     // the app's documented default restores the BIGGEST dice first, then
     // class-line order on a tie (the SRD leaves the choice to the player).

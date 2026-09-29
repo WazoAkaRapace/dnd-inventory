@@ -7,11 +7,14 @@ import type { SheetActionProps } from './types';
 interface DeathSaveTrackerProps extends SheetActionProps {
   character: Character;
   charId: number;
+  /** Only the sheet owner or GM can act on the tally (#146). */
+  canEdit: boolean;
 }
 
 export function DeathSaveTracker({
   character,
   charId,
+  canEdit,
   markLocalMutation,
   onSaved,
   onError,
@@ -39,6 +42,21 @@ export function DeathSaveTracker({
 
   const isDead = failures >= 3;
   const isStable = successes >= 3;
+
+  /** #146 : un tiers stabilise le mourant — la manœuvre réussit, la fiche
+   * pose les trois succès d'un coup (le joueur garde la main sur les pips). */
+  const stabilize = async () => {
+    markLocalMutation();
+    try {
+      await api.patch(`/api/characters/${charId}`, {
+        deathSaveSuccesses: 3,
+        deathSaveFailures: 0,
+      });
+      await onSaved();
+    } catch {
+      onError(t('mort.erreur.de.mise.a.jour'));
+    }
+  };
 
   return (
     <div
@@ -109,6 +127,15 @@ export function DeathSaveTracker({
           </span>
         </div>
       </div>
+      {canEdit && !isStable && !isDead && (
+        <button
+          type="button"
+          onClick={stabilize}
+          className="mt-2 w-full min-h-11 rounded-lg border border-green-300 bg-green-50 px-3 text-sm font-medium text-green-700 transition-colors hover:border-green-500 hover:bg-green-100"
+        >
+          {t('mort.se.stabiliser')}
+        </button>
+      )}
     </div>
   );
 }

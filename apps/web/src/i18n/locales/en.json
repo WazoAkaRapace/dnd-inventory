@@ -1990,5 +1990,10 @@
   "carnet.nt.titre.placeholder": "Port Nyanzaru schemes, dungeon traps…",
   "carnet.cal.note": "Day note",
   "carnet.cal.note.placeholder": "What happened today…",
-  "carnet.jours.modifier": "Edit day {{day}}"
+  "carnet.jours.modifier": "Edit day {{day}}",
+  "mort.se.stabiliser": "Stabilize (3 successes at once)",
+  "survie.munitions": "Ammunition",
+  "survie.tirer.une.munition": "🏹 Shoot ({{name}} ×{{count}})",
+  "combat.mourant": "Down — death saves",
+  "combat.mourant.chemin": "Dying"
 }

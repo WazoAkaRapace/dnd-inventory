@@ -160,8 +160,15 @@ export function SurvivalPanel({
     if (e.notes?.includes('empty')) return sum + e.quantity;
     return sum;
   }, 0);
+  // #143 : munitions étiquetées (flèches, carreaux) — un tir en consomme une
+  const ammoCount = entries.reduce((sum, e) => {
+    return sum + (e.item.survivalTags?.includes('ammunition') ? e.quantity : 0);
+  }, 0);
+  const ammoName =
+    entries.find((e) => e.item.survivalTags?.includes('ammunition') && e.quantity > 0)?.item.name ??
+    t('survie.munitions');
 
-  const consume = async (type: 'food' | 'water') => {
+  const consume = async (type: 'food' | 'water' | 'ammo') => {
     markLocalMutation();
     try {
       await api.post(`/api/characters/${charId}/consume`, { type });
@@ -504,6 +511,7 @@ export function SurvivalPanel({
           <DeathSaveTracker
             character={character}
             charId={charId}
+            canEdit={canEdit}
             markLocalMutation={markLocalMutation}
             onSaved={onSaved}
             onError={onError}
@@ -1276,9 +1284,9 @@ export function SurvivalPanel({
           );
         })()}
 
-      {/* ---------- 7. Nourriture & eau ---------- */}
+      {/* ---------- 7. Nourriture, eau & munitions ---------- */}
       <Panel title={t('survie.nourriture.et.eau')}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <div className="flex flex-col gap-1">
             <DeprivationBox
               label={t('survie.sans.nourriture')}
@@ -1319,6 +1327,26 @@ export function SurvivalPanel({
                 className="text-xs px-2 py-1 rounded-lg bg-cyan-100 text-cyan-800 hover:bg-cyan-200 transition-colors"
               >
                 {t('survie.remplir.vides', { count: emptyWaterCount })}
+              </button>
+            )}
+          </div>
+          {/* #143 : munitions — un tir à l'arc / à l'arbalète décrémente */}
+          <div className="flex flex-col gap-1 sm:col-start-1 sm:row-start-2 lg:col-start-3 lg:row-start-1">
+            <div className="bg-parchment-50 rounded-lg px-3 py-2 border border-parchment-200 flex items-center justify-between gap-2">
+              <span className="text-sm font-medium text-ink-800 truncate">
+                🏹 {t('survie.munitions')}
+              </span>
+              <span className="font-mono text-sm font-semibold text-ink-900 shrink-0">
+                {ammoCount}
+              </span>
+            </div>
+            {ammoCount > 0 && canEdit && (
+              <button
+                type="button"
+                onClick={() => consume('ammo')}
+                className="text-xs px-2 py-1 rounded-lg bg-orange-100 text-orange-800 hover:bg-orange-200 transition-colors truncate"
+              >
+                {t('survie.tirer.une.munition', { count: ammoCount, name: ammoName })}
               </button>
             )}
           </div>

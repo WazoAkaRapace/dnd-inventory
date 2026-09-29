@@ -1347,6 +1347,15 @@ function InitiativeRail({
                       💀
                     </span>
                   )}
+                  {!c.defeated && c.type === 'player' && (c.hitPoints ?? 0) <= 0 && (
+                    <span
+                      aria-hidden="true"
+                      className="shrink-0 text-xs"
+                      title={t('combat.mourant')}
+                    >
+                      🩸
+                    </span>
+                  )}
                 </span>
                 {hp && (
                   <HpBar
@@ -1936,10 +1945,10 @@ function DamageSheet({
       const max = patch.maxHitPoints ?? combatant.maxHitPoints ?? 1;
       const hp = Math.max(0, Math.min(max, parseInt(editHp, 10)));
       patch.hitPoints = hp;
-      // Auto-revive if HP > 0
+      // Auto-revive if HP > 0. At HP = 0 a PLAYER is dying, not defeated
+      // (#148 — the server keeps them in the rotation); monsters still fall.
       if (hp > 0 && combatant.defeated) patch.defeated = false;
-      // Auto-defeat if HP = 0
-      if (hp === 0) patch.defeated = true;
+      if (hp === 0 && combatant.type !== 'player') patch.defeated = true;
     }
     if (Object.keys(patch).length === 0) return;
     onPatch(combatant.id, patch);

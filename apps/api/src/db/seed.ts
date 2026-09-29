@@ -84,10 +84,14 @@ const INSERT = `
     magic_bonus = excluded.magic_bonus
 `;
 
-// SRD items that count as food or water for survival tracking
+// SRD items that count as food, water or ammunition for survival tracking
 const SURVIVAL_TAGS: Record<string, string[]> = {
   'rations-1-day': ['food'],
   waterskin: ['water'],
+  // #143 : flèches et carreaux suivis depuis l'onglet survie (décrément à
+  // chaque tir à l'arc / à l'arbalète). Les étuis restent du simple équipement.
+  arrow: ['ammunition'],
+  'crossbow-bolt': ['ammunition'],
 };
 
 // Alternative search names for items where the official French translation

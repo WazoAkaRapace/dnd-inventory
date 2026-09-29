@@ -597,8 +597,10 @@ export async function inventoryRoutes(app: FastifyInstance) {
           .send({ error: apiMsg(req, 'only the owner or GM can edit this inventory') });
 
       const type = req.body?.type;
-      if (type !== 'food' && type !== 'water')
+      if (type !== 'food' && type !== 'water' && type !== 'ammo')
         return reply.code(400).send({ error: apiMsg(req, 'type must be food or water') });
+      // #143 : le tag d'inventaire s'appelle 'ammunition' — l'API parle 'ammo'
+      const tag = type === 'ammo' ? 'ammunition' : type;
 
       // Find a tagged inventory item
       // For water: skip items with notes containing 'empty' (already drunk)
@@ -619,7 +621,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
         .from(inventory)
         .innerJoin(items, eq(items.id, inventory.itemId))
         .where(
-          sql`${inventory.characterId} = ${char.id} AND ${items.survivalTags} LIKE ${`%"${type}"%`} ${notEmpty}`,
+          sql`${inventory.characterId} = ${char.id} AND ${items.survivalTags} LIKE ${`%"${tag}"%`} ${notEmpty}`,
         )
         .orderBy(desc(inventory.quantity))
         .limit(1)
@@ -629,7 +631,9 @@ export async function inventoryRoutes(app: FastifyInstance) {
         const msg =
           type === 'food'
             ? 'Aucune ration disponible'
-            : 'Aucune gourde disponible (toutes vides ou absentes)';
+            : type === 'ammo'
+              ? 'Aucune munition disponible'
+              : 'Aucune gourde disponible (toutes vides ou absentes)';
         return reply.code(400).send({ error: msg });
       }
 
@@ -655,6 +659,29 @@ export async function inventoryRoutes(app: FastifyInstance) {
             itemName,
             deltaQty: -1,
             reason: 'consume-food',
+            actorUserId: userId,
+          });
+        })();
+      } else if (type === 'ammo') {
+        // #143 : un tir consomme une munition — même geste que la ration,
+        // sans toucher aux compteurs de privation.
+        getDb().transaction(() => {
+          if (entry.quantity <= 1) {
+            drizzle.delete(inventory).where(eq(inventory.id, entry.inv_id)).run();
+          } else {
+            drizzle
+              .update(inventory)
+              .set({ quantity: sql`${inventory.quantity} - 1` })
+              .where(eq(inventory.id, entry.inv_id))
+              .run();
+          }
+          logTransaction(drizzle, {
+            partyId: char.party_id,
+            characterId: char.id,
+            itemId: entry.item_id,
+            itemName,
+            deltaQty: -1,
+            reason: 'consume-ammo',
             actorUserId: userId,
           });
         })();

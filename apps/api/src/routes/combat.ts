@@ -946,9 +946,40 @@ export async function combatRoutes(app: FastifyInstance) {
           .run();
       }
 
-      // Auto-set defeated when HP hits 0; auto-clear when HP goes above 0
+      // --- Dying players (#148): a PLAYER combatant at 0 HP is DYING, not
+      // defeated — they stay in the initiative rotation so the table knows
+      // when to roll death saves. Only 3 death-save failures (or the manual
+      // toggle) defeat them. Monsters/NPCs keep the instant defeat.
+      // Manual defeated=false on a dying player keeps them dying (HP decides).
+      const isPlayerRow = combatant.type === 'player';
       if (body.hitPoints !== undefined && body.defeated === undefined) {
-        values.defeated = body.hitPoints <= 0 ? 1 : 0;
+        if (isPlayerRow && body.hitPoints <= 0) {
+          values.defeated = 0;
+        } else {
+          values.defeated = body.hitPoints <= 0 ? 1 : 0;
+        }
+      } else if (body.defeated !== undefined && body.hitPoints === undefined) {
+        if (isPlayerRow && !body.defeated && (combatant.hit_points ?? 0) <= 0) {
+          // Réanimer un mourant : il reste dans la rotation tant que PV = 0
+          values.defeated = 0;
+        }
+      }
+      // --- Revival (#144): rising above 0 HP resets the death-save tally
+      // (both sides — the tracker's heal is the sheet's heal).
+      let revivedPlayer = false;
+      if (
+        isPlayerRow &&
+        combatant.character_id &&
+        body.hitPoints !== undefined &&
+        body.hitPoints > 0 &&
+        (combatant.hit_points ?? 0) <= 0
+      ) {
+        drizzle
+          .update(charactersTable)
+          .set({ deathSaveSuccesses: 0, deathSaveFailures: 0 })
+          .where(eq(charactersTable.id, combatant.character_id))
+          .run();
+        revivedPlayer = true;
       }
 
       drizzle.update(combatantsTable).set(values).where(eq(combatantsTable.id, combatant.id)).run();
@@ -1165,6 +1196,17 @@ export async function combatRoutes(app: FastifyInstance) {
         actorUserId: userId,
         ...(concentration ? { concentration } : {}),
       });
+      // Revival touched the sheet's death saves — the owner's DeathSaveTracker
+      // must see the reset too (a stats-only wake would miss it).
+      if (revivedPlayer && combatant.character_id) {
+        bus.emitChange({
+          type: 'character:change',
+          partyId: enc.party_id,
+          characterId: combatant.character_id,
+          action: 'stats',
+          actorUserId: userId,
+        });
+      }
       return reply.send({
         combatant: mapCombatant(row),
         ...(concentrationBroken ? { concentrationBroken } : {}),
