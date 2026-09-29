@@ -32,7 +32,7 @@
     "@types/node": "^26.6.2",
     "@types/web-push": "^3.6.4",
     "drizzle-kit": "^0.31.11",
-    "tsx": "^4.23.13",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }
 }
