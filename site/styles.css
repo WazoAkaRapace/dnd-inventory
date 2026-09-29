@@ -210,10 +210,16 @@ html[lang="en"] [lang="fr"] {
    lamplit (parchemin plein) — le sang reste réservé aux CTA */
 .lang-nav {
   position: fixed;
-  top: 0.9rem;
-  right: 0.9rem;
+  /* tiens compte des encoches : jamais sous la encoche ni dans le coin arrondi */
+  top: max(0.9rem, env(safe-area-inset-top, 0px));
+  right: max(0.9rem, env(safe-area-inset-right, 0px));
   z-index: 40;
   display: none;
+  /* WebKit mobile : sans calque propre, les éléments fixes disparaissent
+     derrière les scènes épinglées (100dvh) pendant le repaint du scroll —
+     la promotion GPU (translateZ) garde la pilule peinte en continu */
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .js .lang-nav {
