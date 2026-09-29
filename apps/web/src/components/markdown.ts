@@ -12,7 +12,7 @@ function inline(text: string): string {
     .replace(/>/g, '&gt;')
     .replace(
       /`([^`]+)`/g,
-      '<code class="bg-parchment-200 px-1 rounded text-blood-700 text-[11px]">$1</code>',
+      '<code class="bg-parchment-200 px-1 rounded text-blood-800 text-[11px]">$1</code>',
     )
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>');

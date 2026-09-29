@@ -218,7 +218,7 @@ export function AuthCard({
       <div className="card w-full max-w-sm p-6 sm:p-8">
         <div className="text-center mb-6">
           <img src="/icon-seal.svg" alt="" aria-hidden="true" className="w-20 h-20 mx-auto mb-3" />
-          <h1 className="font-display text-2xl font-bold text-blood-700">{title}</h1>
+          <h1 className="font-display text-2xl font-bold text-blood-500">{title}</h1>
           {subtitle && <p className="text-ink-400 text-sm mt-1">{subtitle}</p>}
         </div>
         {children}
@@ -233,7 +233,7 @@ export function AccentLink({ to, children }: { to: string; children: React.React
   return (
     <Link
       to={to}
-      className="text-blood-600 font-medium hover:underline inline-flex min-h-11 items-center"
+      className="text-blood-500 font-medium hover:underline inline-flex min-h-11 items-center"
     >
       {children}
     </Link>
@@ -345,7 +345,7 @@ const CHIP_TONES = {
   },
   blood: {
     solid: 'bg-blood-50 text-blood-800 border-blood-200',
-    soft: 'bg-blood-50/60 text-blood-700 border-blood-200',
+    soft: 'bg-blood-50/60 text-blood-500 border-blood-200',
   },
   green: {
     solid: 'bg-green-50 text-green-800 border-green-200',
@@ -857,7 +857,7 @@ export function TabButton({
       onClick={onClick}
       className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
         active
-          ? 'border-blood-600 text-blood-700'
+          ? 'border-blood-500 text-blood-500'
           : 'border-transparent text-ink-400 hover:text-ink-700'
       }`}
     >

@@ -72,7 +72,7 @@ export function NewLocationModal({ open, onClose, onCreate }: NewLocationModalPr
             onClick={() => setType('mount')}
             className={`px-3 py-2 rounded-xl text-sm font-medium border transition-colors ${
               type === 'mount'
-                ? 'bg-blood-600 text-white border-blood-600'
+                ? 'bg-blood-600 text-white border-blood-500'
                 : 'bg-parchment-100 text-ink-700 border-parchment-300 hover:bg-parchment-200'
             }`}
             aria-pressed={type === 'mount'}
@@ -84,7 +84,7 @@ export function NewLocationModal({ open, onClose, onCreate }: NewLocationModalPr
             onClick={() => setType('container')}
             className={`px-3 py-2 rounded-xl text-sm font-medium border transition-colors ${
               type === 'container'
-                ? 'bg-blood-600 text-white border-blood-600'
+                ? 'bg-blood-600 text-white border-blood-500'
                 : 'bg-parchment-100 text-ink-700 border-parchment-300 hover:bg-parchment-200'
             }`}
             aria-pressed={type === 'container'}

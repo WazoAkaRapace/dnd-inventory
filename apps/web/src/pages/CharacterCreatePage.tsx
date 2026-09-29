@@ -163,7 +163,7 @@ function OptionRow({
       <span className="flex items-center gap-2">
         <span
           aria-hidden="true"
-          className={`w-3 shrink-0 text-xs text-blood-600 ${selected ? '' : 'invisible'}`}
+          className={`w-3 shrink-0 text-xs text-blood-500 ${selected ? '' : 'invisible'}`}
         >
           ●
         </span>
@@ -366,9 +366,9 @@ export default function CharacterCreatePage() {
               title={s.title}
               className={`flex-1 py-2.5 font-display text-sm transition-colors ${
                 state === 'current'
-                  ? 'border-b-2 border-blood-600 font-bold text-blood-600'
+                  ? 'border-b-2 border-blood-500 font-bold text-blood-500'
                   : state === 'done'
-                    ? 'text-blood-600 hover:bg-parchment-100'
+                    ? 'text-blood-500 hover:bg-parchment-100'
                     : 'text-ink-300 hover:bg-parchment-100'
               }`}
             >
@@ -384,7 +384,7 @@ export default function CharacterCreatePage() {
           title={t('create.recapitulatif')}
           className={`flex-1 py-2.5 font-display text-sm transition-colors ${
             step === RECAP
-              ? 'border-b-2 border-blood-600 font-bold text-blood-600'
+              ? 'border-b-2 border-blood-500 font-bold text-blood-500'
               : 'text-ink-300 hover:bg-parchment-100'
           }`}
         >
@@ -640,7 +640,7 @@ export default function CharacterCreatePage() {
                         aria-pressed={pickedValue === v}
                         className={`min-h-[2.75rem] rounded-full border px-4 py-1.5 font-bold tabular-nums transition-colors ${
                           pickedValue === v
-                            ? 'border-blood-600 bg-blood-600 text-white'
+                            ? 'border-blood-500 bg-blood-600 text-white'
                             : 'border-parchment-300 bg-parchment-50 text-ink-700 hover:border-blood-400'
                         }`}
                       >
@@ -753,7 +753,7 @@ export default function CharacterCreatePage() {
                               : 'border-parchment-200 bg-parchment-50 text-ink-500 hover:border-blood-400'
                         }`}
                       >
-                        {on && <span className="mr-1 text-xs text-blood-600">●</span>}
+                        {on && <span className="mr-1 text-xs text-blood-500">●</span>}
                         {label}
                       </button>
                     );
@@ -785,7 +785,7 @@ export default function CharacterCreatePage() {
                           : 'border-parchment-200 bg-parchment-50 text-ink-500 hover:border-blood-400'
                       }`}
                     >
-                      {on && <span className="mr-1 text-xs text-blood-600">●</span>}
+                      {on && <span className="mr-1 text-xs text-blood-500">●</span>}
                       {languageLabel(lang)}
                     </button>
                   );
@@ -884,7 +884,7 @@ export default function CharacterCreatePage() {
                             : 'border-parchment-200 bg-parchment-50 text-ink-400'
                         }`}
                       >
-                        {prof && <span className="mr-0.5 text-[10px] text-blood-600">●</span>}
+                        {prof && <span className="mr-0.5 text-[10px] text-blood-500">●</span>}
                         {abilityShort(abi.key)} {formatModifier(total)}
                       </span>
                     );
@@ -944,7 +944,7 @@ export default function CharacterCreatePage() {
               {t('create.l.equipement.et.les.sorts.t')}
             </p>
             {createError && (
-              <p role="alert" className="text-center text-sm text-red-600">
+              <p role="alert" className="text-center text-sm text-red-700">
                 {createError}
               </p>
             )}

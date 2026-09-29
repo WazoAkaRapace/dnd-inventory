@@ -552,7 +552,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
             <button
               type="button"
               onClick={restoreAll}
-              className="text-xs text-blood-600 hover:underline px-1.5 py-1.5 -mr-1.5"
+              className="text-xs text-blood-500 hover:underline px-1.5 py-1.5 -mr-1.5"
             >
               {t('sorts.restaurer.tout')}
             </button>
@@ -669,7 +669,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
               <button
                 type="button"
                 onClick={() => fetchCharSpells()}
-                className="btn-ghost text-blood-600 text-sm px-3 py-1.5"
+                className="btn-ghost text-blood-500 text-sm px-3 py-1.5"
               >
                 {t('sorts.reessayer')}
               </button>
@@ -796,7 +796,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                                     {spell.castingTime && (
                                       <span
                                         className={`truncate ${
-                                          isBonusAction ? 'text-blood-600 font-semibold' : ''
+                                          isBonusAction ? 'text-blood-500 font-semibold' : ''
                                         }`}
                                       >
                                         {spell.castingTime}
@@ -855,7 +855,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                                           <button
                                             type="button"
                                             onClick={() => removeSpell(cs.id)}
-                                            className="px-2.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold pulse-warn"
+                                            className="px-2.5 py-1.5 rounded-lg bg-red-600 hover:brightness-90 text-white text-xs font-semibold pulse-warn"
                                           >
                                             {t('sorts.oublier.definitivement')}
                                           </button>
@@ -864,7 +864,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                                         <button
                                           type="button"
                                           onClick={() => armForget(cs.id)}
-                                          className="text-[11px] text-blood-600 hover:underline px-1.5 py-1.5"
+                                          className="text-[11px] text-blood-500 hover:underline px-1.5 py-1.5"
                                         >
                                           {t('sorts.oublier.ce.sort')}
                                         </button>
@@ -1351,7 +1351,7 @@ function SpellCatalog({
           <button
             type="button"
             onClick={onRetry}
-            className="btn-ghost text-blood-600 text-sm px-3 py-1.5"
+            className="btn-ghost text-blood-500 text-sm px-3 py-1.5"
           >
             {t('sorts.reessayer')}
           </button>
@@ -1561,7 +1561,7 @@ function SwipeToReveal({
             setDx(0);
             onAction();
           }}
-          className={`w-full h-full bg-red-600 hover:bg-red-700 text-white text-xs font-semibold flex flex-col items-center justify-center gap-0.5 ${dragging ? '' : 'transition-transform duration-200'}`}
+          className={`w-full h-full bg-red-600 hover:brightness-90 text-white text-xs font-semibold flex flex-col items-center justify-center gap-0.5 ${dragging ? '' : 'transition-transform duration-200'}`}
           style={{ transform: `translateX(${WIDTH + dx}px)` }}
           aria-label={actionLabel}
           tabIndex={open ? 0 : -1}

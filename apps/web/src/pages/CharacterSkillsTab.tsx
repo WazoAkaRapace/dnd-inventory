@@ -100,7 +100,7 @@ function skillBreakdownSegments(
   } else if (prof === 1) {
     segments.push({
       text: t('skills.maitrise', { mod: formatModifier(profBonus) }),
-      className: 'text-blood-600',
+      className: 'text-blood-500',
     });
   } else {
     segments.push({ text: t('skills.sans.maitrise'), className: 'text-ink-400' });
@@ -241,7 +241,7 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
   );
 
   const profDotClass = (prof: number) =>
-    prof === 2 ? 'text-gold-600' : prof === 1 ? 'text-blood-600' : 'text-parchment-300';
+    prof === 2 ? 'text-gold-600' : prof === 1 ? 'text-blood-500' : 'text-parchment-300';
   const profDotGlyph = (prof: number) => (prof === 2 ? '◉' : prof === 1 ? '●' : '○');
 
   return (
@@ -312,7 +312,7 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
                 const tileBody = (
                   <>
                     <span className="flex items-center justify-center gap-1.5 text-xs font-medium text-ink-500">
-                      {proficient && <span className="text-blood-600">●</span>}
+                      {proficient && <span className="text-blood-500">●</span>}
                       <span>{abilityLabel(abi.key)}</span>
                       {auraOfProtection > 0 && <span aria-hidden="true">🛡️</span>}
                     </span>
@@ -505,7 +505,7 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
                     >
                       <span
                         className={`text-xs mr-1 ${
-                          prof === 2 ? 'text-gold-700' : 'text-blood-600'
+                          prof === 2 ? 'text-gold-700' : 'text-blood-500'
                         }`}
                       >
                         {prof === 2 ? '◉' : '●'}
@@ -541,7 +541,7 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
                         }`}
                         aria-pressed={known}
                       >
-                        {known && <span className="text-blood-600 text-xs mr-1">●</span>}
+                        {known && <span className="text-blood-500 text-xs mr-1">●</span>}
                         {languageLabel(lang)}
                       </button>
                     );
@@ -574,7 +574,7 @@ export default function CharacterSkillsTab({ character, charId, onSaved, onError
                     key={lang}
                     className="px-3 py-1.5 rounded-full border text-sm text-ink-700 bg-blood-50 border-blood-300"
                   >
-                    <span className="text-blood-600 text-xs mr-1">●</span>
+                    <span className="text-blood-500 text-xs mr-1">●</span>
                     {languageLabel(lang)}
                   </span>
                 ))}
@@ -643,7 +643,7 @@ function WeaponMasteryCard({
           <button
             type="button"
             onClick={() => patch({ weaponProficiencies: null })}
-            className="text-xs text-blood-600 hover:underline"
+            className="text-xs text-blood-500 hover:underline"
             title={t('skills.revenir.aux.maitrises.par.defaut.de')}
           >
             {t('skills.selon.la.classe')}
@@ -719,7 +719,7 @@ function WeaponMasteryCard({
                   key={fr}
                   className="px-3 py-1.5 rounded-full border text-sm text-ink-700 bg-blood-50 border-blood-300"
                 >
-                  <span className="text-blood-600 text-xs mr-1">●</span>
+                  <span className="text-blood-500 text-xs mr-1">●</span>
                   {fr}
                 </span>
               ))}
@@ -813,7 +813,7 @@ function ArmorMasteryCard({
           <button
             type="button"
             onClick={() => patch({ armorProficiencies: null })}
-            className="text-xs text-blood-600 hover:underline"
+            className="text-xs text-blood-500 hover:underline"
             title={t('skills.revenir.aux.maitrises.par.defaut.de')}
           >
             {t('skills.selon.la.classe')}
@@ -850,7 +850,7 @@ function ArmorMasteryCard({
               key={fr}
               className="px-3 py-1.5 rounded-full border text-sm text-ink-700 bg-blood-50 border-blood-300"
             >
-              <span className="text-blood-600 text-xs mr-1">●</span>
+              <span className="text-blood-500 text-xs mr-1">●</span>
               {fr}
             </span>
           ))}

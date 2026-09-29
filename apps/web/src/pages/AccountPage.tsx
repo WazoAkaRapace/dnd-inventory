@@ -293,7 +293,7 @@ export default function AccountPage() {
                 <p className="text-xs text-ink-400 mt-1">{t('account.email.annuler.aide')}</p>
                 <button
                   type="button"
-                  className="text-xs font-medium text-blood-600 hover:underline mt-1 inline-flex min-h-11 items-center -mb-2 disabled:opacity-50"
+                  className="text-xs font-medium text-blood-500 hover:underline mt-1 inline-flex min-h-11 items-center -mb-2 disabled:opacity-50"
                   onClick={resendVerification}
                   disabled={resendingVerify}
                 >
@@ -307,7 +307,7 @@ export default function AccountPage() {
                 <p className="text-xs text-ink-400">{t('account.email.non.verifiee')}</p>
                 <button
                   type="button"
-                  className="text-xs font-medium text-blood-600 hover:underline shrink-0 inline-flex min-h-11 items-center disabled:opacity-50"
+                  className="text-xs font-medium text-blood-500 hover:underline shrink-0 inline-flex min-h-11 items-center disabled:opacity-50"
                   onClick={resendVerification}
                   disabled={resendingVerify}
                 >
@@ -526,7 +526,7 @@ export default function AccountPage() {
               required
             />
             {!passwordsMatch && (
-              <p className="text-xs text-red-600 mt-1">
+              <p className="text-xs text-red-700 mt-1">
                 {t('account.les.deux.nouveaux.mots.de.passe')}
               </p>
             )}

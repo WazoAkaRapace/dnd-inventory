@@ -61,7 +61,7 @@ function exhaustionTierText(level: number): string {
   if (level <= 0) return 'text-ink-400';
   if (level <= 2) return 'text-yellow-700';
   if (level <= 4) return 'text-orange-700';
-  if (level <= 5) return 'text-red-600';
+  if (level <= 5) return 'text-red-700';
   return 'text-red-700';
 }
 
@@ -743,7 +743,7 @@ export function SurvivalPanel({
                 <button
                   type="button"
                   onClick={() => removeCondition(cond)}
-                  className="text-blood-500 hover:text-blood-700 font-semibold -my-2 -mr-1.5 inline-flex items-center justify-center min-w-11 min-h-11 rounded-full hover:bg-blood-100"
+                  className="text-blood-500 hover:text-blood-400 font-semibold -my-2 -mr-1.5 inline-flex items-center justify-center min-w-11 min-h-11 rounded-full hover:bg-blood-100"
                   aria-label={t('survie.retirer.l.etat.conditionlabel.cond', {
                     conditionLabel: conditionLabel(cond),
                   })}
@@ -755,7 +755,7 @@ export function SurvivalPanel({
             <button
               type="button"
               onClick={() => setConditionPickerOpen(true)}
-              className="inline-flex items-center gap-1 px-2.5 min-h-11 rounded-full text-xs font-medium border border-parchment-300 bg-parchment-100 text-ink-500 hover:border-blood-300 hover:text-blood-700 transition-colors"
+              className="inline-flex items-center gap-1 px-2.5 min-h-11 rounded-full text-xs font-medium border border-parchment-300 bg-parchment-100 text-ink-500 hover:border-blood-300 hover:text-blood-400 transition-colors"
               aria-haspopup="dialog"
             >
               {t('survie.ajouter.un.etat')}

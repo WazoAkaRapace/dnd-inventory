@@ -433,7 +433,7 @@ function CalendarTab({ campaign, partyId, reload, onError, setCampaign }: TabPro
               <button
                 type="button"
                 onClick={() => setEditingDay(true)}
-                className="mt-0.5 block font-display text-6xl leading-none text-ink-900 transition-colors hover:text-blood-700"
+                className="mt-0.5 block font-display text-6xl leading-none text-ink-900 transition-colors hover:text-blood-400"
                 aria-label={t('carnet.cal.modifier.jour')}
                 title={t('carnet.cal.modifier.jour')}
               >
@@ -491,7 +491,7 @@ function CalendarTab({ campaign, partyId, reload, onError, setCampaign }: TabPro
                 <button
                   type="button"
                   key={p.labelKey}
-                  className="rounded-full border border-parchment-300 px-2.5 py-1 text-sm hover:border-blood-600"
+                  className="rounded-full border border-parchment-300 px-2.5 py-1 text-sm hover:border-blood-500"
                   title={t(p.labelKey)}
                   aria-label={t(p.labelKey)}
                   onClick={() => {
@@ -698,7 +698,7 @@ function CountdownRow({
       </span>
       <button
         type="button"
-        className="shrink-0 p-1 text-ink-400 hover:text-blood-600"
+        className="shrink-0 p-1 text-ink-400 hover:text-blood-500"
         aria-label={t('carnet.rebours.modifier', { label: countdown.label })}
         onClick={() => setEditing(true)}
       >
@@ -707,7 +707,7 @@ function CountdownRow({
       <ConfirmButton
         onConfirm={onDelete}
         className="rounded-full p-1 text-sm text-ink-400 transition-colors hover:text-red-500"
-        armedClassName="bg-red-600 hover:bg-red-700 text-white! px-2.5 py-1 font-semibold"
+        armedClassName="bg-red-600 hover:brightness-90 text-white! px-2.5 py-1 font-semibold"
         title={t('carnet.rebours.supprimer', { label: countdown.label })}
         ariaLabel={t('carnet.rebours.supprimer', { label: countdown.label })}
         confirmChildren={t('carnet.supprimer')}
@@ -1026,7 +1026,7 @@ function QuestsTab({ campaign, partyId, reload, onError }: TabProps) {
                         </button>
                         <ConfirmButton
                           onConfirm={() => removeQuest(quest.id)}
-                          className="text-xs text-ink-400 hover:text-red-600"
+                          className="text-xs text-ink-400 hover:text-red-700"
                           armedClassName="font-semibold text-red-700"
                           title={t('carnet.qu.supprimer', { title: quest.title })}
                           ariaLabel={t('carnet.qu.supprimer', { title: quest.title })}
@@ -1320,7 +1320,7 @@ function NotesTab({ campaign, partyId, reload, onError, setCampaign }: TabProps)
                       <button
                         type="button"
                         onClick={() => openEdit(note)}
-                        className="p-1 text-sm text-ink-400 hover:text-blood-600"
+                        className="p-1 text-sm text-ink-400 hover:text-blood-500"
                         aria-label={t('notes.modifier.note.title', { note_title: note.title })}
                       >
                         ✎
@@ -1328,7 +1328,7 @@ function NotesTab({ campaign, partyId, reload, onError, setCampaign }: TabProps)
                       <ConfirmButton
                         onConfirm={() => remove(note.id)}
                         className="rounded-full p-1 text-sm text-ink-400 transition-colors hover:text-red-500"
-                        armedClassName="bg-red-600 hover:bg-red-700 text-white! px-2.5 py-1 font-semibold"
+                        armedClassName="bg-red-600 hover:brightness-90 text-white! px-2.5 py-1 font-semibold"
                         title={t('notes.supprimer.note.title', { note_title: note.title })}
                         ariaLabel={t('notes.supprimer.note.title', { note_title: note.title })}
                         confirmChildren={t('notes.supprimer')}

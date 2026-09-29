@@ -256,7 +256,7 @@ export default function ChroniclePage() {
                 aria-pressed={(active?.style ?? '') === r.style}
                 className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
                   (active?.style ?? '') === r.style
-                    ? 'border-blood-600 bg-blood-50 text-blood-700'
+                    ? 'border-blood-500 bg-blood-50 text-blood-500'
                     : 'border-parchment-300 text-ink-500 hover:border-ink-400 hover:text-ink-700'
                 }`}
               >
@@ -410,7 +410,7 @@ export default function ChroniclePage() {
                   </span>
                   <span
                     aria-hidden="true"
-                    className="shrink-0 pt-1.5 text-sm font-medium text-blood-600"
+                    className="shrink-0 pt-1.5 text-sm font-medium text-blood-500"
                   >
                     {t('chronique.lire')}
                   </span>

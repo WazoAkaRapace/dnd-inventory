@@ -161,7 +161,7 @@ function TocLink({
         {queue && <span className="shrink-0 font-mono text-xs text-ink-500">{queue}</span>}
         <span
           aria-hidden="true"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-parchment-300 text-sm text-ink-500 transition-colors group-hover:border-blood-600 group-hover:text-blood-600"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-parchment-300 text-sm text-ink-500 transition-colors group-hover:border-blood-500 group-hover:text-blood-500"
         >
           →
         </span>
@@ -279,7 +279,7 @@ function MemberCharacters({
             </span>
             <span
               aria-hidden="true"
-              className="shrink-0 text-sm text-ink-300 transition-colors group-hover:text-blood-600"
+              className="shrink-0 text-sm text-ink-300 transition-colors group-hover:text-blood-500"
             >
               →
             </span>
@@ -540,7 +540,7 @@ export default function PartyPage() {
       <>
         {t('party.combat.queue', { count: combatQueue.total })}
         {combatActive > 0 && (
-          <span className="font-medium text-blood-600">
+          <span className="font-medium text-blood-500">
             {` · ${t('party.combat.en.cours', { count: combatActive })}`}
           </span>
         )}
@@ -621,7 +621,7 @@ export default function PartyPage() {
                       </span>
                     )}
                   </span>
-                  <span className="shrink-0 text-sm font-medium text-blood-600">
+                  <span className="shrink-0 text-sm font-medium text-blood-500">
                     {t('party.ouvrir')}
                   </span>
                 </Link>
@@ -750,8 +750,8 @@ export default function PartyPage() {
                     type="button"
                     className={`ml-3 shrink-0 inline-flex min-h-11 items-center rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors ${
                       inviteCopied
-                        ? 'border-blood-600 text-blood-600'
-                        : 'border-parchment-300 text-ink-700 hover:border-blood-600 hover:text-blood-600'
+                        ? 'border-blood-500 text-blood-500'
+                        : 'border-parchment-300 text-ink-700 hover:border-blood-500 hover:text-blood-500'
                     }`}
                     onClick={copyInvite}
                     aria-label={t('party.copier.le.code.d.invitation.party', {

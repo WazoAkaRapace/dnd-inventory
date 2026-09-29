@@ -331,7 +331,7 @@ function RenamePartySection({
           {busy ? '…' : t('common.save')}
         </button>
       </div>
-      {error && <div className="mt-2 text-sm text-red-600">{error}</div>}
+      {error && <div className="mt-2 text-sm text-red-700">{error}</div>}
     </div>
   );
 }
@@ -407,7 +407,7 @@ function DisbandPartySection({
               disabled={busy}
             />
           </label>
-          {error && <div className="mt-3 text-sm text-red-600">{error}</div>}
+          {error && <div className="mt-3 text-sm text-red-700">{error}</div>}
           <div className="mt-4 flex gap-2">
             <button
               type="button"
@@ -421,7 +421,7 @@ function DisbandPartySection({
               type="button"
               onClick={disband}
               disabled={busy || !nameMatches}
-              className="btn-primary flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50"
+              className="btn-primary flex-1 bg-red-600 hover:brightness-90 disabled:opacity-50"
             >
               {busy ? t('md.dissolution') : t('md.dissoudre.definitivement')}
             </button>
@@ -588,7 +588,7 @@ function CharactersTab({
               <button
                 type="button"
                 onClick={() => setDeleteTarget(c)}
-                className="text-ink-400 hover:text-red-600 text-sm shrink-0 inline-flex items-center justify-center min-w-11 min-h-11 rounded-lg hover:bg-red-50"
+                className="text-ink-400 hover:text-red-700 text-sm shrink-0 inline-flex items-center justify-center min-w-11 min-h-11 rounded-lg hover:bg-red-50"
                 aria-label={t('md.supprimer.c.name', { c_name: c.name })}
                 title={t('md.supprimer.le.personnage')}
               >
@@ -654,7 +654,7 @@ function CharactersTab({
                 </span>
               )}
               {c.currentHp <= 0 && (
-                <span className="text-red-600 font-medium">
+                <span className="text-red-700 font-medium">
                   💀 {c.deathSaveSuccesses}/3 ✓ · {c.deathSaveFailures}/3 ✗
                 </span>
               )}
@@ -666,7 +666,7 @@ function CharactersTab({
                 {c.conditions.map((cond) => (
                   <span
                     key={cond}
-                    className="text-[10px] px-1.5 py-0.5 rounded-full bg-blood-50 text-blood-700 border border-blood-200"
+                    className="text-[10px] px-1.5 py-0.5 rounded-full bg-blood-50 text-blood-500 border border-blood-200"
                   >
                     {cond}
                   </span>
@@ -700,7 +700,7 @@ function CharactersTab({
               type="button"
               onClick={confirmDelete}
               disabled={deleting}
-              className="btn-primary flex-1 bg-red-600 hover:bg-red-700"
+              className="btn-primary flex-1 bg-red-600 hover:brightness-90"
             >
               {deleting ? t('md.suppression') : t('md.supprimer.bouton')}
             </button>
@@ -842,7 +842,7 @@ function MembersTab({
               <div className="flex shrink-0 items-center gap-1">
                 <button
                   type="button"
-                  className="rounded px-3 py-2.5 text-xs font-medium text-ink-400 transition-colors hover:bg-parchment-100 hover:text-blood-600"
+                  className="rounded px-3 py-2.5 text-xs font-medium text-ink-400 transition-colors hover:bg-parchment-100 hover:text-blood-500"
                   onClick={() => {
                     setActionError('');
                     setPending({ kind: 'remove', member: m });
@@ -855,7 +855,7 @@ function MembersTab({
                 </button>
                 <button
                   type="button"
-                  className="rounded px-3 py-2.5 text-xs font-medium text-ink-400 transition-colors hover:bg-parchment-100 hover:text-red-600"
+                  className="rounded px-3 py-2.5 text-xs font-medium text-ink-400 transition-colors hover:bg-parchment-100 hover:text-red-700"
                   onClick={() => {
                     setActionError('');
                     setPending({ kind: 'ban', member: m });
@@ -896,7 +896,7 @@ function MembersTab({
                 </div>
                 <button
                   type="button"
-                  className="shrink-0 rounded px-3 py-2.5 text-xs font-medium text-ink-700 transition-colors hover:bg-parchment-100 hover:text-blood-600"
+                  className="shrink-0 rounded px-3 py-2.5 text-xs font-medium text-ink-700 transition-colors hover:bg-parchment-100 hover:text-blood-500"
                   onClick={() => {
                     setActionError('');
                     setPending({ kind: 'unban', user: u });
@@ -918,7 +918,7 @@ function MembersTab({
           title={actionCopy(pending, t).title}
         >
           <p className="mb-4 text-sm text-ink-500">{actionCopy(pending, t).body}</p>
-          {actionError && <div className="mb-3 text-sm text-red-600">{actionError}</div>}
+          {actionError && <div className="mb-3 text-sm text-red-700">{actionError}</div>}
           <div className="flex gap-2">
             <button
               type="button"
@@ -932,7 +932,7 @@ function MembersTab({
               type="button"
               onClick={confirmAction}
               disabled={busy}
-              className={`btn-primary flex-1 ${actionCopy(pending, t).danger ? 'bg-red-600 hover:bg-red-700' : ''}`}
+              className={`btn-primary flex-1 ${actionCopy(pending, t).danger ? 'bg-red-600 hover:brightness-90' : ''}`}
             >
               {busy ? '…' : actionCopy(pending, t).cta}
             </button>
@@ -985,7 +985,7 @@ function TransactionsTab({ transactions }: { transactions: Transaction[] }) {
           </div>
           <span
             className={`shrink-0 text-sm font-mono font-semibold ${
-              tx.deltaQty > 0 ? 'text-green-600' : 'text-red-600'
+              tx.deltaQty > 0 ? 'text-green-700' : 'text-red-700'
             }`}
           >
             {tx.deltaQty > 0 ? '+' : ''}
@@ -1271,7 +1271,7 @@ function CustomItemsTab({
                 <button
                   type="button"
                   onClick={() => openEdit(item)}
-                  className="text-ink-400 hover:text-blood-600 text-sm p-1"
+                  className="text-ink-400 hover:text-blood-500 text-sm p-1"
                   aria-label={t('md.modifier')}
                 >
                   ✎
@@ -1279,7 +1279,7 @@ function CustomItemsTab({
                 <ConfirmButton
                   onConfirm={() => remove(item.id)}
                   className="text-ink-400 hover:text-red-500 text-sm p-1 rounded-full transition-colors"
-                  armedClassName="bg-red-600 hover:bg-red-700 text-white! px-2.5 py-1 font-semibold"
+                  armedClassName="bg-red-600 hover:brightness-90 text-white! px-2.5 py-1 font-semibold"
                   title={t('md.supprimer.item.name.item.name', {
                     item_name: item.name,
                   })}
@@ -1364,7 +1364,7 @@ function CustomItemsTab({
             existingRev={editing?.imageRev ?? undefined}
             existingName={editing ? editing.name : undefined}
           />
-          {error && <div className="text-red-600 text-sm">{error}</div>}
+          {error && <div className="text-red-700 text-sm">{error}</div>}
           <div className="flex gap-2 pt-1">
             <button
               type="button"

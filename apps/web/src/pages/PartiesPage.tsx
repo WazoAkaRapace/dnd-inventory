@@ -120,7 +120,7 @@ function CreatePartyForm({ onCreated }: { onCreated: () => void }) {
         </select>
         <p className="mt-1.5 text-xs text-ink-400">{t(MODE_HELPERS[mode])}</p>
       </div>
-      {error && <div className="text-sm text-red-600">{error}</div>}
+      {error && <div className="text-sm text-red-700">{error}</div>}
       <button type="submit" className="btn-primary" disabled={busy}>
         {t('parties.creer.le.groupe')}
       </button>
@@ -166,7 +166,7 @@ function JoinPartyForm({ onJoined }: { onJoined: () => void }) {
           required
         />
       </div>
-      {error && <div className="text-sm text-red-600">{error}</div>}
+      {error && <div className="text-sm text-red-700">{error}</div>}
       <button type="submit" className="btn-primary" disabled={busy}>
         {t('parties.rejoindre')}
       </button>
@@ -326,7 +326,7 @@ export default function PartiesPage() {
               </code>
               <button
                 type="button"
-                className="text-blood-600 hover:underline inline-flex min-h-11 min-w-11 justify-center items-center"
+                className="text-blood-500 hover:underline inline-flex min-h-11 min-w-11 justify-center items-center"
                 onClick={() => copyCode(current.id, current.inviteCode)}
                 aria-label={t('parties.copier.le.code.d.invitation.current', {
                   current_inviteCode: current.inviteCode,

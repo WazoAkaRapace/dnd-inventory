@@ -735,7 +735,7 @@ export default function NpcPage({ embedded = false }: { embedded?: boolean }) {
                     aria-expanded={!isCollapsed}
                     className="w-full min-h-11 flex items-center gap-2 text-left"
                   >
-                    <span className="text-blood-600 shrink-0" aria-hidden="true">
+                    <span className="text-blood-500 shrink-0" aria-hidden="true">
                       ⚜
                     </span>
                     <span className="section-title truncate">{label}</span>
@@ -822,7 +822,7 @@ export default function NpcPage({ embedded = false }: { embedded?: boolean }) {
               type="button"
               onClick={confirmDelete}
               disabled={deleteBusy}
-              className="btn-primary flex-1 bg-red-600 hover:bg-red-700"
+              className="btn-primary flex-1 bg-red-600 hover:brightness-90"
             >
               {deleteBusy ? t('pnj.suppression') : t('common.delete')}
             </button>
@@ -1131,7 +1131,7 @@ function NpcCard({
               <button
                 type="button"
                 onClick={onDelete}
-                className="text-xs inline-flex items-center justify-center min-w-11 min-h-11 rounded-lg text-red-600 hover:bg-red-50"
+                className="text-xs inline-flex items-center justify-center min-w-11 min-h-11 rounded-lg text-red-700 hover:bg-red-50"
                 aria-label={t('pnj.supprimer.npc.name', { npc_name: npc.name })}
               >
                 🗑
@@ -1949,11 +1949,11 @@ function GmaOriginModal({
                       📜
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium text-ink-800 truncate group-hover:text-blood-600">
+                      <span className="block text-sm font-medium text-ink-800 truncate group-hover:text-blood-500">
                         {s.name}
                       </span>
                     </span>
-                    <span className="text-ink-300 group-hover:text-blood-600" aria-hidden="true">
+                    <span className="text-ink-300 group-hover:text-blood-500" aria-hidden="true">
                       →
                     </span>
                   </button>
@@ -1978,11 +1978,11 @@ function GmaOriginModal({
                       {toRoman(s.ordinal)}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium text-ink-800 truncate group-hover:text-blood-600">
+                      <span className="block text-sm font-medium text-ink-800 truncate group-hover:text-blood-500">
                         {s.title}
                       </span>
                     </span>
-                    <span className="text-ink-300 group-hover:text-blood-600" aria-hidden="true">
+                    <span className="text-ink-300 group-hover:text-blood-500" aria-hidden="true">
                       →
                     </span>
                   </Link>
@@ -2034,13 +2034,13 @@ function GmaOriginModal({
 
         {mayUnlink &&
           (busy ? (
-            <button type="button" disabled className="btn-ghost w-full min-h-11 text-red-600">
+            <button type="button" disabled className="btn-ghost w-full min-h-11 text-red-700">
               {t('pnj.gma.en.cours')}
             </button>
           ) : (
             <ConfirmButton
               onConfirm={onUnlink}
-              className="btn-ghost w-full min-h-11 text-red-600 hover:bg-red-50"
+              className="btn-ghost w-full min-h-11 text-red-700 hover:bg-red-50"
               confirmChildren={t('pnj.gma.delier.confirm')}
             >
               {t('pnj.gma.delier')}

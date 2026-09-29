@@ -150,12 +150,12 @@ export function HpTracker({
   const tempNum = tempHp;
   const hpColor =
     curNum <= 0
-      ? 'text-red-600'
+      ? 'text-red-700'
       : curNum <= maxNum * 0.3
         ? 'text-red-500'
         : curNum <= maxNum * 0.5
           ? 'text-orange-500'
-          : 'text-green-600';
+          : 'text-green-700';
 
   // Steppers share the state band's grammar: −5/−1 edit +1/+5 with 44px targets.
   // Damage absorbs temp HP first (SRD); only the remainder hits current HP.

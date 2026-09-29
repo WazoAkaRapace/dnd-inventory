@@ -274,7 +274,7 @@ export function GmaAssistantTab({
   }
 
   if (loading) return <p className="text-sm text-ink-400 animate-pulse">{t('gma.chargement')}</p>;
-  if (error) return <div className="card p-4 text-sm text-red-600">{error}</div>;
+  if (error) return <div className="card p-4 text-sm text-red-700">{error}</div>;
 
   const keyed = !!account?.linked;
   const linked = !!link?.linked;
@@ -309,7 +309,7 @@ export function GmaAssistantTab({
             </button>
             <button
               type="button"
-              className="btn-ghost text-xs px-2.5 py-1 text-red-600"
+              className="btn-ghost text-xs px-2.5 py-1 text-red-700"
               onClick={removeKey}
               disabled={busy}
             >
@@ -334,7 +334,7 @@ export function GmaAssistantTab({
               onChange={(e) => setKeyValue(e.target.value)}
               autoComplete="off"
             />
-            {keyError && <p className="text-xs text-red-600">{keyError}</p>}
+            {keyError && <p className="text-xs text-red-700">{keyError}</p>}
             <button type="button" className="btn-primary" onClick={saveKey} disabled={busy}>
               {busy ? t('gma.verification') : t('gma.connecter')}
             </button>
@@ -410,7 +410,7 @@ export function GmaAssistantTab({
             <ConfirmButton
               onConfirm={unlink}
               confirmChildren={t('gma.delier.confirmer')}
-              className="btn-ghost text-xs px-2.5 py-1 text-red-600"
+              className="btn-ghost text-xs px-2.5 py-1 text-red-700"
             >
               {t('gma.delier.le.groupe')}
             </ConfirmButton>
@@ -445,7 +445,7 @@ export function GmaAssistantTab({
               {t('gma.chargement.de.tes.campagnes')}
             </p>
           )}
-          {pickerError && <p className="text-sm text-red-600">{pickerError}</p>}
+          {pickerError && <p className="text-sm text-red-700">{pickerError}</p>}
           {campaigns !== null && campaigns.length === 0 && (
             <p className="text-sm text-ink-500">{t('gma.aucune.campagne.sur.ton.compte.gm')}</p>
           )}
@@ -477,7 +477,7 @@ export function GmaAssistantTab({
           {diffLoading && (
             <p className="text-sm text-ink-400 animate-pulse">{t('gma.comparaison')}</p>
           )}
-          {diffError && <p className="mb-2 text-sm text-red-600">{diffError}</p>}
+          {diffError && <p className="mb-2 text-sm text-red-700">{diffError}</p>}
           {applyResult && (
             <div className="mb-3 rounded-md bg-parchment-100 px-3 py-2 text-xs text-ink-700">
               {applyResult.created.length > 0 &&
@@ -485,7 +485,7 @@ export function GmaAssistantTab({
               {applyResult.updated.length > 0 &&
                 `${t('gma.resultat.mis.a.jour', { n: applyResult.updated.length })} — `}
               {applyResult.failed.length > 0 ? (
-                <span className="text-red-600">
+                <span className="text-red-700">
                   {t('gma.resultat.echecs', { n: applyResult.failed.length })}{' '}
                   {applyResult.failed.map((f) => `${f.name} (${f.reason})`).join(' · ')}
                 </span>
@@ -615,7 +615,7 @@ function InitModal({
               </li>
             ))}
           </ul>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-red-700">{error}</p>}
           <div className="flex gap-2">
             <button
               type="button"
@@ -786,7 +786,7 @@ function SyncDiffBody({
                 <ConfirmButton
                   onConfirm={() => onDeleteOrphan(o.gmaPcId)}
                   confirmChildren={t('gma.supprimer.chez.gm.assistant')}
-                  className="btn-ghost shrink-0 text-xs px-2.5 py-1 text-red-600"
+                  className="btn-ghost shrink-0 text-xs px-2.5 py-1 text-red-700"
                 >
                   {t('gma.supprimer')}
                 </ConfirmButton>

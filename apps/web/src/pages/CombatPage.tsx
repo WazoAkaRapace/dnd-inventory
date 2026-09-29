@@ -903,7 +903,7 @@ function EncounterRegister({
                 <div className={`pl-14 ${isLive ? 'pb-5' : isDone ? 'pb-2' : 'pb-3'}`}>
                   <ConfirmButton
                     onConfirm={() => onDelete(enc.id)}
-                    className="text-xs text-ink-400 hover:text-red-600 inline-flex items-center min-h-11 px-1"
+                    className="text-xs text-ink-400 hover:text-red-700 inline-flex items-center min-h-11 px-1"
                     armedClassName="font-semibold text-red-700"
                     title={t('combat.supprimer.la.rencontre')}
                     ariaLabel={t('combat.supprimer.la.rencontre.enc.name', { enc_name: enc.name })}
@@ -1288,7 +1288,7 @@ function InitiativeRail({
                 aria-label={ariaParts.join(', ')}
                 className={`relative flex min-h-[52px] w-auto min-w-24 max-w-44 flex-col justify-center gap-1 rounded-lg border px-2 py-1.5 text-left transition-colors lg:w-full lg:max-w-full ${
                   isCurrent
-                    ? 'border-blood-600 bg-blood-600 text-parchment-50 shadow-sm'
+                    ? 'border-blood-500 bg-blood-600 text-parchment-50 shadow-sm'
                     : isFocused
                       ? 'border-ink-500 bg-parchment-100'
                       : 'border-parchment-200 bg-parchment-50/80 hover:border-parchment-300 hover:bg-parchment-100'
@@ -1577,7 +1577,7 @@ function StagePanel({
             {sheetPath ? (
               <Link
                 to={sheetPath}
-                className="hover:text-blood-600 hover:underline"
+                className="hover:text-blood-500 hover:underline"
                 title={t('combat.ouvrir.la.fiche.du.personnage')}
               >
                 {label}
@@ -1791,7 +1791,7 @@ function StagePanel({
         <div className="mt-3 text-right">
           <ConfirmButton
             onConfirm={() => onDelete(combatant.id)}
-            className="text-xs text-ink-400 hover:text-red-600"
+            className="text-xs text-ink-400 hover:text-red-700"
             armedClassName="font-semibold text-red-700"
             title={
               groupMembers.length > 1
@@ -1852,7 +1852,7 @@ function StagePanel({
                 }}
                 className={`h-12 rounded-lg border-2 transition-all ${
                   isSelected
-                    ? 'border-blood-600 ring-2 ring-blood-300'
+                    ? 'border-blood-500 ring-2 ring-blood-300'
                     : 'border-parchment-200 hover:border-parchment-300'
                 } ${color === null ? 'bg-white' : ''}`}
                 style={color ? { backgroundColor: cardColorDisplay(color) } : undefined}

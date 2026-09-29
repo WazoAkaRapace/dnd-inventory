@@ -63,7 +63,7 @@ export default function ConcentrationAlert({
           <button
             type="button"
             onClick={onDone}
-            className="text-blood-400 hover:text-blood-700 text-lg leading-none px-1"
+            className="text-blood-400 hover:text-blood-400 text-lg leading-none px-1"
             aria-label={t('concentration.fermer')}
           >
             ✕
@@ -82,7 +82,7 @@ export default function ConcentrationAlert({
             values={{ dc: check.dc }}
             components={{
               s: <strong />,
-              n: <span className="text-blood-600 text-xs" />,
+              n: <span className="text-blood-500 text-xs" />,
             }}
           />
         </p>
