@@ -122,7 +122,7 @@ par des hairlines d'encre claire. Neuf entrées I–IX (`#table`, `#fiche`,
 | Entrée courante | l'entrée I seule porte `.is-lead` : ordinal `blood-300` 1.9rem — le sang marque « maintenant », une seule entrée |
 | Tête d'entrée | ordinal + h2 `clamp(1.9rem, 4vw, 2.7rem)` resserré (−0.015em), posés sur un filet EXPLICITE `.entry-head::after` (`--line-night`) — trait animable, pas une border ; pb 0.9rem, mb 1.7rem |
 | Tête compacte | `.entry-head-compact` (Repos long, dans le panneau) : pb 0.7rem, mb 1.2rem |
-| Copie en feuille | `.entry-copy--folio` : les sous-entrées s'étalent en **deux colonnes de feuille** ≥900px (`columns: 2`, écart 3.5rem, `break-inside: avoid` par `li`) — dense, réglée, lue avant l'écran. La copie simple reste plafonnée 62ch |
+| Copie en feuille | `.entry-copy--folio` : les sous-entrées s'étalent en **deux colonnes de feuille** ≥900px (`columns: 2`, écart 3.5rem, `break-inside: avoid` par `li`) — dense, réglée. La copie simple reste plafonnée 62ch. Au bureau (≥1024), la feuille vit AU CHEVET DE L'ÉCRAN : `[folio + histoire téléphone]` enveloppés dans `.entry-body.has-folio` (grille 1fr/400px), la colonne copie `position: sticky; top: 1.25rem; max-height: calc(100dvh - 2.5rem); overflow-y: auto` — elle épingle AVEC le téléphone, le texte vit une fois, à côté de la capture qu'il commente ; la légende repasse en étiquette SOUS le téléphone (`flex-direction: column`, réserve d'écran 14.5rem). Au mobile la feuille reste en flux au-dessus, intacte |
 | Sous-entrées réglées | `h3` 1.2rem + paragraphe `parchment-200` 1rem, chaque `li` refermé par un filet `--line-night-soft` — jamais de carte |
 | Personnalité (VII) | les quatre quadrants de fiche 5e (TRAITS / IDÉAUX / LIENS / DÉFAUTS), cartes verre de nuit 1→2 colonnes (≥640px), titres Cinzel 0.72rem espacé 0.16em `gold-300` |
 
@@ -169,21 +169,21 @@ Attributs `width`/`height` partout (390×844 téléphone, 820×1180 et
 (23 portrait + 25 paysage) et les deux fenêtres bureau du MD (24 + 31)
 vivent la MÊME captivité que les postes téléphone — `.phonepost.story
 .story--wide`, même épinglage (100dvh + vues×70vh), même rail, dock,
-légende, voix et encre. Le média vit dans un SLOT (`.story-slot-frame`,
+légende et encre. Le média vit dans un SLOT (`.story-slot-frame`,
 pile grid centrée) dont l'empreinte est celle de la PLUS GRANDE vue :
 chaque capture s'y centre à son aspect naturel, et quand un portrait se
-change en paysage le mobilier (slot, rail, dock, voix, légende) NE BOUGE
+change en paysage le mobilier (slot, rail, dock, légende) NE BOUGE
 PAS — les vues se fondent sous l'encre, tailles différentes comprises ;
 le front or chevauche le slot entier (mobilier de scène). Deux règles
 tiennent la géométrie : la hauteur du bloc texte est RÉSERVÉE
-(`--text-h`, mesurée sur la pire sous-entrée FR puis recalculée à la
-bascule de langue), et le plafond des images est CALIBRÉ par main.js
-(`--img-cap` = hauteur de scène moins chrome MESURÉ : paddings, écarts,
-rail, dock, matelas/barre du cadre, bloc texte, 8px de mou) — recalibré
-au resize et aux fontes ; la colonne est ancrée en haut et le slot se
-centre par `margin-block: auto` (le recentrage vertical ne peut plus
-dériver). La correspondance voix↔vues de l'histoire large vit dans
-`data-wide-view` (jamais les mêmes indices que `data-story-view`), et
+(`--text-h`, la colonne légende fixe à 3 lignes), et le plafond des
+images est CALIBRÉ par main.js (`--img-cap` = hauteur de scène moins
+chrome MESURÉ : paddings, écarts, rail, dock, matelas/barre du cadre,
+bloc texte, 8px de mou) — recalibré au resize et aux fontes ; la colonne
+est ancrée en haut et le slot se centre par `margin-block: auto` (le
+recentrage vertical ne peut plus dériver). La correspondance
+emphase↔vues de l'histoire large vit dans `data-wide-view` (jamais les
+mêmes indices que `data-story-view`), et
 une histoire ne joue QUE si sa scène est à l'écran — sans cette garde,
 le saut d'entrée réveille l'histoire téléphone déjà passée et lui vole
 l'emphase de la copie feuille. L'entrée I garde sa fenêtre bureau
@@ -193,7 +193,9 @@ unique (30) en vue élargie classique.
 de l'app (PR #132-133) : registre I–X désormais (Personnalité→VIII,
 Visite→IX, Repos long→X). L'histoire Parchemin↔Bougie (04-survie clair ↔
 32-bougie-fiche, même onglet) joue LA BASCULE DU MODE sur sa propre
-scène : `--candle` (main.js, solidaire du rail : 0 avant la vue de
+scène : `--candle` (main.js, posé sur l'ENTRÉE — la palette `--day/*--night/--mix-*`
+vit sur `#deux-lumieres`, tout ce qui en descend suit d'un bloc ; la
+feuille au chevet reste de la nuit, lisible comme partout : 0 avant la vue de
 bascule, la fraction traverse, 1 après) mène chaque couleur de la valeur
 PARCHCEMIN de l'app vers sa valeur BOUGIE (`html.ts-dark` d'apps/web —
 les VRAIES ramps : #fdfaf3→#1a1512, #f7f0e1→#262019, #2a1f14→#f3e7d0,
@@ -243,7 +245,7 @@ geste des stories.
 | La bande du tour | `.story-stage` prend `padding-bottom: 4.5rem` sous 1360px — le centre de gravité remonte d'un souffle pour laisser la place à la pastille fixe du bas |
 | Calme (repli) | mouvement réduit OU moteur sans IntersectionObserver → `.is-calm` : fourreau et scène redeviennent statiques, le rail disparaît, les pilules basculent les vues directement ; la légende reste `aria-live="polite"` (c'est un clic qui la change) |
 | Silence de lecture | en histoire épinglée, la légende passe `aria-live="off"` : l'avance au scroll annoncerait chaque vue (≈19 fois la page) — elle reste visible, muette pour le lecteur d'écran |
-| **La voix suit l'écran** | le TEXTE de la section vit en sync avec la capture affichée, sur deux plans : (1) la NARRATION — `.story-voice`, posée par main.js au sommet de `.story-side`, montre la sous-entrée correspondant à la vue courante (h3 + paragraphe CLONÉS de la copie feuille : les paires [lang] voyagent, la bascule FR|EN marche seule ; `aria-hidden` — le texte canonique reste la copie feuille ; bureau : h3 + paragraphe + légende, mobile : h3 + légende, le paragraphe ne tiendrait pas sous le téléphone) ; (2) la COPIE FEUILLE — la sous-entrée courante porte `.is-current` (encre pleine + dé or en `h3::before`, la grammaire du tour) et les autres `.is-sync-dim` (ink-300, ≈5,5:1 — le plancher de contraste tient). La correspondance vit dans `data-story-view` sur chaque `li` (une sous-entrée peut posséder PLUSIEURS vues : « Survie & forme sauvage » couvre les écrans Survie ET Forme sauvage ; vue sans correspondance → l'emphasise reste sur la précédente). La colonne narration entière s'encre avec la vue (`caption-ink` porte `.story-side`, plus la seule légende) |
+| **La feuille suit l'écran** | le texte de la section ne se répète JAMAIS (retour utilisateur 2026-09 : le clone `.story-voice` — la sous-entrée réimprimée à côté de l'écran — a été RETIRÉ ; puis la feuille elle-même a pris sa place au bureau : colonne `sticky` dans `.entry-body.has-folio`, voir « Copie en feuille »). Ce qui accompagne une vue : la légende qui DÉCRIT l'écran + les pilules. Seule l'EMPHASE voyage : la sous-entrée courante porte `.is-current` (encre pleine + dé or en `h3::before`, la grammaire du tour) et les autres `.is-sync-dim` (ink-300, ≈5,5:1 — le plancher de contraste tient). La correspondance vit dans `data-story-view` sur chaque `li` (une sous-entrée peut posséder PLUSIEURS vues : « Survie & forme sauvage » couvre les écrans Survie ET Forme sauvage ; vue sans correspondance → l'emphase reste sur la précédente). La colonne légende s'encre avec la vue (`caption-ink` porte `.story-side`) |
 | Sans JS | `html:not(.js)` : l'écran devient un bandeau vertical de TOUTES les vues (position static, opacité 1), le dock inerte disparaît — rien de la série ne manque au visiteur |
 
 Règles : les vues d'un poste se chargent toutes (pas de `loading="lazy"` —

@@ -396,17 +396,16 @@
       }
     }
 
-    /* ----- La voix suit l'écran -----
-       Le texte de la section vit en sync avec la capture affichée :
-       - la NARRATION (story-side) montre la sous-entrée correspondant à
-         la vue courante — h3 et paragraphe CLONÉS depuis la copie feuille
-         (les paires [lang] voyagent avec, la bascule FR|EN marche seule) ;
-       - la COPIE FEUILLE marque la sous-entrée courante (.is-current,
-         encre pleine + dé or) et estompe les autres (.is-sync-dim) —
-         l'emphase voyage vue après vue. data-story-view porte la
-         correspondance (une sous-entrée peut posséder plusieurs vues,
-         p. ex. « Survie & forme sauvage » couvre deux écrans).
-       Vue sans correspondance : l'emphase reste sur la précédente. */
+    /* ----- La feuille suit l'écran -----
+       Le texte de la section ne se répète JAMAIS à côté de la capture
+       (la légende décrit l'écran, la sous-entrée fait la promesse — une
+       fois, en haut de l'entrée). Seule l'EMPHASE voyage : la copie
+       feuille marque la sous-entrée courante (.is-current, encre pleine +
+       dé or) et estompe les autres (.is-sync-dim), vue après vue.
+       data-story-view porte la correspondance (une sous-entrée peut
+       posséder plusieurs vues, p. ex. « Survie & forme sauvage » couvre
+       deux écrans). Vue sans correspondance : l'emphase reste sur la
+       précédente. */
     const entryEl = post.closest('.entry');
     // une entrée peut porter DEUX histoires (téléphone + large) : la
     // correspondance texte↔vues de l'histoire large vit dans data-wide-view,
@@ -421,9 +420,6 @@
     // l'emphase se pose sur TOUTES les sous-entrées de l'entrée : l'histoire
     // qui joue doit effacer celle de l'autre histoire, pas seulement les siennes
     const allSubentries = [...(entryEl?.querySelectorAll('.subentries li') ?? [])];
-    const voice = document.createElement('div');
-    voice.className = 'story-voice';
-    voice.setAttribute('aria-hidden', 'true'); // le texte canonique vit dans la copie feuille
     const side = post.querySelector('.story-side');
     const stageEl = post.querySelector('.story-stage');
     let lastMapped = null;
@@ -437,14 +433,8 @@
 
     const syncVoice = (index) => {
       const li = subentryFor(index) ?? lastMapped;
-      if (li === lastMapped && voice.childElementCount > 0) return; // déjà en place
+      if (li === lastMapped && lastMapped !== null) return; // déjà en place
       lastMapped = li;
-      const heading = li?.querySelector('h3');
-      const paragraph = li?.querySelector('p');
-      voice.replaceChildren(
-        ...(heading ? [heading.cloneNode(true)] : []),
-        ...(paragraph ? [paragraph.cloneNode(true)] : []),
-      );
       allSubentries.forEach((item) => {
         item.classList.toggle('is-current', item === li);
         item.classList.toggle('is-sync-dim', item !== li);
@@ -462,35 +452,19 @@
     const applyCandle = (exactProgress) => {
       if (flipAt === null || Number.isNaN(flipAt)) return;
       const c = Math.min(1, Math.max(0, exactProgress - flipAt));
-      post.style.setProperty('--candle', c.toFixed(3));
+      // posé sur l'ENTRÉE (pas le poste) : la palette qui mélange vit sur
+      // la section, tout ce qui en descend suit le rail d'un bloc
+      (post.closest('.entry') ?? post).style.setProperty('--candle', c.toFixed(3));
     };
 
-    // la narration vit au sommet de la colonne latérale, avant la légende
-    if (side && subentries.length > 0) {
-      side.prepend(voice);
-    }
-
-    // Histoire LARGE : la hauteur du bloc texte (voix + légende) est
-    // RÉSERVÉE sur la pire des sous-entrées — le paragraphe change de
-    // longueur d'une vue à l'autre, la pile centrée ne doit jamais se
-    // recentrer (l'écran ne bouge pas, non plus ici). Le plafond de
-    // hauteur des images est CALIBRÉ sur le chrome mesuré de la scène :
-    // paddings, écarts, rail, dock, matelas/barre du cadre — la colonne
-    // ne déborde jamais le stage, le centrage ne bougle pas.
-    if (post.classList.contains('story--wide') && side && subentries.length > 0) {
+    // Histoire LARGE : la hauteur du bloc texte (la légende, fixe à 3 lignes)
+    // est RÉSERVÉE telle quelle — la pile centrée ne se recentre jamais
+    // (l'écran ne bouge pas). Le plafond de hauteur des images est CALIBRÉ
+    // sur le chrome mesuré de la scène : paddings, écarts, rail, dock,
+    // matelas/barre du cadre — la colonne ne déborde jamais le stage.
+    if (post.classList.contains('story--wide') && side) {
       const reserveAndCalibrate = () => {
-        let worst = 0;
-        const keep = voice.cloneNode(true);
-        for (const li of subentries) {
-          const heading = li.querySelector('h3');
-          const paragraph = li.querySelector('p');
-          voice.replaceChildren(
-            ...(heading ? [heading.cloneNode(true)] : []),
-            ...(paragraph ? [paragraph.cloneNode(true)] : []),
-          );
-          worst = Math.max(worst, side.offsetHeight);
-        }
-        voice.replaceChildren(...keep.children);
+        const worst = side.offsetHeight;
         post.style.setProperty('--text-h', `${Math.ceil(worst)}px`);
 
         const img = post.querySelector('.phonepost-view img');

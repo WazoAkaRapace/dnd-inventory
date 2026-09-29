@@ -284,6 +284,10 @@ html[lang="en"] [lang="fr"] {
 .hero {
   position: relative;
   padding-block: clamp(2.1rem, 5vh, 3.4rem) clamp(1.5rem, 4vh, 2.4rem);
+  /* la paire de téléphones luisants peut déborder du cadre au mobile :
+     elle y est coupée au bord (le halo continue de fuir, la page ne
+     défile plus sur le côté) */
+  overflow-x: clip;
 }
 
 .hero-copy {
@@ -1035,9 +1039,9 @@ html[lang="en"] [lang="fr"] {
 
 .story-side {
   max-width: 40ch;
-  /* mobile : la légende vit SOUS le téléphone — elle suit l'écran, la
-     voix juste après l'image ; au bureau elle regagne la narration à
-     gauche (ordre rétabli dans le media query ≥1024px) */
+  /* mobile : la légende vit SOUS le téléphone, elle suit l'écran ;
+     au bureau elle devient la narration à gauche du téléphone
+     (ordre rétabli dans le media query ≥1024px) */
   order: 2;
 }
 
@@ -1116,7 +1120,10 @@ html:not(.js) .story .phonepost-dock {
    stage, le flex ne comprime rien, le centrage ne bouge pas d'une vue
    à l'autre. Recalibré au resize, aux fontes et à la langue. */
 .js .story--wide .phonepost-view img {
-  max-width: min(92vw, 62rem);
+  /* 86vw, pas 92 : l'image plafonnée laisse la place du chrome du cadre
+     (matelas, barre d'URL, filets) — sinon la fenêtre bureau déborde la
+     scène de quelques pixels au mobile et étire la page */
+  max-width: min(86vw, 62rem);
   max-height: var(--img-cap, 26rem);
 }
 
@@ -1125,8 +1132,8 @@ html:not(.js) .story .phonepost-dock {
   flex-shrink: 0;
 }
 
-/* l'histoire large reste en colonne à toute largeur : la voix et la
-   légende se tiennent SOUS la fenêtre, la scène au monde entier.
+/* l'histoire large reste en colonne à toute largeur : la légende se tient
+   SOUS la fenêtre, la scène au monde entier.
    Le centrage vit sur le SLOT SEUL (margin auto, colonne ancrée en
    haut) : sa position ne dépend que du bloc texte réservé et de sa
    propre hauteur constante — le recentrage vertical ne peut plus
@@ -1143,9 +1150,9 @@ html:not(.js) .story .phonepost-dock {
   margin-block: auto;
 }
 
-/* La hauteur du bloc texte est RÉSERVÉE (main.js mesure la pire des
-   sous-entrées → --text-h) : le paragraphe change d'une vue à l'autre,
-   la pile centrée ne se recentre jamais — l'écran ne bouge pas. */
+/* La hauteur du bloc texte est RÉSERVÉE (main.js mesure la colonne
+   légende, fixe à 3 lignes → --text-h) : la pile centrée ne se
+   recentre jamais — l'écran ne bouge pas. */
 .story--wide .story-side {
   order: 2;
   max-width: 52ch;
@@ -1190,11 +1197,13 @@ html:not(.js) .story .phonepost-dock {
   }
 }
 
-/* Au bureau, la légende devient NARRATION : la voix de la section (h3 +
-   paragraphe de la vue courante) et la légende se tiennent à gauche du
-   téléphone, alignées à gauche pour la lecture — la captivité du regard
+/* Au bureau, la légende devient NARRATION : elle se tient à gauche du
+   téléphone, alignée à gauche pour la lecture — la captivité du regard
    reste à l'écran. Les histoires larges restent en colonne (règle
-   dédiée plus haut) : leur média occupe toute la scène. */
+   dédiée plus haut) : leur média occupe toute la scène.
+   SAUF dans les entrées à feuille (.has-folio) : la colonne copie y
+   prend la place de la narration — règles dédiées plus bas dans le
+   même media query. */
 @media (min-width: 1024px) {
   .story:not(.story--wide) .story-stage {
     flex-direction: row;
@@ -1215,6 +1224,49 @@ html:not(.js) .story .phonepost-dock {
 
   .story-phone {
     width: auto;
+  }
+
+  /* ----- La feuille au chevet de l'écran -----
+     Les entrées à histoire portée par une feuille (.entry-body.has-folio,
+     posée dans le HTML) : la colonne copie épingle AVEC le téléphone —
+     le texte vit UNE fois, au chevet de la capture qu'il commente,
+     l'emphase voyageant de sous-entrée en sous-entrée au fil des vues
+     (main.js). La légende redevient étiquette SOUS le téléphone : une
+     seule colonne de texte à la fois, jamais la même idée deux fois. */
+  .entry-body.has-folio .entry-copy--folio {
+    position: sticky;
+    /* le même souffle que la scène (padding-block 1rem) : la feuille
+       épinglée respire sous le bord, collée ni au haut ni au bas */
+    top: 1.25rem;
+    max-height: calc(100vh - 2.5rem);
+    max-height: calc(100dvh - 2.5rem);
+    overflow-y: auto;
+    scrollbar-width: none;
+    padding-block: 0.5rem;
+  }
+
+  .entry-body.has-folio .story:not(.story--wide) .story-stage {
+    flex-direction: column;
+    gap: 1.1rem;
+  }
+
+  .entry-body.has-folio .story:not(.story--wide) .story-side {
+    order: 2;
+    max-width: 40ch;
+    text-align: center;
+  }
+
+  /* la légende vit SOUS le téléphone (plus à gauche) : la formule de
+     taille de l'écran réserve un souffle de plus pour qu'elle ne colle
+     pas au bord bas du viewport — le rail garde la largeur de l'écran */
+  .entry-body.has-folio .story:not(.story--wide) .shot-frame {
+    width: min(24rem, 100%, calc((100vh - 14.5rem) * 0.4621));
+    width: min(24rem, 100%, calc((100dvh - 14.5rem) * 0.4621));
+  }
+
+  .entry-body.has-folio .story:not(.story--wide) .story-track {
+    width: min(24rem, 100%, calc((100vh - 14.5rem) * 0.4621));
+    width: min(24rem, 100%, calc((100dvh - 14.5rem) * 0.4621));
   }
 }
 
@@ -1284,6 +1336,9 @@ html:not(.js) .story .phonepost-dock {
 
 .phonepost-view {
   grid-area: 1 / 1;
+  /* marge nulle : la marge par défaut du <figure> navigateur (1em 40px)
+     gonfle la colonne de la grille et fait déborder la scène au mobile */
+  margin: 0;
   opacity: 0;
   transition: opacity 0.3s var(--ease);
 }
@@ -1372,40 +1427,11 @@ html:not(.js) .story .phonepost-dock {
   }
 }
 
-/* La voix de l'histoire : la sous-entrée de la section correspondant à la
-   vue affichée, clonée dans la narration (main.js). Le texte canonique
-   reste la copie feuille — la narration est aria-hidden. Bureau : h3 +
-   paragraphe ; mobile : h3 seul (le paragraphe ne tiendrait pas sous le
-   téléphone), la copie feuille au-dessus porte le texte entier. */
-.story-voice {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.story-voice h3 {
-  font-size: 1.15rem;
-  color: var(--parchment-50);
-}
-
-.story-voice p {
-  font-size: 0.95rem;
-  line-height: 1.6;
-  color: var(--parchment-200);
-}
-
-.story-voice + .phonepost-caption {
-  margin-top: 0.35rem;
-}
-
-@media (max-width: 1023px) {
-  .story-voice p {
-    display: none;
-  }
-}
-
-/* La narration suit la plume : la colonne entière (voix + légende) s'écrit
-   avec la vue — même balayage diagonal, même angle, même rythme que
-   l'écran, la plume plus large pour les lettres */
+/* La narration suit la plume : la colonne de la légende s'écrit avec la
+   vue — même balayage diagonal, même angle, même rythme que l'écran, la
+   plume plus large pour les lettres. (La sous-entrée correspondante n'est
+   JAMAIS clonée ici : elle vit une fois, en haut de l'entrée, où seule
+   son emphase voyage — main.js, « La feuille suit l'écran ».) */
 .js .phonepost.is-inking .story-side {
   animation: caption-ink 0.5s var(--ease) both;
   mask-image: linear-gradient(
@@ -2204,7 +2230,10 @@ main {
    page qui le porte s'assombrit — la bascule du mode, littéralisée.
    En repli calme, --candle marche par pas (0/1) et les couleurs
    transitionnent ; sans JS, la scène reste en plein jour. */
-.story--lights {
+/* La palette vit sur la SECTION : le --candle y est posé par main.js et
+   tout ce qui mélange en descend (la scène seule bascule — la feuille au
+   chevet reste de la nuit, lisible, comme dans toute autre entrée). */
+#deux-lumieres {
   --day-bg: #fdfaf3;
   --day-panel: #f7f0e1;
   --day-text: #2a1f14;
@@ -2235,11 +2264,6 @@ main {
   color: var(--mix-text);
 }
 
-.story--lights .story-voice h3,
-.story--lights .story-voice p {
-  color: var(--mix-text);
-}
-
 .story--lights .phonepost-caption {
   color: var(--mix-soft);
 }
@@ -2267,8 +2291,6 @@ main {
 
 /* repli calme : la bascule se joue d'un coup, en fondue */
 .story--lights.is-calm .story-stage,
-.story--lights.is-calm .story-voice h3,
-.story--lights.is-calm .story-voice p,
 .story--lights.is-calm .phonepost-caption,
 .story--lights.is-calm .shot-frame,
 .story--lights.is-calm .phonepost-dock button,
