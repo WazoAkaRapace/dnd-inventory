@@ -137,7 +137,7 @@ export function InventoryRow({
               <button
                 type="button"
                 onClick={onConfirmDelete}
-                className="btn-primary text-sm bg-red-600 hover:bg-red-700"
+                className="btn-primary text-sm bg-red-600 hover:brightness-90"
               >
                 {t('rangee.retirer')}
               </button>
@@ -263,7 +263,7 @@ export function InventoryRow({
                     type="button"
                     onClick={onTransfer}
                     disabled={busy}
-                    className="text-ink-400 hover:text-blood-600 text-xs underline"
+                    className="text-ink-400 hover:text-blood-500 text-xs underline"
                     aria-label={t('rangee.transferer.itemname', { itemName: itemName })}
                   >
                     ↗
@@ -318,7 +318,7 @@ export function InventoryRow({
                   type="button"
                   onClick={onTransfer}
                   disabled={busy}
-                  className="text-ink-400 hover:text-blood-600 underline"
+                  className="text-ink-400 hover:text-blood-500 underline"
                   aria-label={t('rangee.transferer.itemname', { itemName: itemName })}
                 >
                   {t('rangee.transferer')}
@@ -499,7 +499,7 @@ export function InventoryRow({
                           type="button"
                           onClick={() => onStep(-1)}
                           disabled={busy}
-                          className="btn-ghost text-sm text-red-600 hover:bg-red-50"
+                          className="btn-ghost text-sm text-red-700 hover:bg-red-50"
                           aria-label={t('rangee.retirer.itemname', { itemName: itemName })}
                         >
                           {t('rangee.retirer.du.sac')}

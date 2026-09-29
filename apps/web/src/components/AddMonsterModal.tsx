@@ -126,7 +126,7 @@ export default function AddMonsterModal({ open, onClose, onAdd }: Props) {
               </button>
             </div>
             <div className="flex gap-4 mt-3 text-sm">
-              <span className="px-2 py-1 rounded bg-blood-50 text-blood-700">
+              <span className="px-2 py-1 rounded bg-blood-50 text-blood-500">
                 🛡 CA {selected.armorClass}
               </span>
               <span className="px-2 py-1 rounded bg-red-50 text-red-700">

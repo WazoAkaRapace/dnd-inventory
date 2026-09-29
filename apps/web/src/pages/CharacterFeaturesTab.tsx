@@ -103,7 +103,7 @@ interface Props {
 }
 
 const CATEGORY_COLORS: Record<FeatureCategory, string> = {
-  class: 'bg-blood-50 text-blood-700 border-blood-200',
+  class: 'bg-blood-50 text-blood-500 border-blood-200',
   racial: 'bg-green-50 text-green-700 border-green-200',
   background: 'bg-blue-50 text-blue-700 border-blue-200',
   feat: 'bg-purple-50 text-purple-700 border-purple-200',
@@ -407,7 +407,7 @@ export default function CharacterFeaturesTab({
                               <button
                                 type="button"
                                 onClick={() => openEdit(feature)}
-                                className="text-ink-400 hover:text-blood-600 text-sm p-1"
+                                className="text-ink-400 hover:text-blood-500 text-sm p-1"
                                 aria-label={t('traits.modifier.featname.feature', {
                                   featName: featName(feature),
                                 })}
@@ -417,7 +417,7 @@ export default function CharacterFeaturesTab({
                               <ConfirmButton
                                 onConfirm={() => remove(feature.id)}
                                 className="text-ink-400 hover:text-red-500 text-sm p-1 rounded-full transition-colors"
-                                armedClassName="bg-red-600 hover:bg-red-700 text-white! px-2.5 py-1 font-semibold"
+                                armedClassName="bg-red-600 hover:brightness-90 text-white! px-2.5 py-1 font-semibold"
                                 title={t('traits.supprimer.featname.feature', {
                                   featName: featName(feature),
                                 })}
@@ -653,7 +653,7 @@ export default function CharacterFeaturesTab({
           <button
             type="button"
             onClick={() => setShowTemplateHelp((s) => !s)}
-            className="text-xs text-blood-600 hover:underline"
+            className="text-xs text-blood-500 hover:underline"
           >
             {showTemplateHelp ? '▼' : '▶'} {t('traits.variables.de.modele')}
           </button>
@@ -667,7 +667,7 @@ export default function CharacterFeaturesTab({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                 {TEMPLATE_VARIABLES.map((v) => (
                   <div key={v.syntax} className="flex items-center gap-2 text-xs">
-                    <code className="bg-parchment-200 px-1.5 py-0.5 rounded text-blood-700 font-mono shrink-0">
+                    <code className="bg-parchment-200 px-1.5 py-0.5 rounded text-blood-800 font-mono shrink-0">
                       {v.syntax}
                     </code>
                     <span className="text-ink-500">
@@ -778,7 +778,7 @@ function CatalogCard({
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="flex items-center gap-2 text-sm font-semibold text-ink-700 hover:text-blood-700 transition-colors inline-flex min-h-11 py-1"
+          className="flex items-center gap-2 text-sm font-semibold text-ink-700 hover:text-blood-400 transition-colors inline-flex min-h-11 py-1"
           aria-expanded={open}
         >
           <span aria-hidden="true">📚</span>
@@ -879,7 +879,7 @@ function CatalogCard({
                       )}
                       {reset && (
                         <span
-                          className="text-[10px] text-blood-600 shrink-0"
+                          className="text-[10px] text-blood-500 shrink-0"
                           title={
                             def.resource?.reset === 'short'
                               ? t('traits.recupere.apres.un.repos.court.ou.long')

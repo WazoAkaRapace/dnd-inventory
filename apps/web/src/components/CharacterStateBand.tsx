@@ -345,7 +345,7 @@ export default function CharacterStateBand({
                         setNameDraft(character.name);
                         setEditingName(true);
                       }}
-                      className="hover:text-blood-600 transition-colors truncate inline-flex items-center min-h-11"
+                      className="hover:text-blood-500 transition-colors truncate inline-flex items-center min-h-11"
                       title={t('band.cliquer.pour.renommer')}
                     >
                       {character.name}

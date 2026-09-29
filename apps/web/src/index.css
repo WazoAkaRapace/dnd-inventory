@@ -76,11 +76,22 @@
    SÉMANTIQUES se retournent (parchment = fond → cuir sombre ;
    ink = texte → lisible parchemin ; blood/gold s'adaptent), les
    nuances gardent leur RÔLE (50 = page, 200 = filet, 900 = texte
-   fort). La rampe night ci-dessus ne bouge pas. Ratios vérifiés
-   par script : ink-900→14.8:1, ink-400 (méta)→5.5:1 sur la page ;
-   blood-600 choisi au frontièreau double-usage (texte 4.3:1 /
-     blanc dessus 4.2:1) — l'app claire elle-même expédie 3.8:1
-   sur ses pires pills (or/rouge). Mode clair = défaut inchangé.
+   fort). La rampe night ci-dessus ne bouge pas.
+
+   Audit RGAA 4.1 (2026-09, script WCAG sur toutes les paires
+   réellement utilisées) — SÉPARATION DES RÔLES par rampe :
+   les nuances PROFONDES (600/700 côté fond) portent du blanc
+   (boutons, toasts, badges), les nuances CLAIRES portent le
+   texte sur page/cuir/pastilles. Toute paire réelle ≥ 4.5:1
+   (texte) / 3:1 (composants, focus, bordures de champ) :
+   ink-900 14.8:1, ink-400 6.2:1 ; blood-500 TEXTE 5.6:1 sur la
+   page, blood-600 FOND blanc dessus 6.8:1 ; pastilles règle
+   X-700/800/900 sur X-50/100/200 toutes ≥ 4.7:1 ; anneau focus
+   blood-500 ≥ 4.2:1 partout ; bordure de champ via .input dark
+   (#8a744b, 3.5:1 sur raised — parchment-300 ne peut pas être
+   à la fois bordure 3:1 et fond de survol 4.5:1 sur des surfaces
+   de cette profondeur, d'où la règle dédiée ci-dessous).
+   Mode clair = défaut inchangé.
    ============================================================ */
 html.ts-dark {
   color-scheme: dark;
@@ -88,14 +99,14 @@ html.ts-dark {
   /* Parchemin → cuir de la table éclairé à la bougie */
   --color-parchment-50: #1a1512;
   --color-parchment-100: #262019;
-  --color-parchment-200: #382d1f;
-  --color-parchment-300: #4d3f2b;
+  --color-parchment-200: #4e412a;
+  --color-parchment-300: #5c4a30;
   --color-parchment-400: #8a744b;
 
   /* Encre → encre lisible : chaque nuance reste son rôle de texte. Les
      nuances discrètes (300/400) montent d'un cran — sur le cuir sombre,
      « imprimé discret » doit rester LU, pas deviné. */
-  --color-ink-100: #463a2b;
+  --color-ink-100: #706148;
   --color-ink-300: #9a8264;
   --color-ink-400: #ab9472;
   --color-ink-500: #b39a75;
@@ -104,81 +115,103 @@ html.ts-dark {
   --color-ink-800: #e6d5b8;
   --color-ink-900: #f3e7d0;
 
-  /* Sang : gardé profond pour les fonds (blanc dessus 8+), éclairci
-     pour le texte — même frontière que l'app claire. */
+  /* Sang — rôles séparés : 500 = TEXTE/action (5.6:1 sur la page),
+     600/700 = FONDS de boutons (blanc dessus 6.8/8.3:1),
+     800/900 = texte sur nappes blood-50 (alertes), 300/400 = fermeture. */
   --color-blood-50: #2e1a1a;
   --color-blood-100: #43262a;
   --color-blood-200: #5e3236;
   --color-blood-300: #e08585;
-  --color-blood-500: #b56c6c;
-  --color-blood-600: #a76b6b;
-  --color-blood-700: #9a5252;
+  --color-blood-400: #d37069;
+  --color-blood-500: #c97a70;
+  --color-blood-600: #96403c;
+  --color-blood-700: #823632;
+  --color-blood-800: #ea9c96;
+  --color-blood-900: #f0b1ad;
 
-  /* Or : la bougie le nourrit — plus lumineux, jamais criard */
+  /* Or : la bougie le nourrit — plus lumineux, jamais criard.
+     600/700 = texte or sur cuir (8.5:1+). */
   --color-gold-100: #3a2f16;
   --color-gold-300: #e8cd7d;
   --color-gold-400: #d9b854;
   --color-gold-500: #c4a24e;
+  --color-gold-600: #d4ad4a;
+  --color-gold-700: #ddb552;
 
   /* Surface levée : cuir clair (champs, modales) */
   --color-raised: #2a221a;
 
   /* Couleurs de règle (palette standard Tailwind, usage sémantique
-     PV/encombrance/conditions) : les nuances PORTÉES EN TEXTE
-     s'éclaircissent pour tenir sur le cuir (≥4.5:1 calculé) ; les
-     nuances claires (fonds de pastilles) s'assombrissent pour porter
-     du texte foncé. Fond/texte restent appariés par pastille. */
+     PV/encombrance/conditions) — rôles séparés : les -600 profonds
+     portent du blanc (toasts, dés armés : red-600 5.3:1, green-600
+     4.5:1), les -700/800/900 éclaircis portent le TEXTE sur page
+     et sur les pastilles foncées -50/-100/-200 (≥ 4.7:1 partout). */
   --color-red-100: #42242a;
   --color-red-200: #5a2e33;
   --color-red-50: #311c1f;
-  --color-red-600: #e45656;
-  --color-red-700: #cf6565;
-  --color-red-800: #be6d6d;
+  --color-red-600: #b84444;
+  --color-red-700: #ec9090;
+  --color-red-800: #ef9a9a;
+  --color-red-900: #f2a8a8;
   --color-green-100: #22301f;
   --color-green-200: #2f442a;
   --color-green-50: #1c2619;
-  --color-green-600: #4fc06e;
-  --color-green-700: #3a945c;
-  --color-green-800: #57906d;
-  --color-green-900: #648d74;
+  --color-green-600: #27874a;
+  --color-green-700: #62c573;
+  --color-green-800: #79cc84;
+  --color-green-900: #8fd498;
   --color-yellow-100: #33290f;
   --color-yellow-200: #453717;
   --color-yellow-50: #282009;
   --color-yellow-500: #e8c545;
-  --color-yellow-700: #b07b2f;
-  --color-yellow-800: #a77f51;
+  --color-yellow-700: #d9bc55;
+  --color-yellow-800: #e3ca70;
   --color-orange-100: #37230f;
   --color-orange-200: #4a2f14;
   --color-orange-50: #2b1b0b;
-  --color-orange-700: #ce673d;
-  --color-orange-800: #ba755e;
+  --color-orange-700: #d98a52;
+  --color-orange-800: #e09a66;
+  --color-orange-900: #eab084;
   --color-blue-100: #1e2942;
   --color-blue-200: #293a5a;
   --color-blue-50: #17202f;
-  --color-blue-700: #5c80e3;
-  --color-blue-800: #6a81ca;
+  --color-blue-600: #4a7ad9;
+  --color-blue-700: #7ba1e0;
+  --color-blue-800: #85aae3;
+  --color-blue-900: #9db6ea;
   --color-purple-100: #2b1e42;
   --color-purple-200: #3b2a57;
   --color-purple-50: #201630;
   --color-purple-600: #ab60ef;
   --color-purple-700: #a769de;
-  --color-purple-800: #a071c7;
-  --color-purple-900: #9b77b7;
+  --color-purple-800: #bd7fdc;
+  --color-purple-900: #cf9ae6;
   --color-indigo-100: #1e2138;
   --color-indigo-200: #2b2f52;
   --color-indigo-50: #16182a;
   --color-indigo-600: #7d76ec;
-  --color-indigo-700: #7f78db;
+  --color-indigo-700: #8f86e0;
+  --color-indigo-800: #837ae4;
   --color-amber-100: #33260e;
   --color-amber-200: #463413;
   --color-amber-50: #271c09;
-  --color-amber-700: #c27235;
-  --color-amber-800: #b37956;
-  --color-amber-900: #a67a61;
+  --color-amber-700: #d7a24a;
+  --color-amber-800: #e2b164;
+  --color-amber-900: #d9b98a;
   --color-pink-700: #d25d8e;
   --color-cyan-800: #578b9c;
   --color-emerald-700: #369379;
+  /* Gris (rarity-common) : pilule sombre en bougie, comme les autres */
+  --color-gray-100: #2c2821;
   --color-gray-600: #7d858f;
+  --color-gray-800: #c6bca8;
+}
+
+/* Bordure de champ en bougie : parchment-300 (#5c4a30) est un fond
+   de survol lisible (ink-900 6.9:1) mais ne tient pas 3:1 contre
+   raised comme bordure — le champ prend le trait profond dédié. */
+html.ts-dark .input {
+  border-color: #8a744b;
 }
 
 

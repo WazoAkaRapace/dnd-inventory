@@ -423,7 +423,7 @@ function ActionSection({
 }) {
   return (
     <div>
-      <h3 className="font-display font-semibold text-blood-700 border-b border-blood-200 pb-1 mb-2 text-sm">
+      <h3 className="font-display font-semibold text-blood-500 border-b border-blood-200 pb-1 mb-2 text-sm">
         {title}
       </h3>
       <div className="space-y-2">

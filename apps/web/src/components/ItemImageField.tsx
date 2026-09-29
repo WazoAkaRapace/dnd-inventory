@@ -198,7 +198,7 @@ export function ItemImageField({
       {processing && (
         <p className="mt-1 animate-pulse text-xs text-ink-400">{t('champ.traitement')}</p>
       )}
-      {fileError && <p className="mt-1 text-xs text-red-600">{fileError}</p>}
+      {fileError && <p className="mt-1 text-xs text-red-700">{fileError}</p>}
 
       {(hasStaged || showsExisting) && (
         <div className="mt-1.5 flex items-center gap-2">
@@ -215,8 +215,8 @@ export function ItemImageField({
               // stagée → simple dé-stage ; existante → suppression différée
               onChange({ staged: null, removed: showsExisting });
             }}
-            className="btn-ghost text-xs text-red-600 hover:bg-red-50"
-            armedClassName="bg-red-600 hover:bg-red-700 text-white!"
+            className="btn-ghost text-xs text-red-700 hover:bg-red-50"
+            armedClassName="bg-red-600 hover:brightness-90 text-white!"
             ariaLabel={t('champ.supprimer.l.illustration')}
             confirmChildren={t('champ.supprimer.l.illustration.confirm')}
           >

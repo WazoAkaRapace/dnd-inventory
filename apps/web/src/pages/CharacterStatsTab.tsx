@@ -275,7 +275,7 @@ export default function CharacterStatsTab({
                   setAcDraft(acOverride ? String(acOverride) : '');
                   setEditingAC(true);
                 }}
-                className="w-full min-h-11 flex items-center justify-center gap-1.5 text-2xl font-bold tabular-nums text-ink-800 hover:text-blood-600 transition-colors"
+                className="w-full min-h-11 flex items-center justify-center gap-1.5 text-2xl font-bold tabular-nums text-ink-800 hover:text-blood-500 transition-colors"
                 aria-label={t('stats.modifier.la.classe.d.armure')}
               >
                 {effectiveAC}
@@ -287,12 +287,12 @@ export default function CharacterStatsTab({
             <div className="text-[11px] text-ink-500 mt-0.5">
               {acOverride !== null ? (
                 <>
-                  <span className="font-medium text-blood-600">{t('stats.manuel')}</span>
+                  <span className="font-medium text-blood-500">{t('stats.manuel')}</span>
                   {' · '}
                   <button
                     type="button"
                     onClick={() => patchCharacter({ armorClassOverride: null }, t('stats.erreur'))}
-                    className="text-blood-600 hover:underline py-1.5"
+                    className="text-blood-500 hover:underline py-1.5"
                   >
                     ↺ Auto
                   </button>
@@ -350,11 +350,11 @@ export default function CharacterStatsTab({
             <button
               type="button"
               onClick={openPortage}
-              className="w-full min-h-11 flex items-center justify-center gap-1.5 text-2xl font-bold tabular-nums text-ink-800 hover:text-blood-600 transition-colors"
+              className="w-full min-h-11 flex items-center justify-center gap-1.5 text-2xl font-bold tabular-nums text-ink-800 hover:text-blood-500 transition-colors"
               aria-label={t('stats.modifier.le.multiplicateur.de.portage')}
             >
               {portageMaxKg} kg
-              <span className="px-1.5 py-0.5 rounded-full bg-blood-50 border border-blood-200 text-blood-700 text-[11px] font-semibold">
+              <span className="px-1.5 py-0.5 rounded-full bg-blood-50 border border-blood-200 text-blood-500 text-[11px] font-semibold">
                 ×{capacityMult}
               </span>
             </button>

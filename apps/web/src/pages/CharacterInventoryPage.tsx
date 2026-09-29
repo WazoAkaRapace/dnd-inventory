@@ -996,7 +996,7 @@ export default function CharacterInventoryPage() {
                   </button>
                 </div>
                 {hubInitError && (
-                  <p className="px-3 pb-2 text-xs text-red-600" role="alert">
+                  <p className="px-3 pb-2 text-xs text-red-700" role="alert">
                     {t('inv.echec.de.l.enregistrement.reessaie')}
                   </p>
                 )}
@@ -1193,7 +1193,7 @@ export default function CharacterInventoryPage() {
                         className={`dial-item relative z-10 ${span ? 'col-span-2 w-full' : 'w-36'} h-10 flex items-center justify-center gap-2 rounded-full border shadow-lg text-sm font-medium whitespace-nowrap transition-[color,border-color,background-color] duration-200 active:scale-95 ${
                           active
                             ? 'bg-transparent text-white border-blood-700'
-                            : 'bg-white text-ink-700 border-parchment-200 hover:border-blood-400'
+                            : 'bg-raised text-ink-700 border-parchment-200 hover:border-blood-400'
                         }`}
                         style={{ animationDelay: `${i * 30}ms` }}
                       >
@@ -1343,8 +1343,8 @@ export default function CharacterInventoryPage() {
                           onBlur={() => setConfirmDeleteLocationId(null)}
                           className={`ml-1 w-7 h-7 rounded-full flex items-center justify-center text-sm transition-colors ${
                             isConfirming
-                              ? 'bg-red-600 text-white hover:bg-red-700'
-                              : 'bg-parchment-200 text-ink-500 hover:bg-red-100 hover:text-red-600'
+                              ? 'bg-red-600 text-white hover:brightness-90'
+                              : 'bg-parchment-200 text-ink-500 hover:bg-red-100 hover:text-red-700'
                           }`}
                           aria-label={
                             isConfirming
@@ -1366,7 +1366,7 @@ export default function CharacterInventoryPage() {
                   <button
                     type="button"
                     onClick={() => setShowNewLocationModal(true)}
-                    className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium border border-dashed border-parchment-300 text-ink-500 hover:border-blood-400 hover:text-blood-600 transition-colors"
+                    className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium border border-dashed border-parchment-300 text-ink-500 hover:border-blood-400 hover:text-blood-500 transition-colors"
                     aria-label={t('inv.ajouter.un.transport')}
                     title={t('inv.ajouter.un.transport')}
                   >

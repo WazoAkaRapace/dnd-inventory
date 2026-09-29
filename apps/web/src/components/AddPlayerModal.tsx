@@ -61,7 +61,7 @@ export default function AddPlayerModal({ open, onClose, characters, onAdd }: Pro
           type="button"
           onClick={toggleAll}
           disabled={characters.length === 0}
-          className="text-sm font-medium text-blood-600 hover:text-blood-700 disabled:opacity-40"
+          className="text-sm font-medium text-blood-500 hover:text-blood-400 disabled:opacity-40"
         >
           {allSelected ? t('ajoutjoueur.tout.deselectionner') : t('ajoutjoueur.tout.selectionner')}
         </button>

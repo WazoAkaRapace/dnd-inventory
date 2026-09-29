@@ -187,7 +187,7 @@ export default function CharacterNotesTab({
                       <button
                         type="button"
                         onClick={() => openEdit(note)}
-                        className="text-ink-400 hover:text-blood-600 text-sm p-1"
+                        className="text-ink-400 hover:text-blood-500 text-sm p-1"
                         aria-label={t('notes.modifier.note.title', { note_title: note.title })}
                       >
                         ✎
@@ -195,7 +195,7 @@ export default function CharacterNotesTab({
                       <ConfirmButton
                         onConfirm={() => remove(note.id)}
                         className="text-ink-400 hover:text-red-500 text-sm p-1 rounded-full transition-colors"
-                        armedClassName="bg-red-600 hover:bg-red-700 text-white! px-2.5 py-1 font-semibold"
+                        armedClassName="bg-red-600 hover:brightness-90 text-white! px-2.5 py-1 font-semibold"
                         title={t('notes.supprimer.note.title', { note_title: note.title })}
                         ariaLabel={t('notes.supprimer.note.title', { note_title: note.title })}
                         confirmChildren={t('notes.supprimer')}

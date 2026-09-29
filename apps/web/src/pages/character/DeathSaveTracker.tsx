@@ -48,13 +48,13 @@ export function DeathSaveTracker({
         <span className="text-sm font-medium text-ink-700">
           {t('mort.jets.de.sauvegarde.contre.la.mort')}
         </span>
-        {isDead && <span className="text-xs font-bold text-red-600">{t('mort.mort')}</span>}
-        {isStable && <span className="text-xs font-bold text-green-600">{t('mort.stable')}</span>}
+        {isDead && <span className="text-xs font-bold text-red-700">{t('mort.mort')}</span>}
+        {isStable && <span className="text-xs font-bold text-green-700">{t('mort.stable')}</span>}
       </div>
       <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
         {/* Successes — tap a circle to toggle that position */}
         <div className="flex items-center gap-2">
-          <span className="text-xs text-green-600 font-medium w-12">{t('mort.succes')}</span>
+          <span className="text-xs text-green-700 font-medium w-12">{t('mort.succes')}</span>
           <div className="flex items-center gap-1.5">
             {[0, 1, 2].map((i) => {
               const filled = i < successes;
@@ -104,7 +104,7 @@ export function DeathSaveTracker({
               );
             })}
           </div>
-          <span className="text-xs text-red-600 font-medium w-12 text-right">
+          <span className="text-xs text-red-700 font-medium w-12 text-right">
             {t('mort.echecs')}
           </span>
         </div>
