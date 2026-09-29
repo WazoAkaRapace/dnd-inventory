@@ -757,6 +757,15 @@ html[lang="en"] [lang="fr"] {
   padding-top: 0.15rem;
 }
 
+/* L'encre voyage : quand la vue tourne, l'emphase se déplace de
+   sous-entrée en sous-entrée — la couleur COULE (l'encre du registre
+   se déplace, elle ne saute pas), l'entrée prend sa pleine encre
+   pendant que les autres la rendent. */
+.subentries li h3,
+.subentries li p {
+  transition: color 0.45s var(--ease);
+}
+
 .subentries li.is-sync-dim h3,
 .subentries li.is-sync-dim p {
   color: var(--ink-300);
@@ -770,7 +779,11 @@ html[lang="en"] [lang="fr"] {
   color: var(--parchment-200);
 }
 
-/* le dé or marque la sous-entrée qui joue — le jalon du tour courant */
+/* le dé or marque la sous-entrée qui joue — le jalon du tour courant.
+   Il se POSE comme un tampon (la grammaire des ordinaux, en miniature) :
+   dé calé d'un quart de tour, plus grand, encore flou — puis posé net.
+   La classe voyageant d'un li à l'autre, chaque prise de tour rejoue
+   le tampon ; un même li couvrant plusieurs vues ne rejoue rien. */
 .subentries li.is-current h3::before {
   content: "";
   display: inline-block;
@@ -786,6 +799,25 @@ html[lang="en"] [lang="fr"] {
     transparent 1.9px
   );
   clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .subentries li.is-current h3::before {
+    animation: voice-stamp 0.34s var(--ease) both;
+  }
+}
+
+@keyframes voice-stamp {
+  from {
+    opacity: 0;
+    transform: scale(1.55) rotate(-24deg);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
 }
 
 .subentries h3 {
