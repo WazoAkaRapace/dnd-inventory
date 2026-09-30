@@ -862,7 +862,7 @@ function EncounterRegister({
                         {enc.name}
                       </span>
                       {isLive && (
-                        <span className="shrink-0 rounded-full bg-blood-600 px-2.5 py-1 font-mono text-xs font-semibold text-parchment-50">
+                        <span className="shrink-0 rounded-full bg-blood-600 px-2.5 py-1 font-mono text-xs font-semibold text-white">
                           {t('combat.tour', { round: enc.round })}
                         </span>
                       )}
@@ -1169,7 +1169,7 @@ function CombatTheatre({
                 </span>
               )}
               {status === 'active' && (
-                <span className="rounded-full bg-blood-600 px-2.5 py-1 font-mono text-xs font-semibold text-parchment-50">
+                <span className="rounded-full bg-blood-600 px-2.5 py-1 font-mono text-xs font-semibold text-white">
                   {t('combat.tour', { round: encounter.round })}
                 </span>
               )}
@@ -1288,7 +1288,7 @@ function InitiativeRail({
                 aria-label={ariaParts.join(', ')}
                 className={`relative flex min-h-[52px] w-auto min-w-24 max-w-44 flex-col justify-center gap-1 rounded-lg border px-2 py-1.5 text-left transition-colors lg:w-full lg:max-w-full ${
                   isCurrent
-                    ? 'border-blood-500 bg-blood-600 text-parchment-50 shadow-sm'
+                    ? 'border-blood-500 bg-blood-600 text-white shadow-sm'
                     : isFocused
                       ? 'border-ink-500 bg-parchment-100'
                       : 'border-parchment-200 bg-parchment-50/80 hover:border-parchment-300 hover:bg-parchment-100'
@@ -1398,7 +1398,7 @@ function DamageChipDock({
           onClick={onToggle}
           className={`flex min-h-[44px] items-center rounded-lg px-3 py-2 font-mono text-sm font-bold transition-all active:scale-95 ${
             applyMode
-              ? 'bg-blood-600 text-parchment-50 shadow-md'
+              ? 'bg-blood-600 text-white shadow-md'
               : 'bg-orange-100 text-orange-800 hover:bg-orange-200'
           }`}
           title={applyMode ? t('combat.annuler.echap') : t('combat.appliquer.a.une.cible')}
@@ -1557,7 +1557,7 @@ function StagePanel({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             {status === 'active' && (
-              <span className="rounded-full bg-blood-600 px-2.5 py-1 font-mono text-xs font-semibold text-parchment-50">
+              <span className="rounded-full bg-blood-600 px-2.5 py-1 font-mono text-xs font-semibold text-white">
                 {t('combat.tour', { round: encounter.round })}
               </span>
             )}

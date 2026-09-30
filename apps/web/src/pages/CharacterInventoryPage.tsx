@@ -1011,7 +1011,7 @@ export default function CharacterInventoryPage() {
           // carte se déroule depuis le dock, le titre se tamponne, puis le
           // corps bat en rythme cardiaque (synchrone du halo).
           <div className="combat-turn-banner relative mb-[-1px] mx-auto w-fit max-w-full rounded-t-xl rounded-b-md shadow-md border border-b-0 bg-blood-600 border-blood-700 combat-turn-glow">
-            <div className="combat-turn-stamp relative px-3 py-1.5 text-xs font-bold text-parchment-50 text-center">
+            <div className="combat-turn-stamp relative px-3 py-1.5 text-xs font-bold text-white text-center">
               {t('inv.a.toi.de.jouer')}
             </div>
             <div className="flex items-center gap-2 px-2 py-1.5 bg-parchment-50 border-t border-blood-300">
@@ -1107,9 +1107,9 @@ export default function CharacterInventoryPage() {
                     : hubCombat?.isMyTurn
                       ? 'bg-blood-700 text-white'
                       : hubCombat?.needsInitiative
-                        ? 'bg-yellow-500 text-ink-900 shadow-[0_0_0_3px_rgba(202,138,4,0.5),0_0_18px_rgba(202,138,4,0.5)]'
+                        ? 'bg-yellow-500 text-ink-900 shadow-[0_0_0_3px_rgba(var(--glow-gold),0.5),0_0_18px_rgba(var(--glow-gold),0.5)]'
                         : hubCombat
-                          ? 'bg-blood-600 text-white shadow-[0_0_0_2px_rgba(185,28,28,0.3),0_0_12px_rgba(185,28,28,0.25)]'
+                          ? 'bg-blood-600 text-white shadow-[0_0_0_2px_rgba(var(--glow-blood),0.3),0_0_12px_rgba(var(--glow-blood),0.25)]'
                           : 'bg-blood-600 hover:bg-blood-700 text-white'
                 }`}
                 aria-expanded={moreOpen}

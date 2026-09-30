@@ -92,6 +92,9 @@
    à la fois bordure 3:1 et fond de survol 4.5:1 sur des surfaces
    de cette profondeur, d'où la règle dédiée ci-dessous).
    Mode clair = défaut inchangé.
+   Ce contrat est GARDÉ par CI : `npm run test-theme-contrast`
+   (scripts/test-theme-contrast.ts) lit les valeurs réelles de ce
+   fichier et asserte les paires — corrige ici, la suite suit.
    ============================================================ */
 html.ts-dark {
   color-scheme: dark;
@@ -141,14 +144,24 @@ html.ts-dark {
   /* Surface levée : cuir clair (champs, modales) */
   --color-raised: #2a221a;
 
+  /* Le sang des HALOS (triplet RGB) : en bougie le sang clair durci des
+     glows s'éteignait sur le cuir (1,6:1 mesuré) — le halo cardiaque
+     « À toi de jouer » et le ciblage passent au sang de bougie. */
+  --glow-blood: 201, 122, 112;
+  --glow-gold: 217, 181, 82;
+
   /* Couleurs de règle (palette standard Tailwind, usage sémantique
-     PV/encombrance/conditions) — rôles séparés : les -600 profonds
+     PV/encombrance/conditions) — rôles séparés : les -500 sont les
+     ENCRES DE JAUGE (fills profonds qui portent du BLANC — chiffres
+     HpBar, dés de mort armés : ≥ 4.6:1 partout, présence de forme à
+     parité avec le mode clair ~1.7-2.1:1 vs track), les -600 profonds
      portent du blanc (toasts, dés armés : red-600 5.3:1, green-600
      4.5:1), les -700/800/900 éclaircis portent le TEXTE sur page
      et sur les pastilles foncées -50/-100/-200 (≥ 4.7:1 partout). */
   --color-red-100: #42242a;
   --color-red-200: #5a2e33;
   --color-red-50: #311c1f;
+  --color-red-500: #ad4844;
   --color-red-600: #b84444;
   --color-red-700: #ec9090;
   --color-red-800: #ef9a9a;
@@ -156,6 +169,8 @@ html.ts-dark {
   --color-green-100: #22301f;
   --color-green-200: #2f442a;
   --color-green-50: #1c2619;
+  --color-green-400: #5cb87e;
+  --color-green-500: #35825a;
   --color-green-600: #27874a;
   --color-green-700: #62c573;
   --color-green-800: #79cc84;
@@ -163,18 +178,24 @@ html.ts-dark {
   --color-yellow-100: #33290f;
   --color-yellow-200: #453717;
   --color-yellow-50: #282009;
-  --color-yellow-500: #e8c545;
+  --color-yellow-300: #6b5218;
+  /* Cartouche « initiative due » : le -400 porte le libellé crème —
+     plus profond que la jauge -500, assumé (un seul élément l'utilise). */
+  --color-yellow-400: #7d6119;
+  --color-yellow-500: #8f6e1c;
   --color-yellow-700: #d9bc55;
   --color-yellow-800: #e3ca70;
   --color-orange-100: #37230f;
   --color-orange-200: #4a2f14;
   --color-orange-50: #2b1b0b;
+  --color-orange-500: #9d5a20;
   --color-orange-700: #d98a52;
   --color-orange-800: #e09a66;
   --color-orange-900: #eab084;
   --color-blue-100: #1e2942;
   --color-blue-200: #293a5a;
   --color-blue-50: #17202f;
+  --color-blue-500: #4066ad;
   --color-blue-600: #4a7ad9;
   --color-blue-700: #7ba1e0;
   --color-blue-800: #85aae3;
@@ -214,10 +235,47 @@ html.ts-dark .input {
   border-color: #8a744b;
 }
 
+/* Focus de champ en bougie : la règle ci-dessus (spécificité 0,2,1)
+   écrase focus:border-blood-500 (0,2,0) — la bordure ne changeait
+   JAMAIS au focus et le ring 30 % fondait dans le cuir (2,9:1).
+   Le trait redevient sang de bougie + ring relevé à 60 %. */
+html.ts-dark .input:focus {
+  border-color: var(--color-blood-500);
+  --tw-ring-color: color-mix(in oklab, var(--color-blood-500) 60%, transparent);
+}
+
+/* Chiffres de HpBar : le nombre en surimpression traverse fill ET
+   track — en bougie les encres de jauge sont profondes et le crème
+   hérité (ink-900 retourné) n'y tient pas 4.5:1 ; le blanc tient
+   sur les deux (fills ≥ 4.6:1, track 9.9:1). Mode clair inchangé. */
+html.ts-dark .hpbar-text {
+  color: #fff;
+}
+
+/* En bougie le flash de ligne sanguin d'origine (8 % d'alpha sur
+   sang clair) disparaît dans le cuir — la bougie l'allume à la
+   teinte du sang de bougie, plus dense. */
+@keyframes row-flash-dark {
+  0% {
+    background-color: rgba(201, 122, 112, 0.16);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+html.ts-dark .row-flash {
+  animation-name: row-flash-dark;
+}
+
 
 :root {
   /* Light theme only — the app is parchment-themed, not dark-mode */
   color-scheme: light;
+  /* Le sang (et l'or) des HALOS cardiaques/ciblage, en triplet RGB :
+     défini ici en valeurs claires, retourné sous ts-dark — les glows ne
+     codent PLUS leur couleur en dur. */
+  --glow-blood: 185, 28, 28;
+  --glow-gold: 202, 138, 4;
   /* Hauteur PROPRE du header applicatif sticky (h-14, sans l'encoche) : tout
      élément sticky qui doit rester visible sous lui colle à
      calc(var(--app-header-h) + env(safe-area-inset-top) + marge).
@@ -728,9 +786,9 @@ html.ts-dark .card {
      l'unique site porteur overflow-hidden (la carte combat mobile, qui
      rogne le halo extérieur du pseudo-élément). */
   box-shadow:
-    inset 0 0 0 1px rgba(185, 28, 28, 0.5),
-    0 0 0 3px rgba(185, 28, 28, 0.55),
-    0 4px 18px 4px rgba(185, 28, 28, 0.45);
+    inset 0 0 0 1px rgba(var(--glow-blood), 0.5),
+    0 0 0 3px rgba(var(--glow-blood), 0.55),
+    0 4px 18px 4px rgba(var(--glow-blood), 0.45);
   animation: combat-turn-glow 1.5s linear infinite;
 }
 @keyframes combat-turn-glow {
@@ -777,7 +835,7 @@ html.ts-dark .card {
   animation: turn-strike 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 /* LE GLOW DU HUB, exactement — le bouton central du dock porte
-   `0 0 0 2px rgba(185,28,28,.3), 0 0 12px rgba(185,28,28,.25)` ; les
+   `0 0 0 2px rgba(var(--glow-blood),.3), 0 0 12px rgba(var(--glow-blood),.25)` ; les
    porteurs vivants (carte mobile, bande desktop) reprennent ces valeurs À
    L'IDENTIQUE sur leur anneau `combat-turn-glow`, EN PERMANENCE : au repos,
    la carte a exactement le glow du hub — statique, ni plus grand ni plus
@@ -789,8 +847,8 @@ html.ts-dark .card {
   animation: none;
   opacity: 1;
   box-shadow:
-    0 0 0 2px rgba(185, 28, 28, 0.3),
-    0 0 12px rgba(185, 28, 28, 0.25);
+    0 0 0 2px rgba(var(--glow-blood), 0.3),
+    0 0 12px rgba(var(--glow-blood), 0.25);
 }
 .combat-turn-banner::before,
 .combat-turn-beat::before {
@@ -801,8 +859,8 @@ html.ts-dark .card {
   pointer-events: none;
   /* L'embrasure : même empreinte que le hub, plus dense — jamais plus grande */
   box-shadow:
-    0 0 0 2px rgba(185, 28, 28, 0.55),
-    0 0 12px 2px rgba(185, 28, 28, 0.5);
+    0 0 0 2px rgba(var(--glow-blood), 0.55),
+    0 0 12px 2px rgba(var(--glow-blood), 0.5);
   opacity: 0;
   animation: combat-turn-beat 1.5s linear 0.45s infinite;
 }
@@ -990,11 +1048,11 @@ html.ts-dark .card {
   position: absolute;
   inset: -2px;
   border-radius: 1rem;
-  border: 2px solid rgba(185, 28, 28, 0.55);
+  border: 2px solid rgba(var(--glow-blood), 0.55);
   pointer-events: none;
   /* box-shadow statique + opacité animée (compositable) — l'animation du
      box-shadow repeignait CHAQUE carte de combatant à chaque frame. */
-  box-shadow: 0 0 18px 4px rgba(185, 28, 28, 0.32);
+  box-shadow: 0 0 18px 4px rgba(var(--glow-blood), 0.32);
   animation: target-breathe 1.6s ease-in-out infinite;
 }
 @keyframes target-breathe {
@@ -1013,7 +1071,7 @@ html.ts-dark .card {
 @media (prefers-reduced-motion: reduce) {
   .combat-target::after {
     animation: none;
-    box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.45);
+    box-shadow: 0 0 0 3px rgba(var(--glow-blood), 0.45);
   }
 }
 

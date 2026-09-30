@@ -101,19 +101,29 @@ du MD au téléphone tenu à une main.
 SÉMANTIQUES se retournent — `parchment-*` devient le cuir sombre de la
 table, `ink-*` devient le texte parchemin lisible, chaque nuance garde
 son RÔLE (50 = page, 200 = filet, 900 = texte fort) ; les couleurs de
-règle (red/green/…) se ré-étalent par variable pour tenir leurs rôles
-texte/fond sur le cuir. La rampe **`night-*` est CONSTANTE** : les
-surfaces volontiers sombres dans les DEUX modes (bandeau applicatif,
-badge non-lus, visionneuse, pilules du traqueur, sync indicator) y
-vivent — JAMAIS d'encre retournée sur du night. `--color-raised` (blanc
-en clair, cuir clair en bougie) porte les champs et modales. Choix du
-mode : `localStorage['ts-theme']` ('light'|'dark', null = suivre le
-système en direct), classe posée par un script inline AVANT la première
-peinture (zéro flash), pastilles Système/Parchemin/Bougie dans Mon
-compte ; le splash reste parchemin (identité du premier chargement).
-Contraste : vérifié par script (ink-900 14.8:1, ink-400 6:1, blood-600
-#a76b6b au point double-usage 4.3/4.2:1 — l'app claire elle-même
-expédie 2.6:1 sur ses pills or).
+règle se ré-étalent par variable avec leurs rôles SÉPARÉS : les **-500
+sont les encres de jauge** (fills profonds qui portent du BLANC —
+chiffres HpBar, dés de mort armés), les -600 les fonds de boutons/
+toasts (blanc dessus), les -700/800/900 éclaircis le TEXTE sur page et
+pastilles foncées — un `-500` ne sert JAMAIS de texte, un `-700`
+jamais de fill. La rampe **`night-*` est CONSTANTE** : les surfaces
+volontiers sombres dans les DEUX modes (bandeau applicatif, badge
+non-lus, visionneuse, pilules du traqueur, sync indicator) y vivent —
+JAMAIS d'encre retournée sur du night. `--color-raised` (blanc en
+clair, cuir clair en bougie) porte les champs et modales. Les glows
+cardiaques et le ciblage passent par les triplets RGB `--glow-blood` /
+`--glow-gold` (sang clair par défaut, sang/or de bougie sous ts-dark) —
+un halo ne code JAMAIS sa couleur en dur. Choix du mode :
+`localStorage['ts-theme']` ('light'|'dark', null = suivre le système en
+direct), classe posée par un script inline AVANT la première peinture
+(zéro flash), pastilles Système/Parchemin/Bougie dans Mon compte ; le
+splash suit le mode (bougie = cuir sombre, le sceau garde son disque
+blanc — le médaillon éclairé de la scène ; le `background_color` du
+manifest reste parchemin, la splash SYSTÈME PWA est claire dans les deux
+modes). Contraste : **gardé par CI** (`npm run test-theme-contrast`, 33
+paires réelles lues dans index.css) — ink-900 14.8:1, ink-400 6.2:1,
+blood-600 #96403c blanc dessus 6.8:1, jauges -500 blanc 4.7-5.6:1. Dettes
+assumées du mode clair : pills or 2.6:1, dés de mort armés ~1.9:1.
 
 Les couleurs de règles (vert/jaune/orange/rouge des paliers d'encombrance et
 des PV) enseignent l'état du personnage ; les teintes parchemin/encre portent
@@ -177,7 +187,12 @@ classe inconnue, l'erreur serait silencieuse.
 `green/yellow/orange/red` portent les paliers de règle — encombrance,
 PV, conditions. Chaque teinte porte un sens de règle : ne pas les
 réutiliser comme décoration. Paliers PV : ≤ 0 `red-700`, ≤ 25 %
-`red-500`, ≤ 50 % `yellow-500`, sinon `green-500`.
+`red-500`, ≤ 50 % `yellow-500`, sinon `green-500`. En bougie, les
+nuances se séparent par RÔLE (les mêmes classes, d'autres valeurs) :
+`-500` = encres de jauge (fill profond portant du blanc), `-600` =
+fonds de boutons/toasts, `-700/800/900` = texte sur page et pastilles
+foncées — d'où les migrations `text-X-500` → `text-X-700` partout où
+la nuance servait de TEXTE.
 
 ### Named Rules
 
@@ -299,7 +314,7 @@ pour le reste, chaque verbe à taille de combat (≥ 44 px). Composants dans
 | `Modal` | dialogues centrés (desktop) | focus trap, Échap, restore le focus |
 | `BottomSheet` | feuilles mobiles portaled | `size` (md/lg), `mobileOnly`, `footer`, `bodyClassName` ; Échap + scroll lock |
 | `Fab` | bouton d'action flottant `+` | `mobileOnly`, `raised` (au-dessus du dock), `dataTuto` (cible de la visite guidée) |
-| `HpBar` | barre de PV partout (fiche, combat, forme animale) | paliers unifiés : ≤0 `red-700`, ≤25 % `red-500`, ≤50 % `yellow-500`, sinon `green-500` ; `temp` = PV temporaires en segment `blue-500` au-delà du remplissage + aria « +N temporaires » ; `size` xs/sm/md, `showText`, `trackClassName` ; `role="progressbar"` |
+| `HpBar` | barre de PV partout (fiche, combat, forme animale) | paliers unifiés : ≤0 `red-700`, ≤25 % `red-500`, ≤50 % `yellow-500`, sinon `green-500` ; `temp` = PV temporaires en segment `blue-500` au-delà du remplissage + aria « +N temporaires » ; `size` xs/sm/md, `showText`, `trackClassName` ; `role="progressbar"` ; le nombre `showText` traverse fill ET track — portée `.hpbar-text`, BLANC en bougie (crème hérité ne tient pas 4.5:1 sur les encres de jauge) |
 | `Chip` | pastille de stat (attaque 🎯, dégâts ⚔, DD 🛡, ×N, +magique ✨) | `tone` (orange/red/blood/green/blue/amber/gold/indigo), `soft`, `title` = info-bulle de décomposition |
 | `EncumbranceBar` | portage et paliers | affiche conséquences de règle au moment où elles s'appliquent ; `compact` = variante une-ligne du bandeau |
 | `CharacterStateBand` | bandeau d'état de la fiche joueur | rail réglé épinglé + jumeau fixe compact au défilement (`band-drop`) ; le flux ne change jamais de hauteur |
@@ -553,7 +568,13 @@ d'`icon-seal.svg`), wordmark « TABLE SYNC » en Cinzel révélé par balayage
 d'encre, double règle, poussières d'or. Le splash vit entièrement dans
 `index.html` — zéro dépendance au bundle (styles inline, peints avant le
 téléchargement du module) ; `main.tsx` le retire après le premier rendu
-React (fondu `ts-splash--out`, plancher 1 750 ms).
+React (fondu `ts-splash--out`, plancher 1 750 ms). **Il suit le mode** :
+sous `ts-dark` (classe posée AVANT la première peinture — le cuir sombre
+est le premier pixel servi, plus d'éclat de parchemin dans un salon
+tamisé), mêmes keyframes, seule la lumière change — cuir + halos de
+bougie, wordmark crème, filets `parchment-400/300` bougie, rideau cuir ;
+le sceau GARDE son disque blanc : à la bougie, c'est le médaillon
+éclairé de la scène, et l'anneau de braise y trouve enfin sa lumière.
 
 Ses règles, à réutiliser pour toute animation hors React :
 

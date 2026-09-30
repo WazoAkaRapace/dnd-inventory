@@ -416,7 +416,7 @@ export default function CharacterFeaturesTab({
                               </button>
                               <ConfirmButton
                                 onConfirm={() => remove(feature.id)}
-                                className="text-ink-400 hover:text-red-500 text-sm p-1 rounded-full transition-colors"
+                                className="text-ink-400 hover:text-red-700 text-sm p-1 rounded-full transition-colors"
                                 armedClassName="bg-red-600 hover:brightness-90 text-white! px-2.5 py-1 font-semibold"
                                 title={t('traits.supprimer.featname.feature', {
                                   featName: featName(feature),

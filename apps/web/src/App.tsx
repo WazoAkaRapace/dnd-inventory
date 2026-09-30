@@ -46,7 +46,7 @@ function SyncIndicator() {
   };
   const colors = {
     connected: 'bg-green-400',
-    connecting: 'bg-yellow-400',
+    connecting: 'bg-gold-400',
     disconnected: 'bg-red-400',
   };
 

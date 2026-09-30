@@ -152,9 +152,9 @@ export function HpTracker({
     curNum <= 0
       ? 'text-red-700'
       : curNum <= maxNum * 0.3
-        ? 'text-red-500'
+        ? 'text-red-700'
         : curNum <= maxNum * 0.5
-          ? 'text-orange-500'
+          ? 'text-orange-700'
           : 'text-green-700';
 
   // Steppers share the state band's grammar: −5/−1 edit +1/+5 with 44px targets.
@@ -218,7 +218,7 @@ export function HpTracker({
           />
           <span className="text-ink-400 font-semibold">/</span>
           <NumberField
-            className="w-12 text-center text-base font-semibold font-mono text-ink-500 bg-transparent border-b border-dashed border-parchment-400 py-0 focus:outline-none focus:border-blood-500 focus:bg-white"
+            className="w-12 text-center text-base font-semibold font-mono text-ink-500 bg-transparent border-b border-dashed border-parchment-400 py-0 focus:outline-none focus:border-blood-500 focus:bg-raised"
             value={maxHp}
             min={1}
             onChange={setMaxHp}

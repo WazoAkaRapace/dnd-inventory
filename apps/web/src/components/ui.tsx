@@ -321,7 +321,7 @@ export function HpBar({
         />
       )}
       {showText && (
-        <span className="absolute inset-0 flex items-center justify-center text-xs font-mono font-semibold">
+        <span className="hpbar-text absolute inset-0 flex items-center justify-center text-xs font-mono font-semibold">
           {current}/{max}
         </span>
       )}

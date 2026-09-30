@@ -768,7 +768,7 @@ function SyncDiffBody({
       )}
       {diff.orphans.length > 0 && (
         <section>
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-red-500">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-red-700">
             {t('gma.fiches.supprimees.ici')}
           </h4>
           <ul className="space-y-1.5">

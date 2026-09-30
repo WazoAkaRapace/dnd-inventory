@@ -1145,7 +1145,7 @@ function SpellStatBadges({
         <Chip tone="blue">
           🛡 {t('sorts.dd')} {dcValue}
           {dc.dc_type?.index && (
-            <span className="text-blue-500">
+            <span className="text-blue-700">
               ·{' '}
               {abilityShort(dc.dc_type.index as keyof typeof ABILITY_SHORT_FR) ??
                 dc.dc_type.index.toUpperCase()}
@@ -1161,7 +1161,7 @@ function SpellStatBadges({
       {spell.attackType && (
         <Chip tone="red">
           🎯 {formatModifier(attackBonus)}
-          <span className="text-red-500">
+          <span className="text-red-700">
             · {spell.attackType === 'ranged' ? t('sorts.distance') : t('sorts.corps.a.corps')}
           </span>
         </Chip>

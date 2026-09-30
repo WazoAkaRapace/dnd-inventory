@@ -295,7 +295,7 @@ export default function MessageThread({
                   {canModerate && (
                     <ConfirmButton
                       onConfirm={() => void remove(m.id)}
-                      className="text-ink-400 hover:text-red-500 text-sm p-1 rounded-full transition-colors"
+                      className="text-ink-400 hover:text-red-700 text-sm p-1 rounded-full transition-colors"
                       armedClassName="bg-red-600 hover:brightness-90 text-white! px-2.5 py-1 font-semibold"
                       title={t('msgs.supprimer.message')}
                       ariaLabel={t('msgs.supprimer.message')}

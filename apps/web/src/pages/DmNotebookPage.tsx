@@ -706,7 +706,7 @@ function CountdownRow({
       </button>
       <ConfirmButton
         onConfirm={onDelete}
-        className="rounded-full p-1 text-sm text-ink-400 transition-colors hover:text-red-500"
+        className="rounded-full p-1 text-sm text-ink-400 transition-colors hover:text-red-700"
         armedClassName="bg-red-600 hover:brightness-90 text-white! px-2.5 py-1 font-semibold"
         title={t('carnet.rebours.supprimer', { label: countdown.label })}
         ariaLabel={t('carnet.rebours.supprimer', { label: countdown.label })}
@@ -1327,7 +1327,7 @@ function NotesTab({ campaign, partyId, reload, onError, setCampaign }: TabProps)
                       </button>
                       <ConfirmButton
                         onConfirm={() => remove(note.id)}
-                        className="rounded-full p-1 text-sm text-ink-400 transition-colors hover:text-red-500"
+                        className="rounded-full p-1 text-sm text-ink-400 transition-colors hover:text-red-700"
                         armedClassName="bg-red-600 hover:brightness-90 text-white! px-2.5 py-1 font-semibold"
                         title={t('notes.supprimer.note.title', { note_title: note.title })}
                         ariaLabel={t('notes.supprimer.note.title', { note_title: note.title })}

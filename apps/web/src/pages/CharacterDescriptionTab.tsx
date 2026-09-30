@@ -355,7 +355,7 @@ export default function CharacterDescriptionTab({ character, charId, onSaved, on
                         {classLines.length > 1 && (
                           <button
                             type="button"
-                            className="text-xs text-red-500 hover:text-red-700 px-2 h-11"
+                            className="text-xs text-red-700 hover:text-red-800 px-2 h-11"
                             aria-label={t('desc.retirer.la.classe.name', { name: name })}
                             onClick={() => removeClass(name)}
                           >
@@ -522,7 +522,7 @@ export default function CharacterDescriptionTab({ character, charId, onSaved, on
             {character.portraitUrl && (
               <ConfirmButton
                 onConfirm={removePortrait}
-                className="text-xs text-red-500 hover:text-red-700"
+                className="text-xs text-red-700 hover:text-red-800"
                 armedClassName="font-semibold text-red-700!"
                 confirmChildren={t('desc.confirmer')}
                 title={t('desc.supprimer.le.portrait')}
