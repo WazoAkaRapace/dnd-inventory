@@ -655,7 +655,7 @@ function CharactersTab({
               )}
               {c.currentHp <= 0 && (
                 <span className="text-red-700 font-medium">
-                  💀 {c.deathSaveSuccesses}/3 ✓ · {c.deathSaveFailures}/3 ✗
+                  🩸 {c.deathSaveSuccesses}/3 ✓ · {c.deathSaveFailures}/3 ✗
                 </span>
               )}
             </div>

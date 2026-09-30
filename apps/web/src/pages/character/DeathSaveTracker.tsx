@@ -131,7 +131,7 @@ export function DeathSaveTracker({
         <button
           type="button"
           onClick={stabilize}
-          className="mt-2 w-full min-h-11 rounded-lg border border-green-300 bg-green-50 px-3 text-sm font-medium text-green-700 transition-colors hover:border-green-600 hover:bg-green-100"
+          className="mt-2 w-full min-h-11 rounded-lg border border-green-200 bg-green-50 px-3 text-sm font-medium text-green-700 transition-colors hover:border-green-600 hover:bg-green-100"
         >
           {t('mort.se.stabiliser')}
         </button>
