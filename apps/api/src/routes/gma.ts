@@ -502,6 +502,15 @@ function normalizeGmaName(s: unknown): string {
  * costs one call, an established campaign nothing. A single session's
  * failure postpones its appearances to the next TTL; a campaign-list
  * failure throws (cache intact).
+ *
+ * Id migrations: promoting a session NPC to a campaign NPC on GMA changes
+ * its id here (synthetic `sn:` row → canonical UUID). Appearances, npc
+ * links and discards all key on the id, and the fresh-session rewrite below
+ * only touches sessions fetched in THIS run — so after the entities replace,
+ * a sweep re-keys every row still holding an id that left the cache onto
+ * the surviving entity of the same name (`sn:` ids encode it), or drops it
+ * when no survivor exists. Self-healing by design: the sweep repairs rows
+ * orphaned by past migrations too, not just this run's.
  */
 async function syncEntities(partyId: number, link: any, key: string): Promise<string> {
   // Appearances lean on the sessions cache — make sure it exists even when
@@ -624,6 +633,67 @@ async function syncEntities(partyId: number, link: any, key: string): Promise<st
           type: null,
           sortOrder: m.sortOrder,
         })
+        .run();
+    }
+    // --- Id-migration sweep (see doc comment) ---
+    const liveIds = new Set(merged.values().map((m) => m.entityId));
+    const snTargetById = new Map<string, string>();
+    for (const [k, m] of merged) snTargetById.set(`sn:${k.replace(/ /g, '-')}`, m.entityId);
+    const knownIds = new Set<string>();
+    for (const rows of [
+      drizzle
+        .select({ id: gmaEntitySessions.entityId })
+        .from(gmaEntitySessions)
+        .where(eq(gmaEntitySessions.partyId, partyId))
+        .all(),
+      drizzle
+        .select({ id: gmaNpcLinks.gmaEntityId })
+        .from(gmaNpcLinks)
+        .where(eq(gmaNpcLinks.partyId, partyId))
+        .all(),
+      drizzle
+        .select({ id: gmaEntityDiscards.entityId })
+        .from(gmaEntityDiscards)
+        .where(eq(gmaEntityDiscards.partyId, partyId))
+        .all(),
+    ] as any[][]) {
+      for (const row of rows) knownIds.add(row.id);
+    }
+    for (const oldId of knownIds) {
+      if (liveIds.has(oldId)) continue;
+      const newId = oldId.startsWith('sn:') ? (snTargetById.get(oldId) ?? null) : null;
+      if (newId) {
+        // INSERT OR IGNORE, then drop the old rows: a PK/unique hit means
+        // the surviving id already carries that row (e.g. the npc was
+        // re-linked by hand after the promotion) — keep it, delete the dup.
+        drizzle.run(sql`
+          INSERT OR IGNORE INTO gma_entity_sessions (party_id, entity_id, session_id)
+          SELECT party_id, ${newId}, session_id FROM gma_entity_sessions
+          WHERE party_id = ${partyId} AND entity_id = ${oldId}
+        `);
+        drizzle.run(sql`
+          INSERT OR IGNORE INTO gma_npc_links
+            (party_id, npc_id, gma_entity_id, linked_by_user_id, description_hash, last_pull_at, created_at)
+          SELECT party_id, npc_id, ${newId}, linked_by_user_id, description_hash, last_pull_at, created_at
+          FROM gma_npc_links WHERE party_id = ${partyId} AND gma_entity_id = ${oldId}
+        `);
+        drizzle.run(sql`
+          INSERT OR IGNORE INTO gma_entity_discards (party_id, entity_id, discarded_by_user_id, created_at)
+          SELECT party_id, ${newId}, discarded_by_user_id, created_at
+          FROM gma_entity_discards WHERE party_id = ${partyId} AND entity_id = ${oldId}
+        `);
+      }
+      drizzle
+        .delete(gmaEntitySessions)
+        .where(and(eq(gmaEntitySessions.partyId, partyId), eq(gmaEntitySessions.entityId, oldId)))
+        .run();
+      drizzle
+        .delete(gmaNpcLinks)
+        .where(and(eq(gmaNpcLinks.partyId, partyId), eq(gmaNpcLinks.gmaEntityId, oldId)))
+        .run();
+      drizzle
+        .delete(gmaEntityDiscards)
+        .where(and(eq(gmaEntityDiscards.partyId, partyId), eq(gmaEntityDiscards.entityId, oldId)))
         .run();
     }
     // Only the sessions just processed are re-derived; already-processed

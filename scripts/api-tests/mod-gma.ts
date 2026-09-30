@@ -575,6 +575,65 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
     'restored entity back to normal',
   );
 
+  // ---------- promotion d'un PNJ de session en PNJ de campagne ----------
+  // Promu côté GMA, le PNJ change d'id (ligne synthétique sn: → UUID de
+  // campagne) SANS nouvelle séance fraîche. Sessions « vu en séance », lien
+  // PNJ et écart doivent suivre la personne à travers le changement d'id —
+  // sinon le rail sert l'UUID avec zéro séance et le lien devient orphelin.
+  r = await api(base, 'POST', `/api/parties/${party4.id}/npcs`, {
+    token: fx.player.token,
+    body: { name: 'Blink', description: 'Fiche locale de Blink.' },
+  });
+  const blinkNpcId = r.data.npc.id;
+  r = await api(base, 'POST', `/api/parties/${party4.id}/gma/entities/sn:blink/link`, {
+    token: fx.player.token,
+    body: { npcId: blinkNpcId },
+  });
+  eq(r.status, 201, 'lien posé sur la ligne synthétique sn:blink');
+  r = await api(base, 'POST', `/api/parties/${party4.id}/gma/entities/sn:blink/discard`, {
+    token: fx.player.token,
+  });
+  eq(r.status, 201, 'sn:blink écartée avant promotion');
+
+  // La promotion : même nom, id de campagne, aucune séance nouvelle.
+  mock.npcs.get(CAMPAIGN_ENTITIES)!.push({
+    id: 'ent-blinkE',
+    name: 'Blink',
+    description: 'Une gamine des rues, yeux vifs.',
+    order: 5,
+  });
+  r = await api(base, 'GET', `/api/parties/${party4.id}/gma/entities?refresh=1`, {
+    token: fx.gm.token,
+  });
+  eq(r.data.entities.length, 5, 'la promotion remplace la ligne sn:, pas de doublon');
+  eq(
+    r.data.entities.some((e: any) => e.id === 'sn:blink'),
+    false,
+    'la ligne synthétique sn:blink a disparu',
+  );
+  const promotedBlink = r.data.entities.find((e: any) => e.id === 'ent-blinkE');
+  ok(!!promotedBlink, 'l’entité promue porte l’id de campagne');
+  eq(promotedBlink.sessions.length, 1, 'les apparitions ont suivi le changement d’id');
+  eq(promotedBlink.sessions[0].ordinal, 2, 'la bonne séance servie');
+  eq(promotedBlink.linkedNpc?.id, blinkNpcId, 'le lien PNJ a suivi le changement d’id');
+  eq(promotedBlink.discarded, true, 'l’écart a suivi le changement d’id');
+  eq(promotedBlink.description, 'Une gamine des rues, yeux vifs.', 'description campagne reprise');
+  eq(
+    srv.queryAll('SELECT * FROM gma_entity_sessions WHERE entity_id = ?', 'sn:blink').length,
+    0,
+    'plus aucune rangée d’apparition orpheline',
+  );
+  eq(
+    srv.queryAll('SELECT * FROM gma_npc_links WHERE gma_entity_id = ?', 'sn:blink').length,
+    0,
+    'plus aucun lien orphelin',
+  );
+  eq(
+    srv.queryAll('SELECT * FROM gma_entity_discards WHERE entity_id = ?', 'sn:blink').length,
+    0,
+    'plus aucun écart orphelin',
+  );
+
   // One discard in P so the unlink purge assertion below has teeth.
   r = await api(base, 'POST', `/api/parties/${P}/gma/entities/ent-rahadin/discard`, {
     token: fx.player.token,
