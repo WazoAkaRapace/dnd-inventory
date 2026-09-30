@@ -217,7 +217,7 @@ export default function CombatWidget() {
         isMyTurn
           ? 'border-blood-500 bg-blood-900/40 combat-turn-glow combat-turn-beat'
           : needsInitiative
-            ? 'border-yellow-500 bg-night-800'
+            ? 'border-gold-400 bg-night-800'
             : 'border-night-600 bg-night-800'
       }`}
     >

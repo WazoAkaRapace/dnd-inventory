@@ -63,6 +63,10 @@ jobs:
       - name: Rules suite - creation data
         run: npm run test-creation-data
 
+      # ---- Contraste WCAG sur les paires réelles des deux modes (index.css) ----
+      - name: Theme contrast gate
+        run: npm run test-theme-contrast
+
       # ---- Typecheck ----
       # apps/web `tsc -b` transitively typechecks packages/shared too
       # (shared exports raw TS sources). The baseline errors that used to

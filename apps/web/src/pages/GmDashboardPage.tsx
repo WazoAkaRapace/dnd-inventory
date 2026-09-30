@@ -1278,7 +1278,7 @@ function CustomItemsTab({
                 </button>
                 <ConfirmButton
                   onConfirm={() => remove(item.id)}
-                  className="text-ink-400 hover:text-red-500 text-sm p-1 rounded-full transition-colors"
+                  className="text-ink-400 hover:text-red-700 text-sm p-1 rounded-full transition-colors"
                   armedClassName="bg-red-600 hover:brightness-90 text-white! px-2.5 py-1 font-semibold"
                   title={t('md.supprimer.item.name.item.name', {
                     item_name: item.name,

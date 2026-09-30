@@ -460,7 +460,7 @@ export function SurvivalPanel({
                   </VitalButton>
                   <input
                     type="number"
-                    className="w-16 text-center text-lg font-bold font-mono bg-raised border border-green-200 rounded-lg py-1 focus:outline-none focus:border-green-500 text-green-900"
+                    className="w-16 text-center text-lg font-bold font-mono bg-raised border border-green-200 rounded-lg py-1 focus:outline-none focus:border-green-600 text-green-900"
                     value={shapeHpDraft ?? String(shapeHp)}
                     onChange={(e) => setShapeHpDraft(e.target.value)}
                     onBlur={commitShapeHp}
@@ -886,7 +886,7 @@ export function SurvivalPanel({
               ))}
               <span
                 className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 text-[11px] leading-none font-semibold ${
-                  exhaustion === 6 ? 'text-parchment-50' : 'text-ink-400'
+                  exhaustion === 6 ? 'text-white' : 'text-ink-400'
                 }`}
                 style={{ left: '92.857%' }}
               >
@@ -1086,7 +1086,7 @@ export function SurvivalPanel({
                   </span>
                   <span
                     className={`text-sm font-bold tabular-nums ${
-                      remaining === 0 ? 'text-red-500' : 'text-ink-800'
+                      remaining === 0 ? 'text-red-700' : 'text-ink-800'
                     }`}
                     title={t('survie.total.des.de.vie', { remaining, total })}
                   >
@@ -1117,7 +1117,7 @@ export function SurvivalPanel({
                         </StepButton>
                         <span
                           className={`text-sm font-bold tabular-nums min-w-10 text-center ${
-                            lineRemaining === 0 ? 'text-red-500' : 'text-ink-800'
+                            lineRemaining === 0 ? 'text-red-700' : 'text-ink-800'
                           }`}
                         >
                           {lineRemaining}
@@ -1157,7 +1157,7 @@ export function SurvivalPanel({
                   −
                 </StepButton>
                 <span
-                  className={`text-sm font-bold tabular-nums ${remaining === 0 ? 'text-red-500' : 'text-ink-800'}`}
+                  className={`text-sm font-bold tabular-nums ${remaining === 0 ? 'text-red-700' : 'text-ink-800'}`}
                 >
                   {remaining}
                 </span>

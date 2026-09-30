@@ -84,7 +84,7 @@ export function DeathSaveTracker({
                   className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${
                     filled
                       ? 'bg-green-500 border-green-500 text-white'
-                      : 'bg-white border-green-300 text-green-300 hover:border-green-500 hover:scale-110'
+                      : 'bg-raised border-green-300 text-green-300 hover:border-green-600 hover:scale-110'
                   }`}
                   aria-label={t('mort.succes.i.1.filled.coch.vide', {
                     i: i + 1,
@@ -110,7 +110,7 @@ export function DeathSaveTracker({
                   className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${
                     filled
                       ? 'bg-red-500 border-red-500 text-white'
-                      : 'bg-white border-red-300 text-red-300 hover:border-red-500 hover:scale-110'
+                      : 'bg-raised border-red-300 text-red-300 hover:border-red-600 hover:scale-110'
                   }`}
                   aria-label={t('mort.echec.i.1.filled.coch.vide', {
                     i: i + 1,
@@ -131,7 +131,7 @@ export function DeathSaveTracker({
         <button
           type="button"
           onClick={stabilize}
-          className="mt-2 w-full min-h-11 rounded-lg border border-green-300 bg-green-50 px-3 text-sm font-medium text-green-700 transition-colors hover:border-green-500 hover:bg-green-100"
+          className="mt-2 w-full min-h-11 rounded-lg border border-green-300 bg-green-50 px-3 text-sm font-medium text-green-700 transition-colors hover:border-green-600 hover:bg-green-100"
         >
           {t('mort.se.stabiliser')}
         </button>

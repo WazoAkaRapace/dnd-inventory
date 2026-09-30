@@ -176,6 +176,39 @@
         clip-path: inset(50%);
         white-space: nowrap;
       }
+      /* ── Bougie : la même gravure, lue à la lumière de la bougie ──────
+         ts-dark est posé en <head> AVANT la première peinture — ces règles
+         (même feuille, spécificité supérieure) font du cuir sombre le
+         PREMIER pixel servi : plus d'éclat de parchemin plein écran dans
+         un salon tamisé. Le sceau garde son disque blanc : à la bougie,
+         c'est le médaillon éclairé — l'unique source de lumière de la
+         scène, l'anneau de braise et la comète y gagnent enfin leur sens.
+         Zéro nouvelle choréographie : mêmes keyframes, seule la lumière
+         change. */
+      html.ts-dark #ts-splash {
+        background-color: #1a1512;
+        background-image:
+          radial-gradient(at 20% 0%, rgba(217, 184, 84, 0.07) 0px, transparent 50%),
+          radial-gradient(at 80% 100%, rgba(167, 107, 107, 0.06) 0px, transparent 50%);
+      }
+      html.ts-dark .ts-word {
+        color: #f3e7d0;
+      }
+      html.ts-dark .rline {
+        background: #8a744b;
+      }
+      html.ts-dark .rline2 {
+        background: #5c4a30;
+      }
+      html.ts-dark .ts-glow {
+        background: radial-gradient(closest-side, rgba(217, 181, 82, 0.28), rgba(217, 181, 82, 0) 72%);
+      }
+      html.ts-dark .tmote {
+        background: #d9b854;
+      }
+      html.ts-dark .ts-curtain {
+        background: linear-gradient(180deg, #262019 0%, #1a1512 100%);
+      }
       @media (prefers-reduced-motion: no-preference) {
         /* La transition de sortie vit ICI : sous prefers-reduced-motion,
            ts-splash--out reste un retrait sec (opacity 0), sans course. */
