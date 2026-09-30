@@ -1990,9 +1990,11 @@
   "carnet.cal.note": "Note du jour",
   "carnet.cal.note.placeholder": "Ce qui s'est passé aujourd'hui…",
   "carnet.jours.modifier": "Modifier le jour {{day}}",
-  "mort.se.stabiliser": "Se stabiliser (3 succès d'un coup)",
+  "mort.se.stabiliser": "Se stabiliser",
   "survie.munitions": "Munitions",
-  "survie.tirer.une.munition": "🏹 Tirer ({{name}} ×{{count}})",
+  "survie.munitions.de.l.arme": "Munitions de cette arme : {{name}} ×{{count}}",
+  "survie.tirer": "🏹 Tirer",
+  "survie.tirer.une.munition": "Tirer ({{name}} ×{{count}})",
   "combat.mourant": "À terre — jets de sauvegarde",
   "combat.mourant.chemin": "Mourant"
 }

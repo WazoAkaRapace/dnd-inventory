@@ -3070,6 +3070,26 @@ export interface ItemBaseKeys {
   magicBonus?: number | null;
 }
 
+/**
+ * #143 : munitions liées à l'arme ÉQUIPÉE — la clé de base (nom anglais, porté
+ * par les armes mundane comme magiques : « Arc du serment » → Longbow) désigne
+ * le consommable que l'arme décrémente. Les valeurs doublent de tags de
+ * survie sur les munitions du catalogue (seed : arrow / crossbow-bolt) : un
+ * arc ne tire QUE des flèches, une arbalète QUE des carreaux.
+ */
+export const WEAPON_AMMUNITION: Record<string, string> = {
+  Shortbow: 'arrow',
+  Longbow: 'arrow',
+  'Crossbow, light': 'crossbow-bolt',
+  'Crossbow, heavy': 'crossbow-bolt',
+  'Crossbow, hand': 'crossbow-bolt',
+};
+
+/** Genre de munition d'une arme (clé de base → tag), null si elle n'en consomme pas. */
+export function weaponAmmunitionKind(item: { baseWeapon?: string | null }): string | null {
+  return item.baseWeapon ? (WEAPON_AMMUNITION[item.baseWeapon] ?? null) : null;
+}
+
 /** Result of resolving a magic weapon to its base weapon + magic bonus. */
 export interface MagicWeaponBase {
   base: MundaneWeapon | null;

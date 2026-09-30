@@ -8,8 +8,9 @@
  *  #145  — le repos long efface les états (conditions) de la fiche et du
  *          traqueur.
  *  #146  — stabilisation : PATCH successes=3 (API — le bouton l'appelle).
- *  #143  — flèches/carreaux étiquetés 'ammunition' : décrément via
- *          POST /characters/:id/consume {type:'ammo'} + journal.
+ *  #143  — flèches/carreaux étiquetés par GENRE (ammunition + arrow /
+ *          crossbow-bolt) : décrément lié à l'arme via
+ *          POST /characters/:id/consume {type:'ammo', ammo:'arrow'} + journal.
  */
 
 import { api, createCharacter, eq, type Fixtures, ok, type ServerHandle } from './harness.ts';
@@ -135,25 +136,43 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
   eq(JSON.parse(row.conditions).length, 0, '#145 conditions column empty after long rest');
 
   // ---------- #143 : munitions ----------
-  // Le catalogue porte l'étiquette sur flèche/carreau
+  // Le catalogue porte l'étiquette sur flèche/carreau — le GENRE en plus du
+  // tag générique : c'est lui que l'arme équipée désigne (WEAPON_AMMUNITION).
   const arrow = srv.query("SELECT id, name_fr FROM items WHERE srd_index = 'arrow'");
   ok(arrow, '#143 arrow item exists');
+  const bolt = srv.query("SELECT id, name_fr FROM items WHERE srd_index = 'crossbow-bolt'");
+  ok(bolt, '#143 crossbow-bolt item exists');
   const tags = srv.query('SELECT survival_tags FROM items WHERE id = ?', [arrow.id]);
-  ok(
-    (JSON.parse(tags.survival_tags) as string[]).includes('ammunition'),
-    '#143 arrow tagged ammunition',
-  );
+  const arrowTags = JSON.parse(tags.survival_tags) as string[];
+  ok(arrowTags.includes('ammunition'), '#143 arrow tagged ammunition');
+  ok(arrowTags.includes('arrow'), '#143 arrow tagged with its kind');
+  const boltTags = JSON.parse(
+    srv.query('SELECT survival_tags FROM items WHERE id = ?', [bolt.id]).survival_tags,
+  ) as string[];
+  ok(boltTags.includes('crossbow-bolt'), '#143 crossbow-bolt tagged with its kind');
 
-  // Inventaire : 5 flèches, puis on tire
+  // Inventaire : 5 flèches et 4 carreaux, puis on tire à l'arc
   r = await api(base, 'POST', `/api/characters/${hero.id}/inventory`, {
     token: PLAYER,
     body: { itemId: arrow.id, quantity: 5 },
   });
   eq(r.status, 201, '#143 arrows added to inventory');
+  r = await api(base, 'POST', `/api/characters/${hero.id}/inventory`, {
+    token: PLAYER,
+    body: { itemId: bolt.id, quantity: 4 },
+  });
+  eq(r.status, 201, '#143 bolts added to inventory');
 
+  // Le genre est OBLIGATOIRE — l'arme équipée désigne SON consommable
   r = await api(base, 'POST', `/api/characters/${hero.id}/consume`, {
     token: PLAYER,
     body: { type: 'ammo' },
+  });
+  eq(r.status, 400, '#143 ammo consume without kind rejected');
+
+  r = await api(base, 'POST', `/api/characters/${hero.id}/consume`, {
+    token: PLAYER,
+    body: { type: 'ammo', ammo: 'arrow' },
   });
   eq(r.status, 200, '#143 ammo consume ok');
   row = srv.query('SELECT quantity FROM inventory WHERE character_id = ? AND item_id = ?', [
@@ -161,11 +180,28 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
     arrow.id,
   ]);
   eq(row.quantity, 4, '#143 arrow count 5 → 4 after one shot');
+  row = srv.query('SELECT quantity FROM inventory WHERE character_id = ? AND item_id = ?', [
+    hero.id,
+    bolt.id,
+  ]);
+  eq(row.quantity, 4, '#143 bolts untouched by an arrow shot');
+
+  // Un tir à l'arbalète décrémente les carreaux, jamais les flèches
+  r = await api(base, 'POST', `/api/characters/${hero.id}/consume`, {
+    token: PLAYER,
+    body: { type: 'ammo', ammo: 'crossbow-bolt' },
+  });
+  eq(r.status, 200, '#143 crossbow consume ok');
+  row = srv.query('SELECT quantity FROM inventory WHERE character_id = ? AND item_id = ?', [
+    hero.id,
+    bolt.id,
+  ]);
+  eq(row.quantity, 3, '#143 bolt count 4 → 3 after one crossbow shot');
   const journal = srv.query(
     "SELECT COUNT(*) AS n FROM transactions WHERE character_id = ? AND reason = 'consume-ammo'",
     [hero.id],
   );
-  eq(journal.n, 1, '#143 ammo consumption journaled');
+  eq(journal.n, 2, '#143 ammo consumption journaled');
 
   // Épuisement : refus propre quand il n'y a plus rien
   await api(base, 'PATCH', `/api/characters/${hero.id}`, {

@@ -9,6 +9,7 @@ import {
   computeInventoryWeights,
   type PatchInventoryPayload,
   type TransferPayload,
+  WEAPON_AMMUNITION,
 } from '@table-sync/shared';
 import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
@@ -38,6 +39,10 @@ import {
 import { sendCachedJson } from './httpCache.ts';
 import { type AppLang, langFromReq } from './lang.ts';
 import { apiMsg } from './messages.ts';
+
+/** #143 : genres de munitions consommables — tags de survie posés par le seed,
+ * valeurs de WEAPON_AMMUNITION (shared) : l'arme équipée désigne SON type. */
+const AMMO_KINDS = [...new Set(Object.values(WEAPON_AMMUNITION))];
 
 /**
  * inventory JOIN items with the item columns prefixed `i_` — the shape
@@ -599,8 +604,15 @@ export async function inventoryRoutes(app: FastifyInstance) {
       const type = req.body?.type;
       if (type !== 'food' && type !== 'water' && type !== 'ammo')
         return reply.code(400).send({ error: apiMsg(req, 'type must be food or water') });
-      // #143 : le tag d'inventaire s'appelle 'ammunition' — l'API parle 'ammo'
-      const tag = type === 'ammo' ? 'ammunition' : type;
+      // #143 : le genre de munition est OBLIGATOIRE — tag d'inventaire dont la
+      // valeur est celle de WEAPON_AMMUNITION (shared) : l'arme équipée
+      // désigne SON consommable, arc → flèches, arbalète → carreaux.
+      const ammoKind = req.body?.ammo;
+      if (type === 'ammo' && !AMMO_KINDS.includes(ammoKind))
+        return reply.code(400).send({
+          error: apiMsg(req, `ammo kind must be one of: ${AMMO_KINDS.join(', ')}`),
+        });
+      const tag = type === 'ammo' ? ammoKind : type;
 
       // Find a tagged inventory item
       // For water: skip items with notes containing 'empty' (already drunk)

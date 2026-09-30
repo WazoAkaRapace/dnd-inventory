@@ -1991,9 +1991,11 @@
   "carnet.cal.note": "Day note",
   "carnet.cal.note.placeholder": "What happened today…",
   "carnet.jours.modifier": "Edit day {{day}}",
-  "mort.se.stabiliser": "Stabilize (3 successes at once)",
+  "mort.se.stabiliser": "Stabilize",
   "survie.munitions": "Ammunition",
-  "survie.tirer.une.munition": "🏹 Shoot ({{name}} ×{{count}})",
+  "survie.munitions.de.l.arme": "Ammunition for this weapon: {{name}} ×{{count}}",
+  "survie.tirer": "🏹 Shoot",
+  "survie.tirer.une.munition": "Shoot ({{name}} ×{{count}})",
   "combat.mourant": "Down — death saves",
   "combat.mourant.chemin": "Dying"
 }

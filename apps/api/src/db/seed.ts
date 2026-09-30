@@ -88,10 +88,12 @@ const INSERT = `
 const SURVIVAL_TAGS: Record<string, string[]> = {
   'rations-1-day': ['food'],
   waterskin: ['water'],
-  // #143 : flèches et carreaux suivis depuis l'onglet survie (décrément à
-  // chaque tir à l'arc / à l'arbalète). Les étuis restent du simple équipement.
-  arrow: ['ammunition'],
-  'crossbow-bolt': ['ammunition'],
+  // #143 : flèches et carreaux suivis depuis l'arme équipée (onglet Survie).
+  // Tag générique 'ammunition' + genre (valeur de WEAPON_AMMUNITION du shared,
+  // ici = le srd_index) : un arc ne décrémente QUE les flèches, une arbalète
+  // QUE les carreaux. Les étuis restent du simple équipement.
+  arrow: ['ammunition', 'arrow'],
+  'crossbow-bolt': ['ammunition', 'crossbow-bolt'],
 };
 
 // Alternative search names for items where the official French translation
