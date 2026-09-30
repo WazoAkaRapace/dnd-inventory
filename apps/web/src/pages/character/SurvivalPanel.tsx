@@ -646,7 +646,7 @@ export function SurvivalPanel({
                               <button
                                 type="button"
                                 onClick={() => consume('ammo', kind)}
-                                className="text-[11px] px-2 py-1 rounded-md border border-orange-300 bg-orange-50 text-orange-800 hover:border-orange-500 transition-colors"
+                                className="text-[11px] px-2 py-1 rounded-md bg-orange-100 text-orange-800 hover:bg-orange-200 transition-colors"
                                 title={t('survie.tirer.une.munition', { name, count })}
                                 aria-label={t('survie.tirer.une.munition', { name, count })}
                               >
