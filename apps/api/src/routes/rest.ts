@@ -31,6 +31,7 @@ import {
   isPartyGM,
   isPartyMember,
   mapCharacter,
+  mirrorConditionsToCombatants,
   requireUser,
 } from './helpers.ts';
 import { apiMsg } from './messages.ts';
@@ -152,10 +153,11 @@ export async function restRoutes(app: FastifyInstance) {
         ['deathSaveFailures', 'deathSaveFailures'],
         ['concentrating', 'concentrating'],
         ['wildShapeUses', 'wildShapeUses'],
+        ['conditions', 'conditions'],
       ];
       for (const [key, column] of patchable) {
         if (patch[key] === undefined) continue;
-        if (key === 'spellSlotsUsed' || key === 'pactSlotsUsed')
+        if (key === 'spellSlotsUsed' || key === 'pactSlotsUsed' || key === 'conditions')
           values[column] = JSON.stringify(patch[key]);
         else if (typeof patch[key] === 'boolean') values[column] = patch[key] ? 1 : 0;
         else values[column] = patch[key];
@@ -191,6 +193,23 @@ export async function restRoutes(app: FastifyInstance) {
           .set({ counterMax: reset.counterMax, counterCurrent: reset.counterCurrent })
           .where(eq(characterFeatures.id, reset.featureId))
           .run();
+      }
+
+      // --- Conditions sync (#145): a long rest clearing the sheet's conditions
+      // must also clear them on the character's combatants — same best-effort
+      // mirror the sheet PATCH uses, keyed on the PREVIOUS list (durations
+      // left untouched by design: a wiped sheet has nothing to diff).
+      if (body.type === 'long' && patch.conditions !== undefined) {
+        try {
+          const prev: string[] = char.conditions
+            ? typeof char.conditions === 'string'
+              ? JSON.parse(char.conditions)
+              : char.conditions
+            : [];
+          mirrorConditionsToCombatants(char.party_id, char.id, [], prev, userId);
+        } catch {
+          /* mirror is best-effort */
+        }
       }
 
       // --- HP sync: mirror PV changes to active combatants (like a sheet PATCH)

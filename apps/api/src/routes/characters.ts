@@ -616,6 +616,20 @@ export async function characterRoutes(app: FastifyInstance) {
         }
       }
 
+      // --- Revival (#144): rising above 0 HP on the SHEET resets the
+      // death-save tally (SRD — regaining any HP ends the tally). Mirrors the
+      // tracker-side rule; applies whenever the character was at/below 0.
+      if (
+        body.currentHp !== undefined &&
+        body.currentHp > 0 &&
+        (char.current_hp ?? 0) <= 0 &&
+        body.deathSaveSuccesses === undefined &&
+        body.deathSaveFailures === undefined
+      ) {
+        values.deathSaveSuccesses = 0;
+        values.deathSaveFailures = 0;
+      }
+
       // --- Concentration: applying an incapacitating condition
       // (Inconscient, Paralysé, Pétrifié, Étourdi, Neutralisé) breaks it.
       let concentrationBroken: string | null = null;
@@ -668,8 +682,10 @@ export async function characterRoutes(app: FastifyInstance) {
             valuesC.hitPoints = Math.max(0, body.currentHp);
             // Mirror the defeated state the tracker derives from HP — temp HP
             // remaining keeps the character up (same rule as the death saves).
-            valuesC.defeated =
-              body.currentHp <= 0 && (body.tempHp ?? char.temp_hp ?? 0) <= 0 ? 1 : 0;
+            // These targets are all PLAYER combatants: at 0 HP the player is
+            // DYING, not defeated (#148) — they stay in the initiative
+            // rotation for their death saves.
+            valuesC.defeated = 0;
           }
           if (body.maxHp !== undefined) {
             valuesC.maxHitPoints = Math.max(1, body.maxHp);

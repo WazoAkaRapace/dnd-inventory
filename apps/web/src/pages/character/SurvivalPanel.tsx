@@ -19,6 +19,7 @@ import {
   hitDiceByClassOf,
   proficiencyBonus,
   sneakAttackDice,
+  weaponAmmunitionKind,
   type WildShapeFormSummary,
   wildShapeDurationHours,
   wildShapeMaxCR,
@@ -160,11 +161,24 @@ export function SurvivalPanel({
     if (e.notes?.includes('empty')) return sum + e.quantity;
     return sum;
   }, 0);
+  // #143 : munitions du genre demandé — chaque arme équipée ne voit que SON
+  // consommable (arc → flèches, arbalète → carreaux), compté sur le tag de
+  // genre posé par le seed (valeur de WEAPON_AMMUNITION).
+  const ammoOf = (kind: string) => {
+    const matching = entries.filter((e) => e.item.survivalTags?.includes(kind));
+    return {
+      count: matching.reduce((sum, e) => sum + e.quantity, 0),
+      name: matching.find((e) => e.quantity > 0)?.item.name ?? t('survie.munitions'),
+    };
+  };
 
-  const consume = async (type: 'food' | 'water') => {
+  const consume = async (type: 'food' | 'water' | 'ammo', ammoKind?: string) => {
     markLocalMutation();
     try {
-      await api.post(`/api/characters/${charId}/consume`, { type });
+      await api.post(`/api/characters/${charId}/consume`, {
+        type,
+        ...(ammoKind ? { ammo: ammoKind } : {}),
+      });
       await onSaved();
     } catch (err: any) {
       onError(err.response?.data?.error || t('survie.erreur'));
@@ -504,6 +518,7 @@ export function SurvivalPanel({
           <DeathSaveTracker
             character={character}
             charId={charId}
+            canEdit={canEdit}
             markLocalMutation={markLocalMutation}
             onSaved={onSaved}
             onError={onError}
@@ -610,6 +625,37 @@ export function SurvivalPanel({
                           🩸 crit {stats.critRange}-20
                         </Chip>
                       )}
+                      {(() => {
+                        // #143 : l'arme équipée porte SON compteur de munitions —
+                        // un arc voit les flèches, une arbalète les carreaux.
+                        const kind = weaponAmmunitionKind(e.item);
+                        if (!kind) return null;
+                        const { count, name } = ammoOf(kind);
+                        return (
+                          <>
+                            <Chip
+                              tone={count > 0 ? 'orange' : 'amber'}
+                              title={t('survie.munitions.de.l.arme', {
+                                name: name,
+                                count: count,
+                              })}
+                            >
+                              🏹 ×{count}
+                            </Chip>
+                            {count > 0 && canEdit && (
+                              <button
+                                type="button"
+                                onClick={() => consume('ammo', kind)}
+                                className="text-[11px] px-2 py-1 rounded-md border border-orange-300 bg-orange-50 text-orange-800 hover:border-orange-500 transition-colors"
+                                title={t('survie.tirer.une.munition', { name, count })}
+                                aria-label={t('survie.tirer.une.munition', { name, count })}
+                              >
+                                {t('survie.tirer')}
+                              </button>
+                            )}
+                          </>
+                        );
+                      })()}
                       {findClass(character.characterClass)?.name === 'Paladin' &&
                         (character.level ?? 1) >= 2 &&
                         !stats.ranged &&

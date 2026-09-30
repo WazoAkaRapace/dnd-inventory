@@ -84,10 +84,16 @@ const INSERT = `
     magic_bonus = excluded.magic_bonus
 `;
 
-// SRD items that count as food or water for survival tracking
+// SRD items that count as food, water or ammunition for survival tracking
 const SURVIVAL_TAGS: Record<string, string[]> = {
   'rations-1-day': ['food'],
   waterskin: ['water'],
+  // #143 : flèches et carreaux suivis depuis l'arme équipée (onglet Survie).
+  // Tag générique 'ammunition' + genre (valeur de WEAPON_AMMUNITION du shared,
+  // ici = le srd_index) : un arc ne décrémente QUE les flèches, une arbalète
+  // QUE les carreaux. Les étuis restent du simple équipement.
+  arrow: ['ammunition', 'arrow'],
+  'crossbow-bolt': ['ammunition', 'crossbow-bolt'],
 };
 
 // Alternative search names for items where the official French translation

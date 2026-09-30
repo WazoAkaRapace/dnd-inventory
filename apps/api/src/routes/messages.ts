@@ -108,6 +108,10 @@ const EN: Record<string, string> = {
   'Aucune campagne GM Assistant liée à ce groupe.':
     'No GM Assistant campaign linked to this party.',
   'Aucune gourde vide à remplir': 'No empty waterskin to fill',
+  'Aucune ration disponible': 'No rations available',
+  'Aucune munition disponible': 'No ammunition available',
+  'Aucune gourde disponible (toutes vides ou absentes)':
+    'No waterskin available (all empty or missing)',
   'Ce groupe est déjà lié à une campagne GM Assistant.':
     'This party is already linked to a GM Assistant campaign.',
   'Ce groupe n’est pas lié à une campagne GM Assistant.':
