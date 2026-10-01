@@ -1995,6 +1995,14 @@
   "survie.munitions.de.l.arme": "Munitions de cette arme : {{name}} ×{{count}}",
   "survie.tirer": "🏹 Tirer",
   "survie.tirer.une.munition": "Tirer ({{name}} ×{{count}})",
+  "survie.toast.tir": "🏹 {{name}} : il en reste {{remaining}}",
+  "survie.toast.tir.vide": "🏹 {{name}} : il n'en reste plus",
+  "survie.toast.manger": "🍖 {{name}} : il en reste {{remaining}}",
+  "survie.toast.manger.vide": "🍖 {{name}} : il n'en reste plus",
+  "survie.toast.boire": "💧 {{name}} : il en reste {{remaining}} de pleines",
+  "survie.toast.boire.vide": "💧 Plus aucune gourde pleine",
+  "survie.toast.remplir": "💧 {{count}} gourdes remplies",
+  "survie.toast.remplir.une": "💧 1 gourde remplie",
   "combat.mourant": "À terre — jets de sauvegarde",
   "combat.mourant.chemin": "Mourant"
 }

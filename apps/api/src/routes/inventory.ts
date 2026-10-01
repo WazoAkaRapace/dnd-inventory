@@ -103,6 +103,27 @@ function getEntryWithItem(invId: number): any {
   );
 }
 
+/** Changement d'entrée appliquable au cache client (même contrat que le PATCH
+ *  quantité : `{ entry }` après mutation, `{ removedId }` après suppression). */
+type EntryChange = { entry?: any; removedId?: number };
+
+/** Total d'un tag de survie après le geste (pleines gourdes seulement si
+ *  demandé) — le toast du client annonce au joueur ce qu'il reste. */
+function countSurvivalTag(charId: number, tag: string, fullOnly: boolean): number {
+  const notEmpty = fullOnly
+    ? sql`AND (${inventory.notes} IS NULL OR ${inventory.notes} = '' OR ${inventory.notes} NOT LIKE '%empty%')`
+    : sql``;
+  const row = getDrizzle()
+    .select({ total: sql<number>`COALESCE(SUM(${inventory.quantity}), 0)` })
+    .from(inventory)
+    .innerJoin(items, eq(items.id, inventory.itemId))
+    .where(
+      sql`${inventory.characterId} = ${charId} AND ${items.survivalTags} LIKE ${`%"${tag}"%`} ${notEmpty}`,
+    )
+    .get() as any;
+  return row?.total ?? 0;
+}
+
 /** French display name of an item ('item' fallback), for the transaction log. */
 function itemDisplayName(itemId: number): { name: string; nameFr: string | null } {
   const row = getDrizzle()
@@ -650,18 +671,25 @@ export async function inventoryRoutes(app: FastifyInstance) {
       }
 
       const itemName = entry.name_fr || entry.name;
+      const lang = langFromReq(req);
+      // Le geste renvoie les entrées mutées + le reste même-tag : le client
+      // applique au cache react-query (1 RTT, pas de fiche entière) et le
+      // toast dit ce qu'il reste.
+      const changes: EntryChange[] = [];
 
       if (type === 'food') {
         // Food is consumed (destroyed)
         getDb().transaction(() => {
           if (entry.quantity <= 1) {
             drizzle.delete(inventory).where(eq(inventory.id, entry.inv_id)).run();
+            changes.push({ removedId: entry.inv_id });
           } else {
             drizzle
               .update(inventory)
               .set({ quantity: sql`${inventory.quantity} - 1` })
               .where(eq(inventory.id, entry.inv_id))
               .run();
+            changes.push({ entry: mapInventoryEntry(getEntryWithItem(entry.inv_id), lang) });
           }
           drizzle.update(characters).set({ foodDays: 0 }).where(eq(characters.id, char.id)).run();
           logTransaction(drizzle, {
@@ -680,12 +708,14 @@ export async function inventoryRoutes(app: FastifyInstance) {
         getDb().transaction(() => {
           if (entry.quantity <= 1) {
             drizzle.delete(inventory).where(eq(inventory.id, entry.inv_id)).run();
+            changes.push({ removedId: entry.inv_id });
           } else {
             drizzle
               .update(inventory)
               .set({ quantity: sql`${inventory.quantity} - 1` })
               .where(eq(inventory.id, entry.inv_id))
               .run();
+            changes.push({ entry: mapInventoryEntry(getEntryWithItem(entry.inv_id), lang) });
           }
           logTransaction(drizzle, {
             partyId: char.party_id,
@@ -704,12 +734,14 @@ export async function inventoryRoutes(app: FastifyInstance) {
           // Decrement the full entry
           if (entry.quantity <= 1) {
             drizzle.delete(inventory).where(eq(inventory.id, entry.inv_id)).run();
+            changes.push({ removedId: entry.inv_id });
           } else {
             drizzle
               .update(inventory)
               .set({ quantity: sql`${inventory.quantity} - 1` })
               .where(eq(inventory.id, entry.inv_id))
               .run();
+            changes.push({ entry: mapInventoryEntry(getEntryWithItem(entry.inv_id), lang) });
           }
 
           // Check if an "empty" entry already exists for this item+character
@@ -734,8 +766,9 @@ export async function inventoryRoutes(app: FastifyInstance) {
               .set({ quantity: sql`${inventory.quantity} + 1` })
               .where(eq(inventory.id, emptyEntry.id))
               .run();
+            changes.push({ entry: mapInventoryEntry(getEntryWithItem(emptyEntry.id), lang) });
           } else {
-            drizzle
+            const inserted = drizzle
               .insert(inventory)
               .values({
                 characterId: char.id,
@@ -745,7 +778,9 @@ export async function inventoryRoutes(app: FastifyInstance) {
                 notes: 'empty',
                 storageLocationId: null,
               })
-              .run();
+              .returning({ id: inventory.id })
+              .get() as any;
+            changes.push({ entry: mapInventoryEntry(getEntryWithItem(inserted.id), lang) });
           }
 
           drizzle.update(characters).set({ waterDays: 0 }).where(eq(characters.id, char.id)).run();
@@ -769,7 +804,15 @@ export async function inventoryRoutes(app: FastifyInstance) {
         actorUserId: userId,
       });
 
-      return reply.send({ consumed: true, type });
+      return reply.send({
+        consumed: true,
+        type,
+        name: itemName,
+        remaining: countSurvivalTag(char.id, tag, type === 'water'),
+        changes,
+        ...(type === 'food' ? { foodDays: 0 } : {}),
+        ...(type === 'water' ? { waterDays: 0 } : {}),
+      });
     },
   );
 
@@ -815,6 +858,10 @@ export async function inventoryRoutes(app: FastifyInstance) {
 
       const { ensureCarriedLocation } = await import('./locations.ts');
       const carriedId = ensureCarriedLocation(char.id);
+      const lang = langFromReq(req);
+      // Même contrat que /consume : les lignes réglées partent au client pour
+      // l'application locale au cache.
+      const changes: EntryChange[] = [];
 
       getDb().transaction(() => {
         for (const e of empties) {
@@ -846,6 +893,10 @@ export async function inventoryRoutes(app: FastifyInstance) {
               .run();
             // Delete the empty entry
             drizzle.delete(inventory).where(eq(inventory.id, e.inv_id)).run();
+            changes.push(
+              { entry: mapInventoryEntry(getEntryWithItem(fullEntry.id), lang) },
+              { removedId: e.inv_id },
+            );
           } else {
             // No full entry exists — just clear the empty note and assign to carried
             drizzle
@@ -853,6 +904,7 @@ export async function inventoryRoutes(app: FastifyInstance) {
               .set({ notes: null, storageLocationId: carriedId })
               .where(eq(inventory.id, e.inv_id))
               .run();
+            changes.push({ entry: mapInventoryEntry(getEntryWithItem(e.inv_id), lang) });
           }
         }
       })();
@@ -865,7 +917,12 @@ export async function inventoryRoutes(app: FastifyInstance) {
         actorUserId: userId,
       });
 
-      return reply.send({ refilled: empties.length });
+      // Unités remplies (une pile de 2 gourdes vides = 2 gourdes pleines) —
+      // le bouton affichait déjà ce compte-là, le toast dit la même chose.
+      return reply.send({
+        refilled: empties.reduce((sum: number, e: any) => sum + e.quantity, 0),
+        changes,
+      });
     },
   );
 

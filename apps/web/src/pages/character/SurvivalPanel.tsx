@@ -29,7 +29,7 @@ import {
   findClassFeature,
   findClassFeatureClass,
 } from '@table-sync/shared/classFeatures';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../../api';
 import { CONDITION_ICONS } from '../../components/ConditionsEditor';
@@ -47,6 +47,20 @@ import { DeprivationBox } from './DeprivationBox';
 import { HpTracker } from './HpTracker';
 
 // ---------- Survival panel (exhaustion, conditions, deprivation) ----------
+
+/** Réponse de POST /consume et /refill : les entrées mutées (contrat du PATCH
+ *  quantité — `{ entry }` ou `{ removedId }`), le reste même-tag pour le toast,
+ *  et les compteurs de privation touchés. Le client applique au cache
+ *  react-query sans re-télécharger la fiche. */
+export interface SurvivalConsumeResult {
+  type: 'food' | 'water' | 'ammo' | 'refill';
+  name?: string;
+  remaining?: number;
+  changes?: { entry?: InventoryEntry; removedId?: number }[];
+  foodDays?: number;
+  waterDays?: number;
+  refilled?: number;
+}
 
 // Paliers unifiés (2026-09) : 0 vide · 1–2 jaune · 3–4 orange · 5 rouge vif ·
 // 6 rouge sombre — la cartographie du tableau MD, la divergence d'avant disparaît.
@@ -74,6 +88,9 @@ interface SurvivalPanelProps {
   canEdit: boolean;
   markLocalMutation: () => void;
   onSaved: () => Promise<void>;
+  /** Applique une réponse de geste de survie au cache react-query (entrant,
+   *  compteurs de privation) — 1 RTT au lieu du re-téléchargement complet. */
+  onApplied?: (result: SurvivalConsumeResult) => void;
   onError: (msg: string) => void;
   onNotice?: (msg: string) => void;
   /** Damage-while-concentrating checks bubble to the page-level popup. */
@@ -87,6 +104,7 @@ export function SurvivalPanel({
   canEdit,
   markLocalMutation,
   onSaved,
+  onApplied,
   onError,
   onNotice,
   onConcentrationCheck,
@@ -172,26 +190,79 @@ export function SurvivalPanel({
     };
   };
 
+  // Geste de survie en vol : le REF garde la porte (un double-tap dans la
+  // même frame ne passe pas deux fois — l'état React n'est pas encore rendu),
+  // l'État ne sert que le visuel désactivé du bouton.
+  const survivalInFlight = useRef<string | null>(null);
+  const [survivalBusy, setSurvivalBusy] = useState<string | null>(null);
+  const busyKey = (type: string, kind?: string) => `${type}:${kind ?? ''}`;
+
+  // Le toast affirme le geste et son reste (registre verbalisé) ; les bornes
+  // — dernière unité, erreur — parlent leur propre phrase.
+  const announceConsume = (r: SurvivalConsumeResult | undefined) => {
+    if (!r) return;
+    const name = r.name ?? '';
+    const remaining = r.remaining ?? 0;
+    if (r.type === 'ammo') {
+      onNotice?.(
+        remaining > 0
+          ? t('survie.toast.tir', { name, remaining })
+          : t('survie.toast.tir.vide', { name }),
+      );
+    } else if (r.type === 'food') {
+      onNotice?.(
+        remaining > 0
+          ? t('survie.toast.manger', { name, remaining })
+          : t('survie.toast.manger.vide', { name }),
+      );
+    } else if (r.type === 'water') {
+      onNotice?.(
+        remaining > 0 ? t('survie.toast.boire', { name, remaining }) : t('survie.toast.boire.vide'),
+      );
+    }
+  };
+
   const consume = async (type: 'food' | 'water' | 'ammo', ammoKind?: string) => {
+    const key = busyKey(type, ammoKind);
+    if (survivalInFlight.current === key) return;
+    survivalInFlight.current = key;
+    setSurvivalBusy(key);
     markLocalMutation();
     try {
-      await api.post(`/api/characters/${charId}/consume`, {
+      const res = await api.post(`/api/characters/${charId}/consume`, {
         type,
         ...(ammoKind ? { ammo: ammoKind } : {}),
       });
-      await onSaved();
+      const r: SurvivalConsumeResult | undefined = res.data;
+      if (r?.changes?.length && onApplied) onApplied(r);
+      else await onSaved();
+      announceConsume(r);
     } catch (err: any) {
       onError(err.response?.data?.error || t('survie.erreur'));
+    } finally {
+      survivalInFlight.current = null;
+      setSurvivalBusy(null);
     }
   };
 
   const refillWater = async () => {
+    const key = busyKey('refill');
+    if (survivalInFlight.current === key) return;
+    survivalInFlight.current = key;
+    setSurvivalBusy(key);
     markLocalMutation();
     try {
-      await api.post(`/api/characters/${charId}/refill`);
-      await onSaved();
+      const res = await api.post(`/api/characters/${charId}/refill`);
+      const r: SurvivalConsumeResult = { ...res.data, type: 'refill' };
+      if (r.changes?.length && onApplied) onApplied(r);
+      else await onSaved();
+      const n = r.refilled ?? 0;
+      onNotice?.(n === 1 ? t('survie.toast.remplir.une') : t('survie.toast.remplir', { count: n }));
     } catch (err: any) {
       onError(err.response?.data?.error || t('survie.erreur'));
+    } finally {
+      survivalInFlight.current = null;
+      setSurvivalBusy(null);
     }
   };
 
@@ -646,7 +717,9 @@ export function SurvivalPanel({
                               <button
                                 type="button"
                                 onClick={() => consume('ammo', kind)}
-                                className="text-[11px] px-2 py-1 rounded-md bg-orange-100 text-orange-800 hover:bg-orange-200 transition-colors"
+                                disabled={survivalBusy === busyKey('ammo', kind)}
+                                aria-busy={survivalBusy === busyKey('ammo', kind)}
+                                className="btn-secondary min-h-11"
                                 title={t('survie.tirer.une.munition', { name, count })}
                                 aria-label={t('survie.tirer.une.munition', { name, count })}
                               >
@@ -1336,7 +1409,9 @@ export function SurvivalPanel({
               <button
                 type="button"
                 onClick={() => consume('food')}
-                className="text-xs px-2 py-1 rounded-lg bg-green-100 text-green-800 hover:bg-green-200 transition-colors"
+                disabled={survivalBusy === busyKey('food')}
+                aria-busy={survivalBusy === busyKey('food')}
+                className="btn-secondary min-h-11 w-full"
               >
                 {t('survie.manger.rations', { count: foodCount })}
               </button>
@@ -1353,7 +1428,9 @@ export function SurvivalPanel({
               <button
                 type="button"
                 onClick={() => consume('water')}
-                className="text-xs px-2 py-1 rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
+                disabled={survivalBusy === busyKey('water')}
+                aria-busy={survivalBusy === busyKey('water')}
+                className="btn-secondary min-h-11 w-full"
               >
                 {t('survie.boire.pleines', { count: fullWaterCount })}
               </button>
@@ -1362,7 +1439,9 @@ export function SurvivalPanel({
               <button
                 type="button"
                 onClick={refillWater}
-                className="text-xs px-2 py-1 rounded-lg bg-cyan-100 text-cyan-800 hover:bg-cyan-200 transition-colors"
+                disabled={survivalBusy === busyKey('refill')}
+                aria-busy={survivalBusy === busyKey('refill')}
+                className="btn-secondary min-h-11 w-full"
               >
                 {t('survie.remplir.vides', { count: emptyWaterCount })}
               </button>

@@ -60,7 +60,7 @@ import { CoinTransactionModal } from './character/CoinTransactionModal';
 import { LocationWeightBar } from './character/LocationWeightBar';
 import { NewLocationModal } from './character/NewLocationModal';
 import { CHARACTER_TABS, type CharacterTab, SheetTabBar } from './character/SheetTabBar';
-import { SurvivalPanel } from './character/SurvivalPanel';
+import { SurvivalPanel, type SurvivalConsumeResult } from './character/SurvivalPanel';
 import { TransferModal } from './character/TransferModal';
 import {
   apiError,
@@ -470,6 +470,29 @@ export default function CharacterInventoryPage() {
     setFlashEntryId(entryId);
     setTimeout(() => setFlashEntryId(null), 1200);
   }, []);
+
+  // Verbes de survie (tirer/manger/boire/remplir) : la réponse porte les
+  // entrées mutées + les compteurs de privation touchés — application locale
+  // au cache (moteur de poids déjà rejoué par applyEntryChange), la fiche
+  // entière ne redescend pas. Le toast du panneau affirme le geste.
+  const applySurvivalResult = useCallback(
+    (result: SurvivalConsumeResult) => {
+      for (const change of result.changes ?? []) applyEntryChange(change);
+      if (result.foodDays === undefined && result.waterDays === undefined) return;
+      queryClient.setQueryData<CharacterInventory>(['inventory', Number(charId)], (prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          character: {
+            ...prev.character,
+            ...(result.foodDays !== undefined ? { foodDays: result.foodDays } : {}),
+            ...(result.waterDays !== undefined ? { waterDays: result.waterDays } : {}),
+          },
+        };
+      });
+    },
+    [charId, queryClient, applyEntryChange],
+  );
 
   // Stepper: -1 / +1. At 0, enter confirm-delete state instead of silent delete.
   const stepQuantity = async (entry: InventoryEntry, delta: number) => {
@@ -1228,6 +1251,7 @@ export default function CharacterInventoryPage() {
             canEdit={canEdit}
             markLocalMutation={markLocalMutation}
             onSaved={refreshInventory}
+            onApplied={applySurvivalResult}
             onError={(msg) => pushToast(msg, 'error')}
             onNotice={(msg) => pushToast(msg)}
             onConcentrationCheck={setConcCheck}

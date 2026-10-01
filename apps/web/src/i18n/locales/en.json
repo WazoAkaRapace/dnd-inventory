@@ -1996,6 +1996,14 @@
   "survie.munitions.de.l.arme": "Ammunition for this weapon: {{name}} ×{{count}}",
   "survie.tirer": "🏹 Shoot",
   "survie.tirer.une.munition": "Shoot ({{name}} ×{{count}})",
+  "survie.toast.tir": "🏹 {{name}}: {{remaining}} left",
+  "survie.toast.tir.vide": "🏹 {{name}}: none left",
+  "survie.toast.manger": "🍖 {{name}}: {{remaining}} left",
+  "survie.toast.manger.vide": "🍖 {{name}}: none left",
+  "survie.toast.boire": "💧 {{name}}: {{remaining}} still full",
+  "survie.toast.boire.vide": "💧 No full waterskin left",
+  "survie.toast.remplir": "💧 {{count}} waterskins refilled",
+  "survie.toast.remplir.une": "💧 1 waterskin refilled",
   "combat.mourant": "Down — death saves",
   "combat.mourant.chemin": "Dying"
 }

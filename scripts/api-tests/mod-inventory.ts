@@ -303,6 +303,15 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
     0,
     'food deprivation reset',
   );
+  // Le retour verbalisé : la réponse porte le nom, le reste et les entrées
+  // mutées (application locale au cache côté client).
+  eq(r.data.type, 'food', 'consume response type');
+  ok(!!r.data.name, 'consume response carries the item name');
+  eq(r.data.remaining, 1, 'toast remaining = 1 ration');
+  eq(r.data.foodDays, 0, 'response resets foodDays');
+  eq(r.data.changes.length, 1, 'one entry change');
+  eq(r.data.changes[0].entry.id, foodEntry.id, 'change targets the ration stack');
+  eq(r.data.changes[0].entry.quantity, 1, 'entry quantity after consume');
 
   // down to 0 → entry deleted branch
   r = await api(base, 'POST', `/api/characters/${A}/consume`, {
@@ -310,6 +319,8 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
     body: { type: 'food' },
   });
   eq(r.status, 200, 'consume last ration');
+  eq(r.data.remaining, 0, 'last ration: remaining 0');
+  eq(r.data.changes[0].removedId, foodEntry.id, 'last ration: removedId branch');
   eq(
     srv.query('SELECT COUNT(*) AS c FROM inventory WHERE id = ?', foodEntry.id).c,
     0,
@@ -338,6 +349,11 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
     1,
     'full gourd decremented',
   );
+  // Boire touche DEUX lignes (la pleine −1, la vide créée) — le cache client
+  // reçoit les deux changements d'un coup.
+  eq(r.data.waterDays, 0, 'response resets waterDays');
+  eq(r.data.remaining, 1, 'toast remaining = 1 full skin');
+  eq(r.data.changes.length, 2, 'drink returns two entry changes');
   const emptyEntry = srv.query(
     'SELECT * FROM inventory WHERE character_id = ? AND item_id = ? AND notes LIKE ? AND storage_location_id IS NULL',
     A,
@@ -352,6 +368,7 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
     body: { type: 'water' },
   });
   eq(r.status, 200, 'drink again');
+  eq(r.data.remaining, 0, 'no full skin left after second drink');
   eq(
     srv.query('SELECT COUNT(*) AS c FROM inventory WHERE id = ?', waterEntry.id).c,
     0,
@@ -374,7 +391,10 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
 
   r = await api(base, 'POST', `/api/characters/${A}/refill`, { token: fx.gm.token });
   eq(r.status, 200, 'refill empties');
-  eq(r.data.refilled, 1, 'one empty type refilled');
+  // La pile vide comptait 2 gourdes : le compte rendu est en UNITÉS (même
+  // mesure que le bouton « Remplir (×N vides) »), plus en piles.
+  eq(r.data.refilled, 2, 'refill counts skins, not stacks');
+  ok(r.data.changes.length >= 1, 'refill returns its entry changes');
   // merge branch: full stack exists again? full was deleted → notes cleared branch
   ok(
     srv.query('SELECT COUNT(*) AS c FROM inventory WHERE id = ?', emptyEntry.id).c >= 0,
@@ -416,6 +436,65 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
     fullAfter.every((f: any) => f.quantity > 0),
     'all gourds full after refill',
   );
+
+  // ---------- consume ammo (#143 + retour verbalisé du tir) ----------
+  const ammoItem = srv.query(`SELECT id FROM items WHERE survival_tags LIKE '%"arrow"%' LIMIT 1`);
+  ok(ammoItem, 'seeded arrow item exists');
+  // Baseline dynamique : le personnage peut déjà porter des flèches du seed.
+  const arrowsBefore = srv.query(
+    `SELECT COALESCE(SUM(i.quantity), 0) AS q FROM inventory i
+     JOIN items it ON it.id = i.item_id
+     WHERE i.character_id = ? AND it.survival_tags LIKE '%"arrow"%'`,
+    A,
+  ).q;
+
+  r = await api(base, 'POST', `/api/characters/${A}/consume`, {
+    token: fx.gm.token,
+    body: { type: 'ammo' },
+  });
+  eq(r.status, 400, 'ammo without kind → 400');
+  r = await api(base, 'POST', `/api/characters/${A}/consume`, {
+    token: fx.gm.token,
+    body: { type: 'ammo', ammo: 'trebuchet-boulder' },
+  });
+  eq(r.status, 400, 'unknown ammo kind → 400');
+
+  r = await api(base, 'POST', `/api/characters/${A}/inventory`, {
+    token: fx.gm.token,
+    body: { itemId: ammoItem.id, quantity: 20 },
+  });
+  const ammoEntry = r.data.entry;
+  r = await api(base, 'POST', `/api/characters/${A}/consume`, {
+    token: fx.gm.token,
+    body: { type: 'ammo', ammo: 'arrow' },
+  });
+  eq(r.status, 200, 'shoot one arrow');
+  eq(r.data.type, 'ammo', 'shoot response type');
+  eq(r.data.remaining, arrowsBefore + 19, 'toast remaining = 19 (+ baseline)');
+  ok(!!r.data.name, 'shoot response carries the item name');
+  eq(r.data.changes.length, 1, 'one entry change per shot');
+  eq(r.data.changes[0].entry.id, ammoEntry.id, 'change targets the arrow stack');
+  eq(r.data.changes[0].entry.quantity, arrowsBefore + 19, 'arrow stack decremented');
+  eq(
+    srv.query('SELECT COUNT(*) AS c FROM transactions WHERE reason = ?', 'consume-ammo').c,
+    1,
+    'ammo transaction logged',
+  );
+
+  // dernière flèche de la pile → branche removedId + borne du toast
+  r = await api(base, 'PATCH', `/api/inventory/${ammoEntry.id}`, {
+    token: fx.gm.token,
+    body: { quantity: 1 },
+  });
+  eq(r.status, 200, 'set arrow stack to 1');
+  r = await api(base, 'POST', `/api/characters/${A}/consume`, {
+    token: fx.gm.token,
+    body: { type: 'ammo', ammo: 'arrow' },
+  });
+  eq(r.status, 200, 'shoot last arrow of the stack');
+  eq(r.data.remaining, arrowsBefore, 'remaining back to baseline');
+  const lastShot = r.data.changes.find((c: any) => c.removedId === ammoEntry.id);
+  ok(lastShot, 'last arrow: removedId branch');
 
   // ---------- transactions log ----------
   r = await api(base, 'GET', `/api/parties/${fx.partyId}/transactions`, { token: fx.player.token });
