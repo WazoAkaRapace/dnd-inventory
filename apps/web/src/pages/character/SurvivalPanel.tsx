@@ -155,7 +155,10 @@ export function SurvivalPanel({
       .then((res) => {
         if (cancelled) return;
         const all: CharacterFeature[] = res.data?.features ?? [];
-        setResourceFeatures(all.filter((f) => f.catalogId && f.counterMax && f.counterMax > 0));
+        // Toute ligne de trait avec compteur, quelle que soit sa catégorie
+        // (classe/race/historique/don/perso) — la modale Traits sait en
+        // poser sur toutes les catégories, Survie les affiche toutes.
+        setResourceFeatures(all.filter((f) => f.counterMax && f.counterMax > 0));
       })
       .catch(() => {});
     return () => {
@@ -1037,12 +1040,22 @@ export function SurvivalPanel({
         </div>
       </section>
 
-      {/* ---------- 4. Ressources de classe — traits du catalogue avec compteur ---------- */}
+      {/* ---------- 4. Ressources — traits avec compteur, par catégorie ---------- */}
       {resourceFeatures.length > 0 && (
-        <Panel title={t('survie.ressources.de.classe')} tuto="survie-ressources">
-          <div className="space-y-1.5">
-            {resourceFeatures.map((feature) => {
-              const def = findClassFeature(feature.catalogId ?? '');
+        <Panel title={t('survie.ressources')} tuto="survie-ressources">
+          {(() => {
+            // Sections par catégorie, ordre fixe — aucune section vide rendue.
+            // Mono-classe avec ressources : une seule section « Classe », le
+            // panneau reste visuellement celui d'avant (titre élargi à part).
+            const ORDER: Array<{ key: string; label: string }> = [
+              { key: 'class', label: t('survie.ressources.classe') },
+              { key: 'racial', label: t('survie.ressources.race') },
+              { key: 'background', label: t('survie.ressources.historique') },
+              { key: 'feat', label: t('survie.ressources.dons') },
+              { key: 'custom', label: t('survie.ressources.personnalise') },
+            ];
+            const renderRow = (feature: CharacterFeature) => {
+              const def = feature.catalogId ? findClassFeature(feature.catalogId) : null;
               const max = feature.counterMax ?? 0;
               const current = feature.counterCurrent ?? max;
               const isPool = def?.resource?.unit === 'PV';
@@ -1101,8 +1114,24 @@ export function SurvivalPanel({
                   </span>
                 </div>
               );
-            })}
-          </div>
+            };
+            return (
+              <div className="space-y-3">
+                {ORDER.map(({ key, label }) => {
+                  const rows = resourceFeatures.filter((f) => (f.category ?? 'custom') === key);
+                  if (rows.length === 0) return null;
+                  return (
+                    <div key={key} className="space-y-1.5">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-400">
+                        {label}
+                      </h4>
+                      {rows.map(renderRow)}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </Panel>
       )}
 
