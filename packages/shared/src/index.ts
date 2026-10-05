@@ -4377,6 +4377,9 @@ export interface CharacterSpell {
   prepared: boolean;
   /** Class whose list this spell was taken from (multiclassing SRD). */
   classSource: string | null;
+  /** Provenance : null = appris normalement ; 'invocation' = accordé par une
+   *  manifestation occulte (à volonté / rituel du Livre des Ombres). */
+  source: string | null;
   sortOrder: number;
   addedAt: string;
 }

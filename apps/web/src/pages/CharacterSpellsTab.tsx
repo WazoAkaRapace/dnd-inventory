@@ -8,12 +8,14 @@ import {
   type ABILITY_SHORT_FR,
   abilityModifier,
   type Character,
+  type CharacterFeature,
   type CharacterSpell,
   classesOf,
   computeSpellcastingPools,
   DND_CLASSES,
   findClass,
   formatModifier,
+  invocationIdsOf,
   preparedLimits,
   proficiencyBonus,
   SPELL_SCHOOL_LABELS_FR,
@@ -23,6 +25,7 @@ import {
   spellHealingAtLevel,
   spellSaveDC,
 } from '@table-sync/shared';
+import { findWarlockInvocation } from '@table-sync/shared/warlockInvocations';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../api';
@@ -80,6 +83,9 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
   const [loadingSpells, setLoadingSpells] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [domainSpells, setDomainSpells] = useState<DomainSpell[]>([]);
+  // Traits du personnage (compteurs free-cast / Arcanum + ids de manifestations
+  // pour les sorts à volonté) — même régime de chargement que les sorts.
+  const [features, setFeatures] = useState<CharacterFeature[]>([]);
 
   // Catalog browser
   const [catalogOpen, setCatalogOpen] = useState(false);
@@ -184,6 +190,65 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
   };
   const isMultiClass = classesOf(character).length > 1;
 
+  // ---------- Manifestations occultes : sorts sans emplacement (B4-B6) ----------
+  // at-will : sort de manifestation connue → lancer illimité (badge or sur la
+  // ligne). free-cast / Arcanum : compteur du TRAIT > 0 → option gratuite qui
+  // décrémente via PATCH character-features. Rien d'automatique : le joueur
+  // choisit l'option dans la feuille d'incantation.
+  const invIds = invocationIdsOf(features);
+  const atWillSlugs = new Set<string>();
+  for (const id of invIds) {
+    const inv = findWarlockInvocation(id);
+    if (inv?.effect?.kind === 'at-will') {
+      for (const s of inv.effect.spells) atWillSlugs.add(s);
+    }
+  }
+  // Lancers au compteur : free-cast (manifestation) + Arcanum (trait catalogue
+  // occultiste-arcanum-<lvl>, proposé sur chaque sort CONNU du niveau). La
+  // correspondance sort↔Arcanum reste au joueur (le trait ne nomme pas le sort).
+  type FreeCast = {
+    featureId: number;
+    counterCurrent: number;
+    label: 'at-will' | 'manifestation' | 'arcanum';
+  };
+  const freeCastMap: Record<string, FreeCast> = {};
+  for (const f of features) {
+    if (!f.catalogId || (f.counterCurrent ?? 0) <= 0) continue;
+    const inv = findWarlockInvocation(f.catalogId);
+    if (inv?.effect?.kind === 'free-cast') {
+      freeCastMap[inv.effect.spell] = {
+        featureId: f.id,
+        counterCurrent: f.counterCurrent ?? 0,
+        label: 'manifestation',
+      };
+    }
+  }
+  const arcanumFeatureByLevel = new Map<number, CharacterFeature>();
+  for (const f of features) {
+    const m = f.catalogId?.match(/^occultiste-arcanum-(\d)$/);
+    if (m && (f.counterCurrent ?? 0) > 0) arcanumFeatureByLevel.set(Number(m[1]), f);
+  }
+  for (const cs of charSpells) {
+    const lvl = cs.spell.level;
+    if (lvl < 6 || lvl > 9) continue;
+    const feat = arcanumFeatureByLevel.get(lvl);
+    if (!feat || freeCastMap[cs.spell.srdIndex]) continue;
+    freeCastMap[cs.spell.srdIndex] = {
+      featureId: feat.id,
+      counterCurrent: feat.counterCurrent ?? 0,
+      label: 'arcanum',
+    };
+  }
+  // at-will : option illimitée dès que la manifestation est connue (le sort
+  // n'a pas besoin d'être appris par ailleurs — la manifestation l'accorde).
+  for (const slug of atWillSlugs) {
+    if (!freeCastMap[slug]) {
+      freeCastMap[slug] = { featureId: 0, counterCurrent: Infinity, label: 'at-will' };
+    }
+  }
+  // Badge « à volonté » sur une ligne du grimoire : manifestation connue.
+  const isAtWillSpell = (cs: CharacterSpell) => atWillSlugs.has(cs.spell.srdIndex);
+
   // Limites de préparation PAR CLASSE (chacune comme si mono-classe — SRD
   // multiclassage) ; les sorts de domaine restent toujours préparés et hors
   // limite. Chaque segment du filtre porte le compteur de sa classe.
@@ -194,7 +259,8 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
       (cs) => cs.prepared && !domainIds.has(cs.spell.id) && cs.classSource === classKey,
     ).length;
 
-  // Fetch character's known spells
+  // Fetch character's known spells + features (manifestations : compteurs,
+  // sorts à volonté) — une seule passe, même régime d'erreur calme.
   const fetchCharSpells = useCallback(async () => {
     setLoadError(false);
     try {
@@ -206,6 +272,12 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
       setLoadError(true);
     } finally {
       setLoadingSpells(false);
+    }
+    try {
+      const res = await api.get(`/api/characters/${charId}/features`);
+      setFeatures(res.data?.features ?? []);
+    } catch {
+      setFeatures([]);
     }
   }, [charId]);
 
@@ -408,15 +480,22 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
   /**
    * Cast a spell: consume the CHOSEN slot (level + pool — SRD magie de pacte :
    * les deux pools sont interchangeables et c'est le joueur qui choisit) or
-   * none for a ritual/cantrip, and for concentration spells take over the
-   * concentration flag (breaking any spell already concentrated on).
+   * none for a ritual/cantrip/free cast, and for concentration spells take
+   * over the concentration flag (breaking any spell already concentrated on).
+   * 'free' = manifestation à volonté / compteur free-cast / Arcanum : AUCUN
+   * emplacement touché, le compteur du trait se décrémente (PATCH
+   * character-features) — le catalogue calcule et propose, ne force rien.
    * On success the cast row flashes; on network error the sheet stays open.
    */
-  const castSpell = async (castLevel: number, ritual = false, pool?: 'spellcasting' | 'pact') => {
+  const castSpell = async (
+    castLevel: number,
+    ritual = false,
+    pool?: 'spellcasting' | 'pact' | 'free',
+  ) => {
     if (!castingSpell) return;
     const rowId = castingRowId;
     const fields: Record<string, unknown> = {};
-    if (castLevel > 0 && !ritual) {
+    if (castLevel > 0 && !ritual && pool !== 'free') {
       const spendSpellcasting = () => {
         if (slotsUsed[castLevel - 1] >= (slots[castLevel - 1] ?? 0)) return false;
         const used = [...slotsUsed];
@@ -453,6 +532,20 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
         onError(t('sorts.erreur.lors.du.lancement'));
       }
     }
+    // Lancer gratuit au compteur d'un trait (manifestation free-cast / Arcanum)
+    // : décrément PATCH character-features — APRÈS le PATCH personnage pour ne
+    // compter le trait qu'une fois le sort réellement lancé.
+    const freeCast = pool === 'free' ? freeCastMap[castingSpell.srdIndex] : undefined;
+    if (ok && freeCast && freeCast.label !== 'at-will' && freeCast.featureId > 0) {
+      try {
+        await api.patch(`/api/character-features/${freeCast.featureId}`, {
+          counterCurrent: freeCast.counterCurrent - 1,
+        });
+      } catch {
+        // Le sort est lancé ; l'échec du compteur n'annule rien — la fiche
+        // survit à un compteur optimiste (correction manuelle possible).
+      }
+    }
     if (ok) {
       flashRow(rowId);
       setCastingSpell(null);
@@ -477,6 +570,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
       spell: sp,
       prepared: true,
       classSource: null,
+      source: null,
       sortOrder: 0,
       addedAt: '',
     }));
@@ -793,6 +887,14 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
                                         {classNameLabel(cs.classSource)}
                                       </span>
                                     )}
+                                    {isAtWillSpell(cs) && (
+                                      <span
+                                        className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-gold-700"
+                                        title={t('cast.a.volonte.manifestation')}
+                                      >
+                                        ✦ {t('sorts.a.volonte')}
+                                      </span>
+                                    )}
                                     {spell.castingTime && (
                                       <span
                                         className={`truncate ${
@@ -916,6 +1018,9 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
           )}
           profBonus={profBonus}
           charLevel={level}
+          character={character}
+          invocationIds={invIds}
+          freeCasts={freeCastMap}
           concentrating={!!character.concentrating}
           onClose={() => {
             setCastingSpell(null);

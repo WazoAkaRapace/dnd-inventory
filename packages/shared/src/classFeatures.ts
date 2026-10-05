@@ -30,6 +30,7 @@ import {
   classesOf,
   type FightingStyle,
 } from './index.ts';
+import { findWarlockInvocation } from './warlockInvocations.ts';
 
 /** Modificateurs courts (str/dex/con/int/wis/cha) passés aux formules de ressources. */
 export type AbilityMods = Record<'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha', number>;
@@ -2729,7 +2730,12 @@ export function featuresForCharacter(character: {
   return [...base, ...sub].sort((a, b) => a.level - b.level);
 }
 
-/** Retrouve une définition du catalogue par identifiant (base + toutes sous-classes). */
+/**
+ * Retrouve une définition du catalogue par identifiant (base + toutes
+ * sous-classes + manifestations occultes — leurs compteurs free-cast
+ * passent par le même chemin : POST character-features en dérive le max,
+ * applyRest les recharge ; id inconnu → null, silencieusement).
+ */
 export function findClassFeature(catalogId: string): ClassFeatureDef | null {
   for (const list of Object.values(CLASS_FEATURES)) {
     const hit = list.find((f) => f.id === catalogId);
@@ -2740,6 +2746,18 @@ export function findClassFeature(catalogId: string): ClassFeatureDef | null {
       const hit = sub.features.find((f) => f.id === catalogId);
       if (hit) return hit;
     }
+  }
+  const invocation = findWarlockInvocation(catalogId);
+  if (invocation) {
+    return {
+      id: invocation.id,
+      level: invocation.prereqLevel ?? 2,
+      name: invocation.name,
+      description: invocation.description,
+      resource: invocation.resource
+        ? { max: () => invocation.resource!.max(), reset: invocation.resource.reset }
+        : undefined,
+    };
   }
   return null;
 }
