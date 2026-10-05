@@ -1,5 +1,9 @@
 import type { Spell } from '@table-sync/shared';
 import {
+  type CharacterClassSource,
+  agonizingBlastBonus,
+  classLevelOf,
+  eldritchBlastRays,
   formatModifier,
   spellDamageAtLevel,
   spellHealingAtLevel,
@@ -30,6 +34,9 @@ export default function CastSpellSheet({
   castingMod,
   profBonus,
   charLevel,
+  character,
+  invocationIds,
+  freeCasts,
   onClose,
   onCast,
 }: {
@@ -45,12 +52,28 @@ export default function CastSpellSheet({
   castingMod?: number;
   profBonus?: number;
   charLevel?: number;
+  /** Fiche du lanceur — manifestations occultes : aperçu Décharge occulte
+   *  (rayons par niveau de classe, +CHA de Décharge déchirante, portée de
+   *  Lance occulte). Passe la fiche ENTIÈRE : classLevelOf lit les lignes
+   *  de classe (multiclassage), pas le seul niveau total. */
+  character?: CharacterClassSource & { charisma?: number | null; level?: number | null };
+  /** Ids de manifestations connues (invocationIdsOf sur les traits chargés). */
+  invocationIds?: string[];
+  /** Lancers gratuits 1/RL des manifestations free-cast et Arcanum : clé =
+   * slug du sort, valeur = { featureId, counterCurrent, label }. */
+  freeCasts?: Record<string, { featureId: number; counterCurrent: number; label: string }>;
   onClose: () => void;
   /** Called with the chosen slot level (0 = cantrip, no slot), whether it's
    * a ritual cast (no slot either) and WHICH pool the slot comes from —
    * SRD magie de pacte : les deux pools sont interchangeables, LE JOUEUR
-   * choisit (un emplacement de pacte lance le sort au niveau de SON dé). */
-  onCast: (level: number, ritual?: boolean, pool?: 'spellcasting' | 'pact') => Promise<void> | void;
+   * choisit (un emplacement de pacte lance le sort au niveau de SON dé).
+   * 'free' : lancer sans emplacement (manifestation à volonté / compteur
+   * free-cast / Arcanum) — le parent décrémente le compteur du trait. */
+  onCast: (
+    level: number,
+    ritual?: boolean,
+    pool?: 'spellcasting' | 'pact' | 'free',
+  ) => Promise<void> | void;
 }) {
   const { t } = useTranslation();
   const isCantrip = spell.level === 0;
@@ -77,9 +100,29 @@ export default function CastSpellSheet({
   const pactSlotsRef = pactSlots ?? [0, 0, 0, 0, 0, 0, 0, 0, 0];
   const pactUsedRef = pactUsed ?? [0, 0, 0, 0, 0, 0, 0, 0, 0];
   const remainingAt = (lvl: number) => (slots[lvl - 1] ?? 0) - (slotsUsed[lvl - 1] ?? 0);
-  type CastOption = { key: string; level: number; pool: 'spellcasting' | 'pact' };
+
+  // ---------- Manifestations occultes (Phase B) ----------
+  // Lancers SANS emplacement : à volonté (sort de manifestation, illimité) et
+  // 1/RL au compteur du trait (free-cast / Arcanum mystique). Ce sont des
+  // OPTIONS du joueur, à côté des emplacements — rien d'automatique.
+  const freeCast = freeCasts?.[spell.srdIndex] ?? null;
+  const freeRemaining = freeCast ? Math.max(0, freeCast.counterCurrent) : 0;
+  const atWill = !!freeCast && freeCast.label === 'at-will';
+  // Aperçu Décharge occulte : rayons au niveau d'OCCULTISTE (cantrip scaling
+  // par classe), +CHA de Décharge déchirante, portée de Lance occulte.
+  const invocations = invocationIds ?? [];
+  const warlockLevel = character ? classLevelOf(character, 'Occultiste') : 0;
+  const isEldritchBlast = spell.srdIndex === 'eldritch-blast';
+  const agonizing = isEldritchBlast && character ? agonizingBlastBonus(character, invocations) : 0;
+  const blastRays = isEldritchBlast ? eldritchBlastRays(warlockLevel) : 0;
+  const spearRange = isEldritchBlast && invocations.includes('occultiste-invo-lance-occulte');
+
+  type CastOption = { key: string; level: number; pool: 'spellcasting' | 'pact' | 'free' };
   const castOptions: CastOption[] = [];
   if (!isCantrip) {
+    if (atWill || freeRemaining > 0) {
+      castOptions.push({ key: 'free', level: spell.level, pool: 'free' });
+    }
     for (let lvl = spell.level; lvl <= 9; lvl++) {
       if (lvl > spell.level && !canUpcast) break;
       if (remainingAt(lvl) > 0)
@@ -90,7 +133,13 @@ export default function CastSpellSheet({
     if (pactIdx >= 0 && pactIdx + 1 >= spell.level) {
       castOptions.push({ key: `p${pactIdx + 1}`, level: pactIdx + 1, pool: 'pact' });
     }
-    castOptions.sort((a, b) => a.level - b.level || (a.pool === 'pact' ? 1 : -1));
+    // Le lancer gratuit d'abord (c'est la voie « gratuite »), puis par niveau.
+    castOptions.sort(
+      (a, b) =>
+        (a.pool === 'free' ? -1 : b.pool === 'free' ? 1 : 0) ||
+        a.level - b.level ||
+        (a.pool === 'pact' ? 1 : -1),
+    );
   }
   const pactRemaining = () => {
     const idx = pactSlotsRef.findIndex((max, i) => max - (pactUsedRef[i] ?? 0) > 0);
@@ -118,7 +167,7 @@ export default function CastSpellSheet({
 
   const concConflict = spell.concentration && concentrating;
 
-  const cast = async (level: number, ritual = false, pool?: 'spellcasting' | 'pact') => {
+  const cast = async (level: number, ritual = false, pool?: 'spellcasting' | 'pact' | 'free') => {
     setCasting(true);
     try {
       await onCast(level, ritual, pool);
@@ -149,6 +198,16 @@ export default function CastSpellSheet({
               {spell.concentration && t('cast.concentration.suffixe')}
               {spell.ritual && t('cast.rituel.suffixe')}
             </p>
+            {atWill && (
+              <p className="text-[11px] text-gold-700 font-medium">
+                {t('cast.a.volonte.manifestation')}
+              </p>
+            )}
+            {freeCast && freeCast.label !== 'at-will' && freeRemaining > 0 && (
+              <p className="text-[11px] text-gold-700 font-medium">
+                {t('cast.gratuit.restant', { count: freeRemaining })}
+              </p>
+            )}
           </div>
           <button
             type="button"
@@ -184,42 +243,76 @@ export default function CastSpellSheet({
             <p className="text-xs font-medium text-ink-500">{t('cast.emplacement.a.depenser')}</p>
             {castOptions.map((opt) => {
               const selected = chosenKey === opt.key;
-              const isUpcast = opt.level > spell.level && canUpcast;
+              const isUpcast = opt.level > spell.level && canUpcast && opt.pool !== 'free';
               const isPact = opt.pool === 'pact';
+              const isFree = opt.pool === 'free';
               return (
                 <button
                   type="button"
                   key={opt.key}
                   onClick={() => setChosenKey(opt.key)}
                   className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg border text-sm transition-colors ${
-                    selected
-                      ? 'bg-blood-600 text-white border-blood-700'
-                      : 'bg-parchment-50 text-ink-700 border-parchment-200 hover:border-blood-400'
+                    isFree
+                      ? selected
+                        ? 'bg-gold-500 text-white border-gold-600'
+                        : 'bg-gold-50 text-gold-800 border-gold-300 hover:border-gold-500'
+                      : selected
+                        ? 'bg-blood-600 text-white border-blood-700'
+                        : 'bg-parchment-50 text-ink-700 border-parchment-200 hover:border-blood-400'
                   }`}
                   aria-pressed={selected}
                 >
                   <span className="font-medium flex items-center gap-1.5 min-w-0">
-                    {t('cast.niveau.level', { level: opt.level })}
-                    {isUpcast && (
-                      <span
-                        className={`text-[10px] font-semibold uppercase ${selected ? 'text-gold-300' : 'text-blood-500'}`}
-                      >
-                        {t('cast.superieur')}
-                      </span>
-                    )}
-                    {isPact && (
-                      <span
-                        className={`text-[10px] font-semibold uppercase ${selected ? 'text-gold-300' : 'text-gold-600'}`}
-                        title={t('cast.emplacement.de.magie.de.pacte.recharge')}
-                      >
-                        {t('cast.pacte')}
-                      </span>
+                    {isFree ? (
+                      <>
+                        {t('cast.gratuit.manifestation')}
+                        {freeCast?.label === 'at-will' ? (
+                          <span
+                            className={`text-[10px] font-semibold uppercase ${selected ? 'text-white' : 'text-gold-600'}`}
+                          >
+                            {t('sorts.a.volonte')}
+                          </span>
+                        ) : (
+                          <span
+                            className={`text-[10px] font-semibold uppercase ${selected ? 'text-gold-200' : 'text-gold-700'}`}
+                          >
+                            {freeCast?.label === 'arcanum'
+                              ? t('cast.arcanum.mystique')
+                              : t('cast.manifestation')}
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {t('cast.niveau.level', { level: opt.level })}
+                        {isUpcast && (
+                          <span
+                            className={`text-[10px] font-semibold uppercase ${selected ? 'text-gold-300' : 'text-blood-500'}`}
+                          >
+                            {t('cast.superieur')}
+                          </span>
+                        )}
+                        {isPact && (
+                          <span
+                            className={`text-[10px] font-semibold uppercase ${selected ? 'text-gold-300' : 'text-gold-600'}`}
+                            title={t('cast.emplacement.de.magie.de.pacte.recharge')}
+                          >
+                            {t('cast.pacte')}
+                          </span>
+                        )}
+                      </>
                     )}
                   </span>
                   <span
-                    className={`shrink-0 ${selected ? 'text-night-100' : isPact ? 'text-gold-600' : 'text-ink-400'}`}
+                    className={`shrink-0 ${selected ? 'text-night-100' : isPact || isFree ? 'text-gold-700' : 'text-ink-400'}`}
                   >
-                    {isPact ? (
+                    {isFree ? (
+                      freeCast?.label === 'at-will' ? (
+                        t('cast.illimite')
+                      ) : (
+                        t('cast.restant', { count: freeRemaining })
+                      )
+                    ) : isPact ? (
                       <span title={t('cast.emplacement.de.pacte.recharge.au.repos')}>
                         {t('cast.pacte.restant', { count: pactRemaining() })}
                       </span>
@@ -240,21 +333,50 @@ export default function CastSpellSheet({
           const healing = spellHealingAtLevel(spell, chosenLvl ?? -1, charLevel ?? 1);
           const hasPreview = dmg.dice || healing.dice || spell.dcJson || spell.attackType;
           if (!hasPreview || (!chosenOption && !isCantrip)) return null;
+          // Décharge occulte : le damage_json donne le dé PAR RAYON — l'aperçu
+          // multiplie par les rayons du niveau d'occultiste et ajoute le +CHA
+          // de Décharge déchirante (mod brut), PAR RAYON (PHB 2014).
+          const perRayBonus = agonizing;
           return (
             <div className="flex flex-wrap items-center gap-1.5 mt-3">
               {!isCantrip && chosenOption && (
                 <span className="text-xs text-ink-400">
                   {chosenOption.pool === 'pact'
                     ? t('cast.au.niveau.level.pacte.deux.points', { level: chosenOption.level })
-                    : t('cast.au.niveau.level.deux.points', { level: chosenOption.level })}
+                    : chosenOption.pool === 'free'
+                      ? t('cast.sans.emplacement.deux.points')
+                      : t('cast.au.niveau.level.deux.points', { level: chosenOption.level })}
                 </span>
               )}
               {dmg.dice && (
-                <Chip tone="orange">
-                  ⚔ {dmg.dice}
+                <Chip tone="orange" title={isEldritchBlast ? t('cast.par.rayon') : undefined}>
+                  ⚔{' '}
+                  {isEldritchBlast && blastRays > 1
+                    ? `${blastRays} × ${dmg.dice}${perRayBonus ? formatModifier(perRayBonus) : ''}`
+                    : `${dmg.dice}${isEldritchBlast && perRayBonus ? formatModifier(perRayBonus) : ''}`}
                   {dmg.typeFr
                     ? ` ${t('cast.degats.de.type', { type: damageType(dmg.typeFr) ?? dmg.typeFr })}`
                     : ''}
+                  {isEldritchBlast && blastRays > 1 ? ` ${t('cast.par.rayon')}` : ''}
+                </Chip>
+              )}
+              {isEldritchBlast && (
+                <Chip tone="gold" title={t('cast.decharge.occulte.rayons.title')}>
+                  ✦{' '}
+                  {t('cast.rayons.count', {
+                    count: blastRays,
+                    rays: blastRays,
+                  })}
+                </Chip>
+              )}
+              {isEldritchBlast && perRayBonus !== 0 && (
+                <Chip tone="gold" title={t('cast.decharge.dechirante.title')}>
+                  ✦ {formatModifier(perRayBonus)} {t('cast.par.rayon.court')}
+                </Chip>
+              )}
+              {spearRange && (
+                <Chip tone="gold" title={t('cast.lance.occulte.title')}>
+                  🎯 {t('cast.portee.90m')}
                 </Chip>
               )}
               {healing.dice && (
@@ -300,9 +422,13 @@ export default function CastSpellSheet({
               ? t('cast.lancer.et.rompre.la.concentration')
               : isCantrip
                 ? t('cast.lancer.le.tour.de.magie')
-                : t('cast.lancer.au.niveau.level', {
-                    level: chosenOption ? chosenOption.level : '—',
-                  })}
+                : chosenOption?.pool === 'free'
+                  ? freeCast?.label === 'at-will'
+                    ? t('cast.lancer.a.volonte')
+                    : t('cast.lancer.gratuit')
+                  : t('cast.lancer.au.niveau.level', {
+                      level: chosenOption ? chosenOption.level : '—',
+                    })}
         </button>
 
         {/* Ritual cast: no slot consumed, +10 minutes */}

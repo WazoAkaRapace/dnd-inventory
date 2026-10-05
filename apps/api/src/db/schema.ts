@@ -475,6 +475,10 @@ export const characterSpells = sqliteTable(
     prepared: integer('prepared').notNull().default(0),
     /** Which class's list this spell was taken from (multiclassing SRD). */
     classSource: text('class_source'),
+    /** Provenance du sort : null/'normal' = appris normalement ;
+     *  'invocation' = accordé par une manifestation occulte (à volonté /
+     *  rituel du Livre des Ombres — badge dédié, lancer sans emplacement). */
+    source: text('source'),
     sortOrder: integer('sort_order').notNull().default(0),
     addedAt: text('added_at')
       .notNull()

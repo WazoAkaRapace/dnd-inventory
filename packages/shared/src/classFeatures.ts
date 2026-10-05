@@ -30,6 +30,7 @@ import {
   classesOf,
   type FightingStyle,
 } from './index.ts';
+import { findWarlockInvocation } from './warlockInvocations.ts';
 
 /** Modificateurs courts (str/dex/con/int/wis/cha) passés aux formules de ressources. */
 export type AbilityMods = Record<'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha', number>;
@@ -666,7 +667,32 @@ export const CLASS_FEATURES: Record<string, ClassFeatureDef[]> = {
       level: 3,
       name: 'Faveur de pacte',
       description:
-        'Chaîne : Appel de familier en rituel (formes étendues, attaque en réaction si vous renoncez à une attaque) ; Lame : arme de pacte magique créée en action (rituel d’1 h pour lier une arme magique) ; Grimoire : livre des Ombres avec 3 sorts mineurs de n’importe quelle liste, à volonté.',
+        'Au niveau 3, votre patron vous gratifie d’une aptitude : choisissez UNE faveur (traits ci-dessous — poser l’une retire les autres). Chaîne : Appel de familier en rituel (formes étendues, attaque en réaction si vous renoncez à une attaque) ; Lame : arme de pacte magique créée en action (rituel d’1 h pour lier une arme magique) ; Grimoire : livre des Ombres avec 3 sorts mineurs de n’importe quelle liste, à volonté.',
+    },
+    {
+      // MUTEX : l'une des trois faveurs — la route character-features retire
+      // les deux autres à l'ajout de celle-ci (occultiste-faveur-lame|chaine|grimoire).
+      id: 'occultiste-faveur-lame',
+      level: 3,
+      name: 'Faveur de pacte : Pacte de la lame',
+      description:
+        'Action : créez votre arme de pacte dans votre main libre (forme de mêlée au choix, maîtrisée, magique au regard des résistances) ; elle disparaît à plus de 1,50 m pendant 1 min, au renvoi, ou si vous mourez. Rituel d’1 h (possible durant un repos court) pour transformer une arme magique en arme de pacte, congédiable dans un espace extra-dimensionnel.',
+    },
+    {
+      // MUTEX : voir occultiste-faveur-lame.
+      id: 'occultiste-faveur-chaine',
+      level: 3,
+      name: 'Faveur de pacte : Pacte de la chaîne',
+      description:
+        'Vous apprenez Appel de familier (rituel, hors sorts connus) et pouvez choisir une forme spéciale : esprit follet, diablotin, pseudodragon ou quasit. Quand vous choisissez l’action Attaquer, vous pouvez renoncer à une de vos attaques pour permettre à votre familier d’attaquer (avec sa réaction).',
+    },
+    {
+      // MUTEX : voir occultiste-faveur-lame.
+      id: 'occultiste-faveur-grimoire',
+      level: 3,
+      name: 'Faveur de pacte : Pacte du grimoire',
+      description:
+        'Votre patron vous offre un Livre des Ombres : choisissez trois sorts mineurs dans la liste de sorts de n’importe quelles classes — tant que vous portez le livre, vous pouvez les lancer à volonté (hors sorts mineurs connus ; ils disparaissent du livre si vous perdez cette faveur).',
     },
     {
       id: 'occultiste-arcanum-6',
@@ -2704,7 +2730,12 @@ export function featuresForCharacter(character: {
   return [...base, ...sub].sort((a, b) => a.level - b.level);
 }
 
-/** Retrouve une définition du catalogue par identifiant (base + toutes sous-classes). */
+/**
+ * Retrouve une définition du catalogue par identifiant (base + toutes
+ * sous-classes + manifestations occultes — leurs compteurs free-cast
+ * passent par le même chemin : POST character-features en dérive le max,
+ * applyRest les recharge ; id inconnu → null, silencieusement).
+ */
 export function findClassFeature(catalogId: string): ClassFeatureDef | null {
   for (const list of Object.values(CLASS_FEATURES)) {
     const hit = list.find((f) => f.id === catalogId);
@@ -2715,6 +2746,18 @@ export function findClassFeature(catalogId: string): ClassFeatureDef | null {
       const hit = sub.features.find((f) => f.id === catalogId);
       if (hit) return hit;
     }
+  }
+  const invocation = findWarlockInvocation(catalogId);
+  if (invocation) {
+    return {
+      id: invocation.id,
+      level: invocation.prereqLevel ?? 2,
+      name: invocation.name,
+      description: invocation.description,
+      resource: invocation.resource
+        ? { max: () => invocation.resource!.max(), reset: invocation.resource.reset }
+        : undefined,
+    };
   }
   return null;
 }

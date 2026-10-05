@@ -1,0 +1,1 @@
+ALTER TABLE `character_spells` ADD `source` text;

@@ -43,12 +43,15 @@ interface AddCharacterSpellPayload {
   prepared?: boolean;
   /** Classe d'origine du sort (multiclassage SRD) — défaut : 1ère classe. */
   classSource?: string | null;
+  /** Provenance ('invocation' = manifestation occulte) — défaut 'normal'. */
+  source?: string | null;
 }
 
 interface PatchCharacterSpellPayload {
   prepared?: boolean;
   sortOrder?: number;
   classSource?: string | null;
+  source?: string | null;
 }
 
 /**
@@ -61,6 +64,7 @@ const LINK_WITH_SPELL = {
   character_id: characterSpells.characterId,
   prepared: characterSpells.prepared,
   class_source: characterSpells.classSource,
+  source: characterSpells.source,
   sort_order: characterSpells.sortOrder,
   added_at: characterSpells.addedAt,
   s_id: spells.id,
@@ -225,12 +229,19 @@ export async function characterSpellRoutes(app: FastifyInstance) {
       // UPSERT: if the character already knows this spell, just toggle prepared.
       drizzle
         .insert(characterSpells)
-        .values({ characterId: char.id, spellId: body.spellId, prepared, classSource })
+        .values({
+          characterId: char.id,
+          spellId: body.spellId,
+          prepared,
+          classSource,
+          source: body.source === 'invocation' ? 'invocation' : null,
+        })
         .onConflictDoUpdate({
           target: [characterSpells.characterId, characterSpells.spellId],
           set: {
             prepared: sql`excluded.prepared`,
             classSource: sql`COALESCE(excluded.class_source, character_spells.class_source)`,
+            source: sql`COALESCE(excluded.source, character_spells.source)`,
           },
         })
         .run();
@@ -289,6 +300,7 @@ export async function characterSpellRoutes(app: FastifyInstance) {
       if (body.prepared !== undefined) values.prepared = body.prepared ? 1 : 0;
       if (body.sortOrder !== undefined) values.sortOrder = Math.floor(body.sortOrder);
       if (body.classSource !== undefined) values.classSource = body.classSource || null;
+      if (body.source !== undefined) values.source = body.source || null;
       if (Object.keys(values).length === 0) {
         return reply.code(400).send({ error: apiMsg(req, 'no fields to update') });
       }

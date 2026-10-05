@@ -87,6 +87,45 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
   });
   eq(r.status, 404, 'hidden char features → 404');
 
+  // ---------- Faveur de pacte MUTEX (Occultiste niveau 3) ----------
+  // Poser l'une des trois faveurs retire les deux autres (SRD : une seule).
+  const postBoon = async (catalogId: string) =>
+    api(base, 'POST', `/api/characters/${A}/features`, {
+      token: fx.gm.token,
+      body: { title: `Faveur ${catalogId}`, catalogId, category: 'class' },
+    });
+  let boon = await postBoon('occultiste-faveur-lame');
+  eq(boon.status, 201, 'pact boon: pose la Lame');
+  boon = await postBoon('occultiste-faveur-chaine');
+  eq(boon.status, 201, 'pact boon: pose la Chaîne');
+  boon = await postBoon('occultiste-faveur-grimoire');
+  eq(boon.status, 201, 'pact boon: pose le Grimoire');
+  r = await api(base, 'GET', `/api/characters/${A}/features`, { token: fx.player.token });
+  const boonRows = r.data.features.filter((f: any) =>
+    (f.catalogId ?? '').startsWith('occultiste-faveur-'),
+  );
+  eq(
+    boonRows
+      .map((f: any) => f.catalogId)
+      .sort()
+      .join(','),
+    'occultiste-faveur-grimoire',
+    'pact boon MUTEX : seule la dernière faveur reste',
+  );
+
+  // ---------- Manifestation free-cast : compteur dérivé du catalogue ----------
+  r = await api(base, 'POST', `/api/characters/${A}/features`, {
+    token: fx.gm.token,
+    body: {
+      title: 'Voleur des cinq destinées',
+      catalogId: 'occultiste-invo-voleur-des-cinq-destinees',
+      category: 'class',
+    },
+  });
+  eq(r.status, 201, 'invocation free-cast: créée');
+  eq(r.data.feature.counterMax, 1, 'invocation free-cast: compteur 1 dérivé');
+  eq(r.data.feature.counterCurrent, 1, 'invocation free-cast: courant au max');
+
   r = await api(base, 'PATCH', `/api/character-features/${feat.id}`, {
     token: fx.gm.token,
     body: {},

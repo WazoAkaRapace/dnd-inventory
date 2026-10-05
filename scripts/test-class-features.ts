@@ -9,6 +9,9 @@ import {
   criticalRange,
   DND_CLASSES,
   eldritchInvocationsCount,
+  invocationIdsOf,
+  agonizingBlastBonus,
+  eldritchBlastRays,
   maxSpellSlots,
   renderFeatureTemplate,
   SPELL_SLOTS_PACT,
@@ -23,6 +26,9 @@ import {
   nextClassFeatureGain,
 } from '@table-sync/shared/classFeatures';
 import { applyRest } from '@table-sync/shared/rests';
+import { findWarlockInvocation, WARLOCK_INVOCATIONS } from '@table-sync/shared/warlockInvocations';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 let failures = 0;
 function check(label: string, actual: unknown, expected: unknown) {
@@ -305,6 +311,234 @@ check(
   'roublard niv 20 → rien',
   nextClassFeatureGain({ characterClass: 'Roublard', level: 20 }),
   null,
+);
+
+// --- Multiclassage : {{invocations}} au niveau D'OCCULTISTE (SRD) ---
+
+// SRD : « Un prérequis de niveau pour une manifestation réfère au niveau
+// d'occultiste » — le gabarit {{invocations}} suit la ligne de classe, pas le
+// niveau total (Occ5/Gue10 = 3 manifestations, pas 5).
+const mcOccGue = mkChar({
+  characterClass: 'Occultiste',
+  level: 15,
+  classes: [
+    { classKey: 'Occultiste', level: 5, subclassKey: null, hitDiceUsed: 0, fightingStyle: null },
+    { classKey: 'Guerrier', level: 10, subclassKey: null, hitDiceUsed: 0, fightingStyle: null },
+  ],
+});
+check(
+  '{{invocations}} multiclassé Occ5/Gue10 = 3 (niveau de CLASSE)',
+  renderFeatureTemplate('{{invocations}}', mcOccGue),
+  '3',
+);
+// Mono-classe : comportement inchangé (niveau total = niveau de classe).
+check(
+  '{{invocations}} mono-classe Occultiste 9 = 5',
+  renderFeatureTemplate('{{invocations}}', mkChar({ characterClass: 'Occultiste', level: 9 })),
+  '5',
+);
+check(
+  'manifestations Occ5/Gue10 : eldritchInvocationsCount au niveau de classe',
+  eldritchInvocationsCount(5),
+  3,
+);
+
+// --- Manifestations occultes : catalogue WARLOCK_INVOCATIONS (PHB 2014) ---
+
+const SPELLS_SEED: Array<{ srdIndex: string }> = JSON.parse(
+  readFileSync(resolve('data/spells-seed.json'), 'utf8'),
+);
+const spellSlugs = new Set(SPELLS_SEED.map((s) => s.srdIndex));
+check('manifestations : 32 entrées PHB 2014', WARLOCK_INVOCATIONS.length, 32);
+check(
+  'manifestations : ids uniques',
+  new Set(WARLOCK_INVOCATIONS.map((i) => i.id)).size,
+  WARLOCK_INVOCATIONS.length,
+);
+check(
+  'manifestations : ids préfixés occultiste-invo-',
+  WARLOCK_INVOCATIONS.every((i) => i.id.startsWith('occultiste-invo-')),
+  true,
+);
+check(
+  'manifestations : prereqLevel >= 2 quand défini',
+  WARLOCK_INVOCATIONS.every((i) => i.prereqLevel === undefined || i.prereqLevel >= 2),
+  true,
+);
+// Chaque sort référencé par un effet existe dans le catalogue spells
+const refSpells = WARLOCK_INVOCATIONS.flatMap((i) =>
+  i.effect?.kind === 'at-will'
+    ? i.effect.spells
+    : i.effect?.kind === 'free-cast'
+      ? [i.effect.spell]
+      : [],
+);
+check(
+  'manifestations : sorts référencés présents dans spells-seed',
+  refSpells.filter((s) => !spellSlugs.has(s)),
+  [],
+);
+// free-cast ⇒ compteur 1/repos long ; compteur ⇒ free-cast
+check(
+  'manifestations : free-cast ⇒ compteur 1/RL',
+  WARLOCK_INVOCATIONS.filter(
+    (i) =>
+      i.effect?.kind === 'free-cast' &&
+      !(i.resource && i.resource.max() === 1 && i.resource.reset === 'long'),
+  ).map((i) => i.id),
+  [],
+);
+// Prérequis vérifiés AideDD (échantillon clé des paliers) :
+check(
+  'Buveuse de vie : niv 12 + Lame',
+  [
+    WARLOCK_INVOCATIONS.find((i) => i.id === 'occultiste-invo-buveuse-de-vie')?.prereqLevel,
+    WARLOCK_INVOCATIONS.find((i) => i.id === 'occultiste-invo-buveuse-de-vie')?.prereqPact,
+  ],
+  [12, 'lame'],
+);
+check(
+  'Lame assoiffée : niv 5 + Lame',
+  [
+    WARLOCK_INVOCATIONS.find((i) => i.id === 'occultiste-invo-lame-assoiffee')?.prereqLevel,
+    WARLOCK_INVOCATIONS.find((i) => i.id === 'occultiste-invo-lame-assoiffee')?.prereqPact,
+  ],
+  [5, 'lame'],
+);
+check(
+  'Chaînes des Carcères : niv 15 + Chaîne',
+  [
+    WARLOCK_INVOCATIONS.find((i) => i.id === 'occultiste-invo-chaines-des-carceres')?.prereqLevel,
+    WARLOCK_INVOCATIONS.find((i) => i.id === 'occultiste-invo-chaines-des-carceres')?.prereqPact,
+  ],
+  [15, 'chaine'],
+);
+check(
+  'Livre des secrets anciens : Grimoire (pas de palier)',
+  [
+    WARLOCK_INVOCATIONS.find((i) => i.id === 'occultiste-invo-livre-des-secrets-anciens')
+      ?.prereqLevel ?? null,
+    WARLOCK_INVOCATIONS.find((i) => i.id === 'occultiste-invo-livre-des-secrets-anciens')
+      ?.prereqPact ?? null,
+  ],
+  [null, 'grimoire'],
+);
+// findWarlockInvocation
+check(
+  'findWarlockInvocation retrouve Décharge déchirante',
+  findWarlockInvocation('occultiste-invo-decharge-dechirante')?.name,
+  'Décharge déchirante',
+);
+check('findWarlockInvocation : id inconnu → null', findWarlockInvocation('inconnu'), null);
+
+// --- B1 : invocationIdsOf (ids de manifestations connues depuis les features) ---
+
+const feat = (
+  id: number,
+  catalogId: string | null,
+): Parameters<typeof invocationIdsOf>[0][number] => ({
+  catalogId,
+});
+check(
+  'invocationIdsOf : ne garde que les catalog_id de manifestations',
+  invocationIdsOf([
+    feat(1, 'occultiste-invo-decharge-dechirante'),
+    feat(2, null),
+    feat(3, 'guerrier-second-souffle'),
+    feat(4, 'occultiste-invo-lance-occulte'),
+    { catalogId: undefined },
+  ] as any),
+  ['occultiste-invo-decharge-dechirante', 'occultiste-invo-lance-occulte'],
+);
+check(
+  'invocationIdsOf : id inconnu de catalogue → ignoré (les traits libres ne comptent pas)',
+  invocationIdsOf([
+    feat(5, 'occultiste-invo-tres-inconnu'),
+    feat(6, 'occultiste-invo-mille-visages'),
+  ]),
+  ['occultiste-invo-mille-visages'],
+);
+check('invocationIdsOf : liste vide → []', invocationIdsOf([]), []);
+check(
+  'invocationIdsOf : une ligne sans catalogId (trait libre) ne casse rien',
+  invocationIdsOf([{ catalogId: null }, { catalogId: 'occultiste-invo-vision-occulte' }] as any),
+  ['occultiste-invo-vision-occulte'],
+);
+
+// --- B2 : Décharge déchirante (+CHA) & rayons de Décharge occulte ---
+
+check(
+  'agonizingBlastBonus : 0 sans la manifestation (CHA 16)',
+  agonizingBlastBonus(mkChar({ characterClass: 'Occultiste', level: 5, charisma: 16 }), []),
+  0,
+);
+check(
+  'agonizingBlastBonus : +3 avec la manifestation (CHA 16)',
+  agonizingBlastBonus(mkChar({ characterClass: 'Occultiste', level: 5, charisma: 16 }), [
+    'occultiste-invo-decharge-dechirante',
+  ]),
+  3,
+);
+check(
+  'agonizingBlastBonus : mod brut, pas de clamp (CHA 6 → −2)',
+  agonizingBlastBonus(mkChar({ characterClass: 'Occultiste', level: 5, charisma: 6 }), [
+    'occultiste-invo-decharge-dechirante',
+  ]),
+  -2,
+);
+check(
+  'agonizingBlastBonus : une AUTRE manifestation ne compte pas',
+  agonizingBlastBonus(mkChar({ characterClass: 'Occultiste', level: 5, charisma: 16 }), [
+    'occultiste-invo-lance-occulte',
+  ]),
+  0,
+);
+check(
+  'eldritchBlastRays : 1/2/3/4 aux paliers 1/5/11/17 (niveau de CLASSE)',
+  [1, 4, 5, 10, 11, 16, 17, 20].map(eldritchBlastRays),
+  [1, 1, 2, 2, 3, 3, 4, 4],
+);
+
+// findClassFeature étendu aux manifestations (compteurs free-cast via POST + repos)
+const voleurDef = findClassFeature('occultiste-invo-voleur-des-cinq-destinees');
+check(
+  'findClassFeature retrouve une manifestation free-cast avec compteur',
+  [
+    voleurDef?.name,
+    voleurDef?.resource
+      ? voleurDef.resource.max(5, { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 })
+      : null,
+    voleurDef?.resource?.reset,
+  ],
+  ['Voleur des cinq destinées', 1, 'long'],
+);
+check(
+  'findClassFeature : manifestation sans compteur → resource absent',
+  findClassFeature('occultiste-invo-armure-d-ombres')?.resource ?? null,
+  null,
+);
+check(
+  'findClassFeature : manifestation sans prereqLevel → niveau 2',
+  findClassFeature('occultiste-invo-mille-visages')?.level,
+  2,
+);
+// Faveurs de pacte mutex dans CLASS_FEATURES
+const pactIds = [
+  'occultiste-faveur-lame',
+  'occultiste-faveur-chaine',
+  'occultiste-faveur-grimoire',
+];
+check(
+  'faveurs de pacte mutex : 3 traits niveau 3 dans CLASS_FEATURES.Occultiste',
+  CLASS_FEATURES.Occultiste.filter((f) => pactIds.includes(f.id))
+    .map((f) => f.id)
+    .sort(),
+  [...pactIds].sort(),
+);
+check(
+  'faveurs de pacte mutex : niveau 3 chacune',
+  CLASS_FEATURES.Occultiste.filter((f) => pactIds.includes(f.id)).every((f) => f.level === 3),
+  true,
 );
 
 // --- applyRest ---

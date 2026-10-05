@@ -544,6 +544,7 @@ export function mapCharacterSpell(row: any, lang: AppLang = 'fr'): CharacterSpel
     spell: mapSpell(spellRow, lang, true),
     prepared: !!row.prepared,
     classSource: row.class_source ?? null,
+    source: row.source ?? null,
     sortOrder: row.sort_order ?? 0,
     addedAt: row.added_at,
   };

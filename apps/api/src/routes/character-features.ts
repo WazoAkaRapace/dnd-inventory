@@ -18,7 +18,7 @@ import type {
   ReorderPayload,
 } from '@table-sync/shared';
 import { classFeatureResourceMax, findClassFeature } from '@table-sync/shared/classFeatures';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDrizzle } from '../db/drizzle.ts';
 import { getDb } from '../db/index.ts';
@@ -35,6 +35,13 @@ import {
   requireUser,
 } from './helpers.ts';
 import { apiMsg } from './messages.ts';
+
+/** Traits « Faveur de pacte » MUTEX (Occultiste niveau 3) : poser l'une retire les autres. */
+const PACT_BOON_IDS = new Set([
+  'occultiste-faveur-lame',
+  'occultiste-faveur-chaine',
+  'occultiste-faveur-grimoire',
+]);
 
 /**
  * Fetch the (feature, character) pair for a character_features row.
@@ -156,21 +163,43 @@ export async function characterFeatureRoutes(app: FastifyInstance) {
       ).max_sort;
       const sortOrder = maxSort + 1;
 
-      const { id } = drizzle
-        .insert(characterFeatures)
-        .values({
-          characterId: char.id,
-          title: body.title.trim(),
-          category,
-          description,
-          catalogId,
-          resetType,
-          counterMax,
-          counterCurrent,
-          sortOrder,
-        })
-        .returning({ id: characterFeatures.id })
-        .get();
+      // NB : getDb().transaction(fn) RETOURNE la fonction transaction — il faut
+      // l'invoquer (pattern `})();`, cf. inventory.ts / auth.ts).
+      const inserted = getDb().transaction(() => {
+        // MUTEX Faveur de pacte (Occultiste niveau 3) : poser l'une des trois
+        // retire les deux autres — un occultiste n'a qu'une seule faveur (SRD).
+        if (catalogId && PACT_BOON_IDS.has(catalogId)) {
+          drizzle
+            .delete(characterFeatures)
+            .where(
+              and(
+                eq(characterFeatures.characterId, char.id),
+                inArray(
+                  characterFeatures.catalogId,
+                  [...PACT_BOON_IDS].filter((i) => i !== catalogId),
+                ),
+              ),
+            )
+            .run();
+        }
+
+        return drizzle
+          .insert(characterFeatures)
+          .values({
+            characterId: char.id,
+            title: body.title.trim(),
+            category,
+            description,
+            catalogId,
+            resetType,
+            counterMax,
+            counterCurrent,
+            sortOrder,
+          })
+          .returning({ id: characterFeatures.id })
+          .get();
+      })();
+      const id = inserted.id;
 
       const row = drizzle
         .select(cols(characterFeatures))
