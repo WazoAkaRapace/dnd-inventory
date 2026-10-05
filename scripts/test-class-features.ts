@@ -23,6 +23,9 @@ import {
   nextClassFeatureGain,
 } from '@table-sync/shared/classFeatures';
 import { applyRest } from '@table-sync/shared/rests';
+import { findWarlockInvocation, WARLOCK_INVOCATIONS } from '@table-sync/shared/warlockInvocations';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 let failures = 0;
 function check(label: string, actual: unknown, expected: unknown) {
@@ -335,6 +338,112 @@ check(
   'manifestations Occ5/Gue10 : eldritchInvocationsCount au niveau de classe',
   eldritchInvocationsCount(5),
   3,
+);
+
+// --- Manifestations occultes : catalogue WARLOCK_INVOCATIONS (PHB 2014) ---
+
+const SPELLS_SEED: Array<{ srdIndex: string }> = JSON.parse(
+  readFileSync(resolve('data/spells-seed.json'), 'utf8'),
+);
+const spellSlugs = new Set(SPELLS_SEED.map((s) => s.srdIndex));
+check('manifestations : 32 entrées PHB 2014', WARLOCK_INVOCATIONS.length, 32);
+check(
+  'manifestations : ids uniques',
+  new Set(WARLOCK_INVOCATIONS.map((i) => i.id)).size,
+  WARLOCK_INVOCATIONS.length,
+);
+check(
+  'manifestations : ids préfixés occultiste-invo-',
+  WARLOCK_INVOCATIONS.every((i) => i.id.startsWith('occultiste-invo-')),
+  true,
+);
+check(
+  'manifestations : prereqLevel >= 2 quand défini',
+  WARLOCK_INVOCATIONS.every((i) => i.prereqLevel === undefined || i.prereqLevel >= 2),
+  true,
+);
+// Chaque sort référencé par un effet existe dans le catalogue spells
+const refSpells = WARLOCK_INVOCATIONS.flatMap((i) =>
+  i.effect?.kind === 'at-will'
+    ? i.effect.spells
+    : i.effect?.kind === 'free-cast'
+      ? [i.effect.spell]
+      : [],
+);
+check(
+  'manifestations : sorts référencés présents dans spells-seed',
+  refSpells.filter((s) => !spellSlugs.has(s)),
+  [],
+);
+// free-cast ⇒ compteur 1/repos long ; compteur ⇒ free-cast
+check(
+  'manifestations : free-cast ⇒ compteur 1/RL',
+  WARLOCK_INVOCATIONS.filter(
+    (i) =>
+      i.effect?.kind === 'free-cast' &&
+      !(i.resource && i.resource.max() === 1 && i.resource.reset === 'long'),
+  ).map((i) => i.id),
+  [],
+);
+// Prérequis vérifiés AideDD (échantillon clé des paliers) :
+check(
+  'Buveuse de vie : niv 12 + Lame',
+  [
+    WARLOCK_INVOCATIONS.find((i) => i.id === 'occultiste-invo-buveuse-de-vie')?.prereqLevel,
+    WARLOCK_INVOCATIONS.find((i) => i.id === 'occultiste-invo-buveuse-de-vie')?.prereqPact,
+  ],
+  [12, 'lame'],
+);
+check(
+  'Lame assoiffée : niv 5 + Lame',
+  [
+    WARLOCK_INVOCATIONS.find((i) => i.id === 'occultiste-invo-lame-assoiffee')?.prereqLevel,
+    WARLOCK_INVOCATIONS.find((i) => i.id === 'occultiste-invo-lame-assoiffee')?.prereqPact,
+  ],
+  [5, 'lame'],
+);
+check(
+  'Chaînes des Carcères : niv 15 + Chaîne',
+  [
+    WARLOCK_INVOCATIONS.find((i) => i.id === 'occultiste-invo-chaines-des-carceres')?.prereqLevel,
+    WARLOCK_INVOCATIONS.find((i) => i.id === 'occultiste-invo-chaines-des-carceres')?.prereqPact,
+  ],
+  [15, 'chaine'],
+);
+check(
+  'Livre des secrets anciens : Grimoire (pas de palier)',
+  [
+    WARLOCK_INVOCATIONS.find((i) => i.id === 'occultiste-invo-livre-des-secrets-anciens')
+      ?.prereqLevel ?? null,
+    WARLOCK_INVOCATIONS.find((i) => i.id === 'occultiste-invo-livre-des-secrets-anciens')
+      ?.prereqPact ?? null,
+  ],
+  [null, 'grimoire'],
+);
+// findWarlockInvocation
+check(
+  'findWarlockInvocation retrouve Décharge déchirante',
+  findWarlockInvocation('occultiste-invo-decharge-dechirante')?.name,
+  'Décharge déchirante',
+);
+check('findWarlockInvocation : id inconnu → null', findWarlockInvocation('inconnu'), null);
+// Faveurs de pacte mutex dans CLASS_FEATURES
+const pactIds = [
+  'occultiste-faveur-lame',
+  'occultiste-faveur-chaine',
+  'occultiste-faveur-grimoire',
+];
+check(
+  'faveurs de pacte mutex : 3 traits niveau 3 dans CLASS_FEATURES.Occultiste',
+  CLASS_FEATURES.Occultiste.filter((f) => pactIds.includes(f.id))
+    .map((f) => f.id)
+    .sort(),
+  [...pactIds].sort(),
+);
+check(
+  'faveurs de pacte mutex : niveau 3 chacune',
+  CLASS_FEATURES.Occultiste.filter((f) => pactIds.includes(f.id)).every((f) => f.level === 3),
+  true,
 );
 
 // --- applyRest ---
