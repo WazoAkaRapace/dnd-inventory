@@ -7,13 +7,20 @@ import {
   type Character,
   type CharacterFeature,
   classesOf,
+  classLevelOf,
   DND_CLASSES,
+  eldritchInvocationsCount,
   FEATURE_CATEGORY_LABELS_FR,
   type FeatureCategory,
   findClass,
   renderFeatureTemplate,
   TEMPLATE_VARIABLES,
 } from '@table-sync/shared';
+import {
+  type PactBoon,
+  WARLOCK_INVOCATIONS,
+  type WarlockInvocation,
+} from '@table-sync/shared/warlockInvocations';
 import {
   CLASS_FEATURES,
   CLASS_SUBCLASSES,
@@ -63,14 +70,21 @@ const TEMPLATE_VAR_KEYS: Record<string, string> = {
 // dynamiquement UNIQUEMENT quand l'interface est en anglais — la fiche est
 // française par offre, les joueurs FR ne paient pas le catalogue EN sur le
 // fil. Le temps du chargement, l'affiche retombe sur le texte FR stocké.
+// Les manifestations occultes (~10 KB) suivent le même régime.
 let EN_FEATURES: Record<string, { name: string; description: string }> | null = null;
 function useEnFeatureNames(): void {
   const [, force] = useState(0);
   useEffect(() => {
     if (appLang() !== 'en' || EN_FEATURES) return;
     let alive = true;
-    import('@table-sync/shared/classFeatures.en').then((m) => {
-      EN_FEATURES = m.CLASS_FEATURES_EN;
+    Promise.all([
+      import('@table-sync/shared/classFeatures.en'),
+      import('@table-sync/shared/warlockInvocations.en'),
+    ]).then(([features, invocations]) => {
+      EN_FEATURES = {
+        ...features.CLASS_FEATURES_EN,
+        ...invocations.WARLOCK_INVOCATIONS_EN,
+      };
       if (alive) force((n) => n + 1);
     });
     return () => {
@@ -332,6 +346,25 @@ export default function CharacterFeaturesTab({
     }
   };
 
+  // Manifestation occulte : même POST, catalog_id = id de manifestation — le
+  // compteur free-cast éventuel se dérive côté API (findClassFeature connaît
+  // WARLOCK_INVOCATIONS).
+  const addInvocation = async (inv: WarlockInvocation) => {
+    try {
+      ownEcho.stamp();
+      await api.post(`/api/characters/${charId}/features`, {
+        title: inv.name,
+        category: 'class',
+        description: inv.description,
+        catalogId: inv.id,
+      });
+      await load();
+      await onSaved();
+    } catch {
+      onError(t('traits.erreur.d.ajout.depuis.le.catalogue'));
+    }
+  };
+
   // Group features by category
   const categories = Object.keys(FEATURE_CATEGORY_LABELS_FR) as FeatureCategory[];
   const grouped = categories
@@ -360,7 +393,12 @@ export default function CharacterFeaturesTab({
       </div>
 
       {/* Catalogue SRD par classe/niveau — ajout en 1 clic avec compteur pré-rempli */}
-      <CatalogCard character={character} addedCatalogIds={addedCatalogIds} onAdd={addFromCatalog} />
+      <CatalogCard
+        character={character}
+        addedCatalogIds={addedCatalogIds}
+        onAdd={addFromCatalog}
+        onAddInvocation={addInvocation}
+      />
 
       {features.length === 0 ? (
         <div className="card p-8">
@@ -728,10 +766,12 @@ function CatalogCard({
   character,
   addedCatalogIds,
   onAdd,
+  onAddInvocation,
 }: {
   character: Character;
   addedCatalogIds: Set<string>;
   onAdd: (def: ClassFeatureDef) => Promise<void>;
+  onAddInvocation: (inv: WarlockInvocation) => Promise<void>;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -767,6 +807,29 @@ function CatalogCard({
     setAddingId(def.id);
     try {
       await onAdd(def);
+    } finally {
+      setAddingId(null);
+    }
+  };
+
+  // ---------- Manifestations occultes (sous-section Occultiste) ----------
+  // Visible dès que le personnage EST occultiste (pas seulement quand le
+  // catalogue affiche la classe). Compteur borné au niveau d'occultiste,
+  // prérequis de niveau/pacte grisés avec la raison — orange règle, or magie.
+  const warlockLevel = classLevelOf(character, 'Occultiste');
+  const isWarlock = warlockLevel > 0;
+  const invocationMax = isWarlock ? eldritchInvocationsCount(warlockLevel) : 0;
+  const knownInvocationIds = new Set(
+    WARLOCK_INVOCATIONS.map((i) => i.id).filter((id) => addedCatalogIds.has(id)),
+  );
+  const invocationKnown = knownInvocationIds.size;
+  // Faveur de pacte posée (prérequis pacte des manifestations) — les traits
+  // mutex occultiste-faveur-* existants servent de vérité.
+  const hasBoon = (boon: PactBoon) => addedCatalogIds.has(`occultiste-faveur-${boon}`);
+  const addInvocationRow = async (inv: WarlockInvocation) => {
+    setAddingId(inv.id);
+    try {
+      await onAddInvocation(inv);
     } finally {
       setAddingId(null);
     }
@@ -927,6 +990,145 @@ function CatalogCard({
               );
             })}
           </div>
+
+          {/* — Sous-section Manifestations occultes (uniquement Occultiste) — */}
+          {isWarlock && (
+            <div className="rounded-lg border border-gold-300 overflow-hidden mt-3">
+              <div className="flex items-center justify-between gap-2 bg-gold-50 px-3 py-2">
+                <h4 className="text-sm font-semibold text-ink-800">
+                  {t('traits.manifestations.occultes')}
+                </h4>
+                <span
+                  className="text-xs font-bold tabular-nums text-gold-700"
+                  data-tuto="manifestations-compteur"
+                >
+                  {t('traits.manifestations.compteur', {
+                    known: invocationKnown,
+                    max: invocationMax,
+                  })}
+                </span>
+              </div>
+              {invocationKnown >= invocationMax && (
+                <p className="px-3 py-2 text-xs text-orange-700 bg-orange-50 border-t border-orange-200">
+                  {t('traits.manifestations.plafond')}
+                </p>
+              )}
+              <div className="divide-y divide-parchment-100">
+                {[...WARLOCK_INVOCATIONS]
+                  .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+                  .map((inv) => {
+                    const added = knownInvocationIds.has(inv.id);
+                    const levelLocked =
+                      inv.prereqLevel !== undefined && warlockLevel < inv.prereqLevel;
+                    const pactLocked = inv.prereqPact !== undefined && !hasBoon(inv.prereqPact);
+                    const locked = !added && (levelLocked || pactLocked);
+                    const atCap = !added && !locked && invocationKnown >= invocationMax;
+                    return (
+                      <div key={inv.id} className="bg-parchment-50/60">
+                        <div className="flex items-center gap-2 px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => setExpandedId(expandedId === inv.id ? null : inv.id)}
+                            className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                            aria-expanded={expandedId === inv.id}
+                          >
+                            <span className="text-sm font-medium text-ink-800 truncate">
+                              {defName(inv)}
+                            </span>
+                            {levelLocked && (
+                              <span
+                                className="text-[10px] text-orange-700 shrink-0 font-medium"
+                                title={t('traits.manifestations.raison.niveau', {
+                                  level: inv.prereqLevel,
+                                })}
+                              >
+                                {t('traits.manifestations.raison.niveau', {
+                                  level: inv.prereqLevel,
+                                })}
+                              </span>
+                            )}
+                            {pactLocked && (
+                              <span
+                                className="text-[10px] text-orange-700 shrink-0 font-medium"
+                                title={t('traits.manifestations.raison.pacte', {
+                                  pact: t(`traits.manifestations.pacte.${inv.prereqPact}`),
+                                })}
+                              >
+                                {t('traits.manifestations.raison.pacte', {
+                                  pact: t(`traits.manifestations.pacte.${inv.prereqPact}`),
+                                })}
+                              </span>
+                            )}
+                          </button>
+                          {added ? (
+                            <span className="text-xs text-green-700 font-semibold shrink-0">
+                              {t('traits.ajoute')}
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => addInvocationRow(inv)}
+                              disabled={locked || atCap || addingId === inv.id}
+                              className={`text-xs px-3 min-h-[44px] rounded-lg shrink-0 transition-colors ${
+                                locked || atCap
+                                  ? 'bg-parchment-200 text-ink-400 cursor-not-allowed'
+                                  : 'bg-gold-500 text-white hover:bg-gold-600 disabled:opacity-50'
+                              }`}
+                              title={
+                                locked
+                                  ? levelLocked
+                                    ? t('traits.manifestations.raison.niveau', {
+                                        level: inv.prereqLevel,
+                                      })
+                                    : t('traits.manifestations.raison.pacte', {
+                                        pact: t(`traits.manifestations.pacte.${inv.prereqPact}`),
+                                      })
+                                  : atCap
+                                    ? t('traits.manifestations.plafond')
+                                    : t('traits.manifestations.ajouter')
+                              }
+                              aria-label={
+                                locked
+                                  ? t('traits.manifestations.raison.full', {
+                                      name: defName(inv),
+                                      raison: levelLocked
+                                        ? t('traits.manifestations.raison.niveau', {
+                                            level: inv.prereqLevel,
+                                          })
+                                        : t('traits.manifestations.raison.pacte', {
+                                            pact: t(
+                                              `traits.manifestations.pacte.${inv.prereqPact}`,
+                                            ),
+                                          }),
+                                    })
+                                  : atCap
+                                    ? t('traits.manifestations.plafond')
+                                    : t('traits.manifestations.ajouter.name', {
+                                        name: defName(inv),
+                                      })
+                              }
+                            >
+                              {addingId === inv.id
+                                ? '…'
+                                : locked
+                                  ? '🔒'
+                                  : atCap
+                                    ? '＋'
+                                    : t('traits.ajouter')}
+                            </button>
+                          )}
+                        </div>
+                        {expandedId === inv.id && (
+                          <p className="text-xs text-ink-600 px-3 pb-2.5 leading-relaxed whitespace-pre-line">
+                            {renderFeatureTemplate(defDesc(inv), character)}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
           <p className="text-[10px] text-ink-400">{t('traits.le.compteur.se.recharge.via.les')}</p>
         </div>
       )}
