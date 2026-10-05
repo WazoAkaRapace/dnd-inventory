@@ -518,6 +518,40 @@ export const characterFeatures = sqliteTable(
   (t) => [index('idx_character_features_char').on(t.characterId)],
 );
 
+// ---------- Effets de sort actifs sur la fiche (v1 : CA) ----------
+
+// Posé au lancement d'un sort à effet sur soi (Bouclier de la foi, Hâte,
+// Peau d'écorce, Armure de mage, Bouclier, Costume d'Outremonde). Une ligne
+// par effet POSÉ ; `active = 0` conserve l'historique (levée manuelle ou
+// rupture de concentration). v2 : target_character_id, expires_at, autres
+// stats que la CA.
+export const characterSpellEffects = sqliteTable(
+  'character_spell_effects',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    characterId: integer('character_id')
+      .notNull()
+      .references(() => characters.id, { onDelete: 'cascade' }),
+    spellId: integer('spell_id')
+      .notNull()
+      .references(() => spells.id, { onDelete: 'cascade' }),
+    /** 'ac_bonus' | 'ac_floor' | 'ac_set_formula' — extensible (v2 : saves, speed…). */
+    effectKind: text('effect_kind').notNull(),
+    /** Pour ac_bonus : ±N ; ac_floor : 16 ; ac_set_formula : 13 (base, +DEX au calcul). */
+    acValue: integer('ac_value').notNull(),
+    /** Concentration-dépendant ? (levée auto quand la concentration tombe) */
+    tiedToConcentration: integer('tied_to_concentration').notNull().default(1),
+    active: integer('active').notNull().default(1),
+    createdAt: text('created_at')
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (t) => [
+    index('idx_spell_effects_character').on(t.characterId),
+    index('idx_spell_effects_active').on(t.characterId, t.active),
+  ],
+);
+
 // ---------- Character notes (free-form with simple formatting) ----------
 
 export const characterNotes = sqliteTable(
