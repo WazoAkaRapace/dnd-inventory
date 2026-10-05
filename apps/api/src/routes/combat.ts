@@ -47,6 +47,7 @@ import {
 } from '../db/schema.ts';
 import { type PushPayload, type PushSendOptions, sendPushToUser } from '../push/send.ts';
 import { bus } from '../sync/bus.ts';
+import { activeAcEffectsOf, deactivateConcentrationEffects } from './character-spell-effects.ts';
 import {
   getUserId,
   isPartyGM,
@@ -755,6 +756,11 @@ export async function combatRoutes(app: FastifyInstance) {
               wisdom: char.wisdom,
               characterClass: char.character_class,
             },
+            'fr',
+            // Effets de sort actifs : le combatant créé APRÈS un cast porte
+            // la bonne CA (v1 : un combatant déjà en initiative suit au
+            // prochain miroir HP — documenté, pas de réplication par événement).
+            activeAcEffectsOf(char.id),
           );
           const ac = char.armor_class_override ?? acResult.ac;
 
@@ -1019,11 +1025,16 @@ export async function combatRoutes(app: FastifyInstance) {
             };
           } else if (realHp <= 0) {
             // Unconscious → concentration ends automatically on the sheet too.
-            drizzle
-              .update(charactersTable)
-              .set({ concentrating: 0 })
-              .where(eq(charactersTable.id, ch.id))
-              .run();
+            // Les lignes d'effet liées tombent DANS la même écriture — un
+            // effet fantôme ne doit pas survivre à la rupture.
+            getDb().transaction(() => {
+              drizzle
+                .update(charactersTable)
+                .set({ concentrating: 0 })
+                .where(eq(charactersTable.id, ch.id))
+                .run();
+              deactivateConcentrationEffects(ch.id);
+            })();
             bus.emitChange({
               type: 'character:change',
               partyId: enc.party_id,
@@ -1171,11 +1182,16 @@ export async function combatRoutes(app: FastifyInstance) {
             .where(eq(charactersTable.id, combatant.character_id))
             .get() as any;
           if (ch?.concentrating) {
-            drizzle
-              .update(charactersTable)
-              .set({ concentrating: 0 })
-              .where(eq(charactersTable.id, ch.id))
-              .run();
+            // Condition brisante → concentration rompue : les lignes d'effet
+            // liées tombent dans la même écriture (pas d'effet fantôme).
+            getDb().transaction(() => {
+              drizzle
+                .update(charactersTable)
+                .set({ concentrating: 0 })
+                .where(eq(charactersTable.id, ch.id))
+                .run();
+              deactivateConcentrationEffects(ch.id);
+            })();
             bus.emitChange({
               type: 'character:change',
               partyId: enc.party_id,

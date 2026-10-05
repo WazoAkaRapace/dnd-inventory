@@ -35,6 +35,7 @@ import { run as multiclass } from './api-tests/mod-multiclass.ts';
 import { run as npcsMonsters } from './api-tests/mod-npcs-monsters.ts';
 import { run as push } from './api-tests/mod-push.ts';
 import { run as spells } from './api-tests/mod-spells.ts';
+import { run as spellEffects } from './api-tests/mod-spell-effects.ts';
 import { run as syncStress } from './api-tests/mod-sync-stress.ts';
 import { run as syncWs } from './api-tests/mod-sync-ws.ts';
 import { run as wildshapeRest } from './api-tests/mod-wildshape-rest.ts';
@@ -52,6 +53,7 @@ const MODULES: Array<{
   { name: 'item annotations', run: itemAnnotations },
   { name: 'gm assistant', run: gma },
   { name: 'spells', run: spells },
+  { name: 'effets de sort (CA)', run: spellEffects },
   { name: 'features + notes', run: featuresNotes },
   { name: 'npcs + monsters', run: npcsMonsters },
   { name: 'carnet du MD', run: campaign },

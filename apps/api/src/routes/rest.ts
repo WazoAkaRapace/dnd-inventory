@@ -22,6 +22,7 @@ import {
   characterClasses,
   characterFeatures,
   characters,
+  characterSpellEffects,
   combatants,
   encounters,
 } from '../db/schema.ts';
@@ -170,6 +171,21 @@ export async function restRoutes(app: FastifyInstance) {
       }
       if (Object.keys(values).length > 0) {
         drizzle.update(characters).set(values).where(eq(characters.id, char.id)).run();
+        // Repos long : la concentration tombe — les lignes d'effet liées
+        // tombent avec (même écriture, pas d'effet fantôme au réveil).
+        if (values.concentrating === 0) {
+          drizzle
+            .update(characterSpellEffects)
+            .set({ active: 0 })
+            .where(
+              and(
+                eq(characterSpellEffects.characterId, char.id),
+                eq(characterSpellEffects.tiedToConcentration, 1),
+                eq(characterSpellEffects.active, 1),
+              ),
+            )
+            .run();
+        }
       }
 
       // --- Multiclassage : dés de vie par ligne de classe (pool par type de dé)

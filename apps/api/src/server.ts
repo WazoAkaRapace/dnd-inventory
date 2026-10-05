@@ -23,6 +23,7 @@ import { campaignRoutes } from './routes/campaign.ts';
 import { characterFeatureRoutes } from './routes/character-features.ts';
 import { characterMessageRoutes } from './routes/character-messages.ts';
 import { characterNoteRoutes } from './routes/character-notes.ts';
+import { characterSpellEffectRoutes } from './routes/character-spell-effects.ts';
 import { characterSpellRoutes } from './routes/character-spells.ts';
 import { characterRoutes } from './routes/characters.ts';
 import { combatRoutes } from './routes/combat.ts';
@@ -153,6 +154,7 @@ async function buildServer() {
   await app.register(npcRoutes, { prefix: '/api' });
   await app.register(spellRoutes, { prefix: '/api' });
   await app.register(characterSpellRoutes, { prefix: '/api' });
+  await app.register(characterSpellEffectRoutes, { prefix: '/api' });
   await app.register(characterFeatureRoutes, { prefix: '/api' });
   await app.register(characterNoteRoutes, { prefix: '/api' });
   await app.register(characterMessageRoutes, { prefix: '/api' });
