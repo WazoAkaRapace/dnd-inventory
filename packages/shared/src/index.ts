@@ -2167,6 +2167,7 @@ export function computeAC(
     unarmoredDefense?: 'barbare' | 'moine' | 'draconique' | null;
   },
   lang: AppLang = 'fr',
+  acEffects?: ActiveAcEffect[],
 ): ArmorClassResult {
   // Find equipped armor (non-shield) and shield
   let armor: {
@@ -2334,7 +2335,59 @@ export function computeAC(
     source += pickLang(lang, ' · Défense +1', ' · Defense +1');
   }
 
+  // Effets de sort actifs (v1) : appliqués en DERNIER, sur le résultat
+  // final (armure + bouclier + style) comme sur le « 10 + DEX » nu —
+  // l'ordre d'application interne (bonus, plancher, set) est géré par
+  // applyAcEffects. Param optionnel : les appelants existants (web,
+  // API sans effets) gardent le comportement d'avant octet pour octet.
+  if (acEffects && acEffects.length > 0) {
+    ac = applyAcEffects(ac, acEffects, dexMod);
+  }
+
   return { ac, source, hasShield };
+}
+
+// ---------- Effets de sort sur la CA (v1) ----------
+
+/**
+ * Les 6 sorts v1 posant un état d'effet CA au lancement (auto-sur-soi).
+ * Clés = `srdIndex` du spells-seed.json (vérifiées 2026-10-05 — OCR quirks
+ * documentés : ne pas inventer de slug). Hors v1 : Lien de protection,
+ * Cérémonie, Lenteur (cible tierce / durées).
+ */
+export const SPELL_AC_EFFECTS: Record<
+  string,
+  { kind: 'ac_bonus' | 'ac_floor' | 'ac_set_formula'; value: number; tiedToConcentration: boolean }
+> = {
+  'shield-of-faith': { kind: 'ac_bonus', value: 2, tiedToConcentration: true },
+  barkskin: { kind: 'ac_floor', value: 16, tiedToConcentration: true },
+  haste: { kind: 'ac_bonus', value: 2, tiedToConcentration: true },
+  'tasha-s-otherworldly-guise': { kind: 'ac_bonus', value: 2, tiedToConcentration: true },
+  'mage-armor': { kind: 'ac_set_formula', value: 13, tiedToConcentration: false },
+  shield: { kind: 'ac_bonus', value: 5, tiedToConcentration: false },
+};
+
+/** Effet CA actif — ligne de character_spell_effects réduite au moteur. */
+export interface ActiveAcEffect {
+  effectKind: string;
+  acValue: number;
+}
+
+/**
+ * Applique les effets CA actifs à une CA déjà calculée. Pure.
+ *  - ac_bonus : ±N (cumule : foi + hâte = +4)
+ *  - ac_floor : la CA ne descend pas sous N (Peau d'écorce ≥ 16)
+ *  - ac_set_formula : la CA vaut au moins N + DEX (Armure de mage 13+DEX —
+ *    ne remplace JAMAIS une CA supérieure)
+ */
+export function applyAcEffects(baseAc: number, effects: ActiveAcEffect[], dexMod: number): number {
+  let ac = baseAc;
+  for (const e of effects) {
+    if (e.effectKind === 'ac_bonus') ac += e.acValue;
+    else if (e.effectKind === 'ac_floor') ac = Math.max(ac, e.acValue);
+    else if (e.effectKind === 'ac_set_formula') ac = Math.max(ac, e.acValue + dexMod);
+  }
+  return ac;
 }
 
 // ---------- Fighting styles (SRD) ----------

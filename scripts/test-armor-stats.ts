@@ -2,7 +2,14 @@
  * Sanity checks for resolveMagicArmorBase / computeAC magic-armor handling.
  * Run: npm run test-armor-stats
  */
-import { computeAC, computeSpeed, type Item, resolveMagicArmorBase } from '@table-sync/shared';
+import {
+  applyAcEffects,
+  computeAC,
+  computeSpeed,
+  type Item,
+  resolveMagicArmorBase,
+  SPELL_AC_EFFECTS,
+} from '@table-sync/shared';
 
 let failures = 0;
 function check(label: string, actual: unknown, expected: unknown) {
@@ -670,6 +677,85 @@ check(
     tier: 'heavilyEncumbered',
   }),
   { speed: 3, bonus: -6, sources: ['Heavily encumbered −6 m'] },
+);
+
+// --- Effets de sort sur la CA (v1) : applyAcEffects + param computeAC ---
+const fx = (spellId: string) => {
+  const def = SPELL_AC_EFFECTS[spellId];
+  if (!def) throw new Error(`SPELL_AC_EFFECTS missing ${spellId}`);
+  return { effectKind: def.kind, acValue: def.value };
+};
+// Garde de non-régression : computeAC SANS param = comportement d'avant.
+check('computeAC sans acEffects = comportement antérieur', computeAC([], 3), {
+  ac: 13,
+  source: 'Sans armure · 10 +3',
+  hasShield: false,
+});
+// Sans effet (tableau vide via le param) = identique au sans-param.
+check('computeAC avec acEffects vide = identique', computeAC([], 3, false, undefined, 'fr', []), {
+  ac: 13,
+  source: 'Sans armure · 10 +3',
+  hasShield: false,
+});
+// Bouclier de la foi + Hâte cumulés : +4 sur le 10+DEX nu.
+check(
+  'foi + hâte cumulés (+4) sur sans armure',
+  computeAC([], 3, false, undefined, 'fr', [fx('shield-of-faith'), fx('haste')]).ac,
+  17,
+);
+// Peau d'écorce plancher 16 : SOUS la base (12) → 16 ; SUR (18) → 18.
+check('plancher 16 sous la base (12 → 16)', applyAcEffects(12, [fx('barkskin')], 1), 16);
+check('plancher 16 sur la base (18 → 18)', applyAcEffects(18, [fx('barkskin')], 1), 18);
+check(
+  'plancher 16 via computeAC sur armure (13 → 16)',
+  computeAC(
+    [entry(mkArmor({ name: 'Leather', nameFr: 'Armure de cuir', acBase: 11, description: '' }))],
+    2,
+    false,
+    undefined,
+    'fr',
+    [fx('barkskin')],
+  ).ac,
+  16,
+);
+// Armure de mage set 13+DEX : vs base supérieure (16) la CA ne bouge pas ;
+// vs base inférieure (13 nu sans armure… non : 10+3=13 < 13+3=16) → 16.
+check(
+  'set 13+DEX vs base 16 supérieure → 16 (inchangé)',
+  applyAcEffects(16, [fx('mage-armor')], 3),
+  16,
+);
+check('set 13+DEX vs base 12 inférieure → 16', applyAcEffects(12, [fx('mage-armor')], 3), 16);
+check(
+  'set 13+DEX via computeAC sur 10+DEX (11 → 16)',
+  computeAC([], 3, false, undefined, 'fr', [fx('mage-armor')]).ac,
+  16,
+);
+// Bouclier (réaction) : +5.
+check(
+  'bouclier +5 sur harnois 18',
+  computeAC(
+    [entry(mkArmor({ name: 'Plate', nameFr: 'Harnois', acBase: 18, strMin: 15, description: '' }))],
+    0,
+    false,
+    undefined,
+    'fr',
+    [fx('shield')],
+  ).ac,
+  23,
+);
+// Bouclier + foi + bouclier physique : +5 +2 +2 = 9 sur 10+3.
+check(
+  'bouclier sort + foi + bouclier physique (13 → 22)',
+  computeAC(
+    [entry(mkArmor({ name: 'Shield', nameFr: 'Bouclier', acBase: 2, description: '' }))],
+    3,
+    false,
+    undefined,
+    'fr',
+    [fx('shield'), fx('shield-of-faith')],
+  ).ac,
+  22,
 );
 
 console.log(failures === 0 ? '\n✅ All armor stats checks pass' : `\n❌ ${failures} failure(s)`);
