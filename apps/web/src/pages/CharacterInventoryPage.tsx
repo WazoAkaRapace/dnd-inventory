@@ -798,6 +798,28 @@ export default function CharacterInventoryPage() {
   // whoever detects the transition: dock card, hub or desktop strip)
   useTurnSlash(!!hubCombat?.isMyTurn);
 
+  // CA effective SANS les effets de sort (override manuel inclus — il gagne) :
+  // base de l'annonce « CA X → Y » de la feuille d'incantation. Le bandeau
+  // recalcule AVEC les effets pour sa propre tuile (source localisée).
+  // DOIT rester au-dessus des gardes de rendu : un hook après un return
+  // conditionnel change le compte de hooks entre renders et crashe React
+  // (même leçon que #310 — la fiche passait de « chargement » à « chargée »
+  // et le useMemo apparaissait en cours de route).
+  const baseAcNoEffects = useMemo(
+    () =>
+      data?.character?.armorClassOverride ??
+      (data
+        ? computeAC(
+            data.entries,
+            abilityModifier(data.character.dexterity ?? 10),
+            fightingStylesOf(data.character).has('defense'),
+            data.character,
+            appLang(),
+          ).ac
+        : null),
+    [data],
+  );
+
   // Haptic cue the moment the initiative prompt appears
   const needsInitNow = !!hubCombat?.needsInitiative;
   const prevDockNeedsInit = useRef(false);
@@ -867,22 +889,6 @@ export default function CharacterInventoryPage() {
 
   // Only the sheet owner or the party GM can edit (the API enforces the same rule)
   const canEdit = data.character.ownerId === user?.id || isGM;
-
-  // CA effective SANS les effets de sort (override manuel inclus — il gagne) :
-  // base de l'annonce « CA X → Y » de la feuille d'incantation. Le bandeau
-  // recalcule AVEC les effets pour sa propre tuile (source localisée).
-  const baseAcNoEffects = useMemo(
-    () =>
-      character.armorClassOverride ??
-      computeAC(
-        data.entries,
-        abilityModifier(character.dexterity ?? 10),
-        fightingStylesOf(character).has('defense'),
-        character,
-        appLang(),
-      ).ac,
-    [data.entries, character],
-  );
 
   // Non-casters never open Sorts: Traits takes its dock slot, Sorts moves to the hub
   const isCasterClass =
@@ -1308,7 +1314,7 @@ export default function CharacterInventoryPage() {
             onSaved={refreshInventory}
             onError={(msg) => pushToast(msg, 'error')}
             onWarn={(msg) => pushToast(msg, 'warn')}
-            currentEffectiveAc={baseAcNoEffects}
+            currentEffectiveAc={baseAcNoEffects ?? undefined}
           />
         )}
         {activeTab === 'features' && (

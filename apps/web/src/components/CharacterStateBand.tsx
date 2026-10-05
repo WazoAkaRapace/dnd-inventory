@@ -150,10 +150,14 @@ export default function CharacterStateBand({
   const savedRef = useRef(onSaved);
   savedRef.current = onSaved;
   // La concentration peut tomber ailleurs (dégâts via traqueur, conditions) :
-  // la fiche redescende → les chips suivent.
+  // la fiche redescend → les chips suivent. Idem pour un cast depuis l'onglet
+  // Sorts : les emplacements consommés (spellSlotsUsed) changent sur la fiche
+  // redescendue — c'est le signal « un sort vient d'être lancé » y compris
+  // pour un effet NON concentré (Armure de mage, Bouclier), sinon la chip ne
+  // apparaît qu'au prochain changement de PV/concentration.
   useEffect(() => {
     void reloadEffects();
-  }, [reloadEffects, character.currentHp, character.concentrating]);
+  }, [reloadEffects, character.currentHp, character.concentrating, character.spellSlotsUsed]);
 
   /** Lever un effet — DELETE ; le serveur retombe `concentrating` si plus
    *  rien ne le justifie (contrat Task 3). La ligne disparaît, la CA suit. */

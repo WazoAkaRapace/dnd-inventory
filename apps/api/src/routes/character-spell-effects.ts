@@ -98,7 +98,13 @@ function mapSpellEffect(row: any, lang: AppLang) {
     spell: row.spell_name
       ? {
           id: row.spell_id,
-          name: lang === 'en' ? (row.spell_name_en ?? row.spell_name) : row.spell_name,
+          // FR = COALESCE(nameFr, name) — même convention que le reste des
+          // routes sorts (character-spells.ts) : `name` est le nom anglais
+          // de la table spells, le français vit dans nameFr.
+          name:
+            lang === 'en'
+              ? (row.spell_name_en ?? row.spell_name)
+              : (row.spell_name_fr ?? row.spell_name),
           nameFr: row.spell_name_fr,
           srdIndex: row.spell_srd_index,
         }
