@@ -115,6 +115,10 @@ F = {
  # --- Occultiste
  'Occultiste|Manifestations occultes': 'Eldritch Invocations',
  'Occultiste|Faveur de pacte': 'Pact Boon',
+ # NB : les traits individuels « Faveur de pacte : Pacte de la… » (MUTEX) sont
+ # des optionalfeatures (PB) côté 5e.tools — traduits par
+ # build-warlock-invocations-en.py dans warlockInvocations.en.ts, pas ici
+ # (SKIP ci-dessous pour ne pas faire échouer ce générateur).
  'Occultiste|Arcanum mystique (niveau 6)': 'Mystic Arcanum (6th level)',
  'Occultiste|Arcanum mystique (niveau 7)': 'Mystic Arcanum (7th level)',
  'Occultiste|Arcanum mystique (niveau 8)': 'Mystic Arcanum (8th level)',
@@ -353,6 +357,11 @@ F = {
  'Roublard|escroc-arcanique|Voleur de sort': 'Spell Thief',
 }
 
+# Traits traduits par build-warlock-invocations-en.py (optionalfeatures 5e.tools).
+SKIP_ELSEWHERE = {
+  'occultiste-faveur-lame', 'occultiste-faveur-chaine', 'occultiste-faveur-grimoire',
+}
+
 
 def parse_catalog():
   """Extrait (classe → [(id, niveau, nom)]) et (classe → [(sousclé, label, [(id, niveau, nom)])])."""
@@ -424,6 +433,8 @@ def main():
 
   for cls, feats in cat.items():
     for fid, level, name in feats:
+      if fid in SKIP_ELSEWHERE:
+        continue
       en = F.get(f'{cls}|{name}')
       if en is None:
         errors.append(f'classe {cls}: pas de traduction pour « {name} » ({fid})')

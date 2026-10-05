@@ -10,6 +10,7 @@
     "./classFeatures": "./src/classFeatures.ts",
     "./rests": "./src/rests.ts",
     "./classFeatures.en": "./src/classFeatures.en.ts",
-    "./warlockInvocations": "./src/warlockInvocations.ts"
+    "./warlockInvocations": "./src/warlockInvocations.ts",
+    "./warlockInvocations.en": "./src/warlockInvocations.en.ts"
   }
 }
