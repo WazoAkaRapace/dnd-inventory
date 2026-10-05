@@ -10,6 +10,9 @@ import { DND_SKILLS_EN } from './catalogs.en.ts';
 // dans le chunk commun. Le catalogue et ses helpers vivent derrière
 // '@table-sync/shared/classFeatures' ; applyRest derrière '@table-sync/shared/rests'.
 import type { FeatureResetType } from './classFeatures.ts';
+// Manifestations occultes : catalogue de données LÉGER (~14 KB, aucune
+// traduction) — import runtime assumé : invocationIdsOf en valide les ids.
+import { WARLOCK_INVOCATIONS } from './warlockInvocations.ts';
 
 export * from './catalogs.en.ts';
 export * from './labels.en.ts';
@@ -4459,6 +4462,53 @@ export function eldritchInvocationsCount(level: number): number {
   if (level >= 7) return 4;
   if (level >= 5) return 3;
   return 2;
+}
+
+// ---------- Manifestations occultes : effets moteur (Phase B) ----------
+// Les ids viennent de character_features.catalog_id (préfixe occultiste-invo-,
+// catalogue warlockInvocations.ts) ; les helpers suivants restent PUREMENT
+// indicatifs — ils calculent et affichent, ne déclenchent jamais rien.
+
+/**
+ * Ids de manifestations occultes CONNUES du personnage, depuis ses lignes de
+ * traits (character_features.catalog_id). Signature features-en-paramètre :
+ * les pages ont déjà la liste en main, pas de refetch. Les catalog_id qui ne
+ * référencent pas une manifestation du catalogue sont ignorés (traits de
+ * classe, traits libres, ids inconnus).
+ */
+export function invocationIdsOf(features: { catalogId?: string | null }[]): string[] {
+  const known = new Set(WARLOCK_INVOCATIONS.map((i) => i.id));
+  return features
+    .map((f) => f.catalogId ?? null)
+    .filter((id): id is string => id !== null && known.has(id));
+}
+
+/**
+ * Décharge déchirante : +mod CHA aux dégâts de chaque rayon de Décharge
+ * occulte. Mod BRUT (RAW ne fixe pas de minimum — pas de clamp, contrairement
+ * à l'aura de protection dont le « minimum 1 » est écrit) ; 0 sans la
+ * manifestation.
+ */
+export function agonizingBlastBonus(
+  character: CharacterClassSource & { charisma?: number | null },
+  invocationIds: string[],
+): number {
+  if (!invocationIds.includes('occultiste-invo-decharge-dechirante')) return 0;
+  return abilityModifier(character.charisma ?? 10);
+}
+
+/**
+ * Rayons de Décharge occulte par niveau D'OCCULTISTE (cantrip scaling au
+ * niveau de CLASSE, pas au niveau total — SRD multiclassage) : 1/2/3/4 aux
+ * paliers 1/5/11/17. Le damage_json ne porte pas cette évolution (elle n'est
+ * pas liée à un emplacement) — helper dédié, généralisable aux autres tours
+ * de magie qui scalent si besoin.
+ */
+export function eldritchBlastRays(warlockLevel: number): number {
+  if (warlockLevel >= 17) return 4;
+  if (warlockLevel >= 11) return 3;
+  if (warlockLevel >= 5) return 2;
+  return 1;
 }
 
 /**

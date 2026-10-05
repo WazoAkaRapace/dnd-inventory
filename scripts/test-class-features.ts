@@ -9,6 +9,9 @@ import {
   criticalRange,
   DND_CLASSES,
   eldritchInvocationsCount,
+  invocationIdsOf,
+  agonizingBlastBonus,
+  eldritchBlastRays,
   maxSpellSlots,
   renderFeatureTemplate,
   SPELL_SLOTS_PACT,
@@ -427,6 +430,98 @@ check(
   'Décharge déchirante',
 );
 check('findWarlockInvocation : id inconnu → null', findWarlockInvocation('inconnu'), null);
+
+// --- B1 : invocationIdsOf (ids de manifestations connues depuis les features) ---
+
+const feat = (
+  id: number,
+  catalogId: string | null,
+): Parameters<typeof invocationIdsOf>[0][number] => ({
+  catalogId,
+});
+check(
+  'invocationIdsOf : ne garde que les catalog_id de manifestations',
+  invocationIdsOf([
+    feat(1, 'occultiste-invo-decharge-dechirante'),
+    feat(2, null),
+    feat(3, 'guerrier-second-souffle'),
+    feat(4, 'occultiste-invo-lance-occulte'),
+    { catalogId: undefined },
+  ] as any),
+  ['occultiste-invo-decharge-dechirante', 'occultiste-invo-lance-occulte'],
+);
+check(
+  'invocationIdsOf : id inconnu de catalogue → ignoré (les traits libres ne comptent pas)',
+  invocationIdsOf([
+    feat(5, 'occultiste-invo-tres-inconnu'),
+    feat(6, 'occultiste-invo-mille-visages'),
+  ]),
+  ['occultiste-invo-mille-visages'],
+);
+check('invocationIdsOf : liste vide → []', invocationIdsOf([]), []);
+check(
+  'invocationIdsOf : une ligne sans catalogId (trait libre) ne casse rien',
+  invocationIdsOf([{ catalogId: null }, { catalogId: 'occultiste-invo-vision-occulte' }] as any),
+  ['occultiste-invo-vision-occulte'],
+);
+
+// --- B2 : Décharge déchirante (+CHA) & rayons de Décharge occulte ---
+
+check(
+  'agonizingBlastBonus : 0 sans la manifestation (CHA 16)',
+  agonizingBlastBonus(mkChar({ characterClass: 'Occultiste', level: 5, charisma: 16 }), []),
+  0,
+);
+check(
+  'agonizingBlastBonus : +3 avec la manifestation (CHA 16)',
+  agonizingBlastBonus(mkChar({ characterClass: 'Occultiste', level: 5, charisma: 16 }), [
+    'occultiste-invo-decharge-dechirante',
+  ]),
+  3,
+);
+check(
+  'agonizingBlastBonus : mod brut, pas de clamp (CHA 6 → −2)',
+  agonizingBlastBonus(mkChar({ characterClass: 'Occultiste', level: 5, charisma: 6 }), [
+    'occultiste-invo-decharge-dechirante',
+  ]),
+  -2,
+);
+check(
+  'agonizingBlastBonus : une AUTRE manifestation ne compte pas',
+  agonizingBlastBonus(mkChar({ characterClass: 'Occultiste', level: 5, charisma: 16 }), [
+    'occultiste-invo-lance-occulte',
+  ]),
+  0,
+);
+check(
+  'eldritchBlastRays : 1/2/3/4 aux paliers 1/5/11/17 (niveau de CLASSE)',
+  [1, 4, 5, 10, 11, 16, 17, 20].map(eldritchBlastRays),
+  [1, 1, 2, 2, 3, 3, 4, 4],
+);
+
+// findClassFeature étendu aux manifestations (compteurs free-cast via POST + repos)
+const voleurDef = findClassFeature('occultiste-invo-voleur-des-cinq-destinees');
+check(
+  'findClassFeature retrouve une manifestation free-cast avec compteur',
+  [
+    voleurDef?.name,
+    voleurDef?.resource
+      ? voleurDef.resource.max(5, { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 })
+      : null,
+    voleurDef?.resource?.reset,
+  ],
+  ['Voleur des cinq destinées', 1, 'long'],
+);
+check(
+  'findClassFeature : manifestation sans compteur → resource absent',
+  findClassFeature('occultiste-invo-armure-d-ombres')?.resource ?? null,
+  null,
+);
+check(
+  'findClassFeature : manifestation sans prereqLevel → niveau 2',
+  findClassFeature('occultiste-invo-mille-visages')?.level,
+  2,
+);
 // Faveurs de pacte mutex dans CLASS_FEATURES
 const pactIds = [
   'occultiste-faveur-lame',
