@@ -350,7 +350,7 @@
   "traits.gere.par.la.fiche": "managed by the sheet",
   "traits.laisser.vide.pour.aucun.compteur": "Leave empty for no counter",
   "traits.le.compteur.se.recharge.via.les": "* recharges via the Rest buttons in the Survival tab — maximum recomputed at your level when added.",
-  "traits.manifestations.occultes": "✦ Eldritch Invocations",
+  "traits.manifestations.occultes": "Eldritch Invocations",
   "traits.manifestations.compteur": "{{known}}/{{max}} known",
   "traits.manifestations.plafond": "Maximum reached — swap an invocation next time you gain a level.",
   "traits.manifestations.raison.niveau": "Warlock level {{level}} required",

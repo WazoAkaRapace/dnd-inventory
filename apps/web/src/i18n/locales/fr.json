@@ -350,7 +350,7 @@
   "traits.gere.par.la.fiche": "géré par la fiche",
   "traits.laisser.vide.pour.aucun.compteur": "Laisser vide pour aucun compteur",
   "traits.le.compteur.se.recharge.via.les": "* se recharge via les boutons Repos de l'onglet Survie — maximum recalculé à ton niveau à l'ajout.",
-  "traits.manifestations.occultes": "✦ Manifestations occultes",
+  "traits.manifestations.occultes": "Manifestations occultes",
   "traits.manifestations.compteur": "{{known}}/{{max}} connues",
   "traits.manifestations.plafond": "Maximum atteint — remplacez une manifestation au prochain gain de niveau.",
   "traits.manifestations.raison.niveau": "Niv. occultiste {{level}} requis",

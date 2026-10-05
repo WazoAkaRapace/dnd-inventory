@@ -39,6 +39,8 @@ export interface SeedData {
   clerc: { id: number; name: string };
   /** Objet personnalisé illustré (« Lettre du duc ») porté par le guerrier. */
   lettreId: number;
+  /** Occultiste niv. 11 (manifestations/Arcanum — spec warlock). */
+  occultiste: { id: number; name: string };
   encounterId: number;
   encounterName: string;
   gobelinIds: number[];

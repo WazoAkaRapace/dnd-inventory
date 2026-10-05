@@ -3,8 +3,9 @@
  * dont le health-check webServer vient de passer (catalogue prêt).
  *
  * Crée : 2 comptes (MD « maitre », joueuse « lyra »), un groupe rejoint par
- * code d'invitation, 2 PJ possédés par la joueuse (Kael le Guerrier avec
- * harnois + épée longue, Mira la Clerce avec sorts), et une rencontre
+ * code d'invitation, 3 PJ possédés par la joueuse (Kael le Guerrier avec
+ * harnois + épée longue, Mira la Clerce avec sorts, Vesper l'Occultiste
+ * niv. 11 avec Arcanum 6 + faveur Lame), et une rencontre
  * « Embuscade gobeline » NON DÉMARRÉE (2 gobelins + Kael en combattant) —
  * c'est la spec combat qui pilote initiatives → démarrage → tour suivant.
  *
@@ -192,6 +193,54 @@ export default async function globalSetup(): Promise<void> {
     await addSpell(playerToken, mira.id, name, prepared);
   }
 
+  // — Vesper, Occultiste niv. 11 (CHA 16) : pacte 3×L5, Arcanum 6, 5 manifestations —
+  //    Traits catalogue posés par REST : Arcanum 6 (compteur 1/RL) + faveur Lame
+  //    (mutex côté API). Les manifestations elles-mêmes sont posées PAR LA SPEC
+  //    via le sélecteur UI — c'est ce qu'elle teste.
+  const { character: vesper } = await call<{ character: { id: number; name: string } }>(
+    'POST',
+    `/api/parties/${party.id}/characters`,
+    {
+      token: playerToken,
+      body: {
+        name: 'Vesper Corvidae',
+        characterClass: 'Occultiste',
+        level: 11,
+        race: 'Tieffelin',
+        background: 'Ermite',
+      },
+    },
+  );
+  await call('PATCH', `/api/characters/${vesper.id}`, {
+    token: playerToken,
+    body: {
+      strength: 9,
+      dexterity: 14,
+      constitution: 14,
+      intelligence: 11,
+      wisdom: 12,
+      charisma: 16,
+      maxHp: 62,
+      currentHp: 62,
+      gold: 87,
+    },
+  });
+  for (const [name, prepared] of [
+    ['Décharge occulte', true],
+    ['Cercle de mort', true],
+  ] as const) {
+    await addSpell(playerToken, vesper.id, name, prepared);
+  }
+  // Traits catalogue posés par REST : Arcanum 6 (compteur 1/RL) + faveur Lame.
+  const addFeature = async (catalogId: string, title: string) => {
+    await call('POST', `/api/characters/${vesper.id}/features`, {
+      token: playerToken,
+      body: { title, category: 'class', catalogId },
+    });
+  };
+  await addFeature('occultiste-arcanum-6', 'Arcanum mystique (niveau 6)');
+  await addFeature('occultiste-faveur-lame', 'Faveur de pacte : Pacte de la lame');
+
   // — Objet illustré « Lettre du duc » : création MD + illustration multipart,
   //    portée par Kael — la spec objets-illustrations déplie sa ligne —
   const { item: lettre } = await call<{ item: { id: number } }>(
@@ -278,6 +327,7 @@ export default async function globalSetup(): Promise<void> {
     inviteCode: party.inviteCode,
     guerrier: { id: kael.id, name: kael.name, combatantId: kaelCombatant.id },
     clerc: { id: mira.id, name: mira.name },
+    occultiste: { id: vesper.id, name: vesper.name },
     lettreId: lettre.id,
     encounterId: encounter.id,
     encounterName: encounter.name,
