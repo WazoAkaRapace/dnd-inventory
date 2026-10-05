@@ -307,6 +307,36 @@ check(
   null,
 );
 
+// --- Multiclassage : {{invocations}} au niveau D'OCCULTISTE (SRD) ---
+
+// SRD : « Un prérequis de niveau pour une manifestation réfère au niveau
+// d'occultiste » — le gabarit {{invocations}} suit la ligne de classe, pas le
+// niveau total (Occ5/Gue10 = 3 manifestations, pas 5).
+const mcOccGue = mkChar({
+  characterClass: 'Occultiste',
+  level: 15,
+  classes: [
+    { classKey: 'Occultiste', level: 5, subclassKey: null, hitDiceUsed: 0, fightingStyle: null },
+    { classKey: 'Guerrier', level: 10, subclassKey: null, hitDiceUsed: 0, fightingStyle: null },
+  ],
+});
+check(
+  '{{invocations}} multiclassé Occ5/Gue10 = 3 (niveau de CLASSE)',
+  renderFeatureTemplate('{{invocations}}', mcOccGue),
+  '3',
+);
+// Mono-classe : comportement inchangé (niveau total = niveau de classe).
+check(
+  '{{invocations}} mono-classe Occultiste 9 = 5',
+  renderFeatureTemplate('{{invocations}}', mkChar({ characterClass: 'Occultiste', level: 9 })),
+  '5',
+);
+check(
+  'manifestations Occ5/Gue10 : eldritchInvocationsCount au niveau de classe',
+  eldritchInvocationsCount(5),
+  3,
+);
+
 // --- applyRest ---
 
 const restChar = (over: Partial<Character> = {}) =>
