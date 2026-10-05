@@ -39,7 +39,7 @@
     "concurrently": "^10.0.5",
     "drizzle-orm": "^0.45.3",
     "oxfmt": "^0.70.0",
-    "oxlint": "^1.85.0",
+    "oxlint": "^1.86.0",
     "playwright": "^1.63.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
