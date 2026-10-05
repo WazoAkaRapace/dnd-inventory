@@ -8,7 +8,13 @@ import type {
   Rarity,
   StorageLocation,
 } from '@table-sync/shared';
-import { computeInventoryWeights, findClass } from '@table-sync/shared';
+import {
+  computeInventoryWeights,
+  computeAC,
+  abilityModifier,
+  fightingStylesOf,
+  findClass,
+} from '@table-sync/shared';
 import {
   keepPreviousData,
   useInfiniteQuery,
@@ -22,6 +28,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../auth';
 import { invalidateCombat, useActiveEncounters } from '../combatLive';
+import { appLang } from '../i18n';
 import CharacterStateBand from '../components/CharacterStateBand';
 import ConcentrationAlert from '../components/ConcentrationAlert';
 import {
@@ -151,16 +158,19 @@ export default function CharacterInventoryPage() {
   // Toast system — errors linger longer than successes (noisy table)
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastId = useRef(0);
-  const pushToast = useCallback((message: string, kind: 'success' | 'error' = 'success') => {
-    const id = ++toastId.current;
-    setToasts((prev) => [...prev, { id, message, kind }]);
-    setTimeout(
-      () => {
-        setToasts((prev) => prev.filter((t) => t.id !== id));
-      },
-      kind === 'error' ? 6000 : 2500,
-    );
-  }, []);
+  const pushToast = useCallback(
+    (message: string, kind: 'success' | 'error' | 'warn' = 'success') => {
+      const id = ++toastId.current;
+      setToasts((prev) => [...prev, { id, message, kind }]);
+      setTimeout(
+        () => {
+          setToasts((prev) => prev.filter((t) => t.id !== id));
+        },
+        kind === 'error' ? 6000 : kind === 'warn' ? 6000 : 2500,
+      );
+    },
+    [],
+  );
   const dismissToast = useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
@@ -858,6 +868,22 @@ export default function CharacterInventoryPage() {
   // Only the sheet owner or the party GM can edit (the API enforces the same rule)
   const canEdit = data.character.ownerId === user?.id || isGM;
 
+  // CA effective SANS les effets de sort (override manuel inclus — il gagne) :
+  // base de l'annonce « CA X → Y » de la feuille d'incantation. Le bandeau
+  // recalcule AVEC les effets pour sa propre tuile (source localisée).
+  const baseAcNoEffects = useMemo(
+    () =>
+      character.armorClassOverride ??
+      computeAC(
+        data.entries,
+        abilityModifier(character.dexterity ?? 10),
+        fightingStylesOf(character).has('defense'),
+        character,
+        appLang(),
+      ).ac,
+    [data.entries, character],
+  );
+
   // Non-casters never open Sorts: Traits takes its dock slot, Sorts moves to the hub
   const isCasterClass =
     !!findClass(character.characterClass) &&
@@ -1281,6 +1307,8 @@ export default function CharacterInventoryPage() {
             charId={Number(charId)}
             onSaved={refreshInventory}
             onError={(msg) => pushToast(msg, 'error')}
+            onWarn={(msg) => pushToast(msg, 'warn')}
+            currentEffectiveAc={baseAcNoEffects}
           />
         )}
         {activeTab === 'features' && (

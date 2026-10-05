@@ -23,6 +23,7 @@ import {
   type SpellSchool,
   spellDamageAtLevel,
   spellHealingAtLevel,
+  SPELL_AC_EFFECTS,
   spellSaveDC,
 } from '@table-sync/shared';
 import { findWarlockInvocation } from '@table-sync/shared/warlockInvocations';
@@ -40,6 +41,7 @@ import {
   SkeletonRegion,
 } from '../components/ui';
 import { abilityShort, classNameLabel, damageType, schoolLabel } from '../i18n/labels';
+import { fetchSpellEffects, type SpellEffectRow, toActiveAcEffects } from '../spellEffects';
 import { useResyncOnReconnect } from '../sync';
 
 interface Props {
@@ -47,6 +49,12 @@ interface Props {
   charId: number;
   onSaved: () => Promise<void>;
   onError: (msg: string) => void;
+  /** Toast orange (règle) — échec non bloquant du POST d'effet de sort. */
+  onWarn: (msg: string) => void;
+  /** CA effective actuelle SANS les effets de sort (override manuel inclus) —
+   *  base de l'annonce « CA X → Y » (le bandeau la possède déjà, la page la
+   *  recalcule pour l'onglet). */
+  currentEffectiveAc?: number;
 }
 
 type DomainSpell = Spell & { domainLevel: number };
@@ -77,7 +85,14 @@ const SCHOOL_TEXT: Record<string, string> = {
   transmutation: 'text-orange-700',
 };
 
-export default function CharacterSpellsTab({ character, charId, onSaved, onError }: Props) {
+export default function CharacterSpellsTab({
+  character,
+  charId,
+  onSaved,
+  onError,
+  onWarn,
+  currentEffectiveAc,
+}: Props) {
   const { t } = useTranslation();
   const [charSpells, setCharSpells] = useState<CharacterSpell[]>([]);
   const [loadingSpells, setLoadingSpells] = useState(true);
@@ -287,6 +302,19 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
   // Rattrapage de reconnexion : onglet à état local — les sorts appris se
   // rechargent silencieusement après un trou de connexion.
   useResyncOnReconnect(fetchCharSpells);
+
+  // ---------- Effets de sort sur la CA (v1) ----------
+  // Une requête au montage (cache état local, pas de react-query — même
+  // régime que le reste de l'onglet). Refetch après un cast : le POST
+  // d'effet vient de passer (ou échouer) et l'annonce « CA X → Y » de la
+  // feuille suivante part de la CA réelle.
+  const [spellEffects, setSpellEffects] = useState<SpellEffectRow[]>([]);
+  const reloadEffects = useCallback(async () => {
+    setSpellEffects(await fetchSpellEffects(charId));
+  }, [charId]);
+  useEffect(() => {
+    void reloadEffects();
+  }, [reloadEffects]);
 
   // Always-prepared bonus spells: cleric domain, druid circle terrain,
   // paladin oath (derived — refetched with the character)
@@ -544,6 +572,25 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
       } catch {
         // Le sort est lancé ; l'échec du compteur n'annule rien — la fiche
         // survit à un compteur optimiste (correction manuelle possible).
+      }
+    }
+    // Effet CA (v1) : le sort posé est un des 6 — POST /spell-effects APRÈS le
+    // PATCH (l'emplacement est consommé d'abord : l'échec du POST ne doit pas
+    // l'avoir été pour rien). Un échec de POST N'ANNULE RIEN : toast orange
+    // règle « effet non posé — lève/pose à la main », sans rollback.
+    if (ok && SPELL_AC_EFFECTS[castingSpell.srdIndex] && !ritual) {
+      try {
+        await api.post(`/api/characters/${charId}/spell-effects`, {
+          spellId: castingSpell.id,
+        });
+      } catch (err) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status !== 409) {
+          // 409 = effet déjà actif (double-cast) : rien à poser, pas d'alerte.
+          onWarn(t('sorts.effet.ca.non.pose'));
+        }
+      } finally {
+        await reloadEffects();
       }
     }
     if (ok) {
@@ -1021,6 +1068,11 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
           character={character}
           invocationIds={invIds}
           freeCasts={freeCastMap}
+          activeAcEffects={
+            character.armorClassOverride == null ? toActiveAcEffects(spellEffects) : undefined
+          }
+          currentEffectiveAc={currentEffectiveAc}
+          dexMod={abilityModifier(character.dexterity ?? 10)}
           concentrating={!!character.concentrating}
           onClose={() => {
             setCastingSpell(null);

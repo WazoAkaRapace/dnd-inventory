@@ -2,9 +2,11 @@ import type { Spell } from '@table-sync/shared';
 import {
   type CharacterClassSource,
   agonizingBlastBonus,
+  applyAcEffects,
   classLevelOf,
   eldritchBlastRays,
   formatModifier,
+  SPELL_AC_EFFECTS,
   spellDamageAtLevel,
   spellHealingAtLevel,
   spellSaveDC,
@@ -13,6 +15,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { damageType } from '../i18n/labels';
+import { defToEffect, effectModLabel, previewAc } from '../spellEffects';
 import { Chip } from './ui';
 
 /**
@@ -36,6 +39,9 @@ export default function CastSpellSheet({
   charLevel,
   character,
   invocationIds,
+  activeAcEffects,
+  currentEffectiveAc,
+  dexMod,
   freeCasts,
   onClose,
   onCast,
@@ -59,6 +65,13 @@ export default function CastSpellSheet({
   character?: CharacterClassSource & { charisma?: number | null; level?: number | null };
   /** Ids de manifestations connues (invocationIdsOf sur les traits chargés). */
   invocationIds?: string[];
+  /** Effets de sort CA actifs (bandeau) — l'annonce part de la CA effective
+   *  ACTUELLE, effets déjà posés inclus. */
+  activeAcEffects?: Array<{ effectKind: string; acValue: number }>;
+  /** CA effective actuelle (override manuel inclus) — base de l'annonce. */
+  currentEffectiveAc?: number;
+  /** Modificateur de DEX — formules « 13 + DEX » (Armure de mage). */
+  dexMod?: number;
   /** Lancers gratuits 1/RL des manifestations free-cast et Arcanum : clé =
    * slug du sort, valeur = { featureId, counterCurrent, label }. */
   freeCasts?: Record<string, { featureId: number; counterCurrent: number; label: string }>;
@@ -167,6 +180,33 @@ export default function CastSpellSheet({
 
   const concConflict = spell.concentration && concentrating;
 
+  // ---------- Annonce CA (effets de sort v1) ----------
+  // « ⛨ CA 18 → 20 (+2, tant que concentré) » sous le résumé — or = magie,
+  // AVANT consommation d'emplacement. La base est la CA effective ACTUELLE :
+  // override manuel inclus (il gagne, la base reste la CA affichée), effets
+  // déjà posés inclus (le parent passe la CA nue + les effets actifs).
+  const acEffectDef = SPELL_AC_EFFECTS[spell.srdIndex];
+  const acEffect = acEffectDef ? defToEffect(acEffectDef) : null;
+  const acFrom =
+    currentEffectiveAc !== undefined && dexMod !== undefined
+      ? activeAcEffects && activeAcEffects.length > 0
+        ? applyAcEffects(currentEffectiveAc, activeAcEffects, dexMod)
+        : currentEffectiveAc
+      : undefined;
+  const acTo =
+    acEffect && acFrom !== undefined && dexMod !== undefined
+      ? previewAc(acFrom, dexMod, acEffect)
+      : null;
+  const acAnnouncement =
+    acEffect && acFrom !== undefined && acTo !== null && acTo !== acFrom
+      ? { from: acFrom, to: acTo, mod: effectModLabel(acEffect) }
+      : acEffect && acFrom !== undefined && acTo !== null && acTo === acFrom
+        ? { from: acFrom, to: acTo, mod: effectModLabel(acEffect), flat: true }
+        : null;
+  // Bouclier : réaction — le libellé du bouton principal le dit (données
+  // déjà « 1 réaction », ici c'est la voix).
+  const isShield = spell.srdIndex === 'shield';
+
   const cast = async (level: number, ritual = false, pool?: 'spellcasting' | 'pact' | 'free') => {
     setCasting(true);
     try {
@@ -227,6 +267,51 @@ export default function CastSpellSheet({
               <strong>{spell.name}</strong>
               {t('cast.mettra.fin.au.sort.precedent')}
             </p>
+          </div>
+        )}
+
+        {/* Annonce de calcul AVANT consommation — or = magie. Flat : l'effet
+            ne CHANGE pas la CA (plancher déjà atteint) mais se posera quand
+            même (la ligne reste, la règle aussi). */}
+        {acAnnouncement && (
+          <div
+            className="rounded-lg bg-gold-50 border border-gold-300 p-3 mb-3 text-sm text-gold-800"
+            aria-label={
+              acAnnouncement.flat
+                ? t('cast.ca.annonce.plate.from.mod.autant', {
+                    from: acAnnouncement.from,
+                    mod: acAnnouncement.mod,
+                  })
+                : t('cast.ca.annonce.from.to.mod', {
+                    from: acAnnouncement.from,
+                    to: acAnnouncement.to,
+                    mod: acAnnouncement.mod,
+                  })
+            }
+          >
+            {acAnnouncement.flat ? (
+              <p className="font-medium">
+                ⛨{' '}
+                {t('cast.ca.annonce.plate.from.mod.autant', {
+                  from: acAnnouncement.from,
+                  mod: acAnnouncement.mod,
+                })}
+              </p>
+            ) : (
+              <p className="font-medium">
+                ⛨{' '}
+                {t('cast.ca.annonce.from.to.mod', {
+                  from: acAnnouncement.from,
+                  to: acAnnouncement.to,
+                  mod: acAnnouncement.mod,
+                })}
+              </p>
+            )}
+            {acEffectDef?.tiedToConcentration && (
+              <p className="mt-0.5 text-xs text-gold-700">
+                {t('cast.ca.annonce.tant.que.concentre')}
+              </p>
+            )}
           </div>
         )}
 
@@ -418,17 +503,19 @@ export default function CastSpellSheet({
         >
           {casting
             ? '…'
-            : concConflict
-              ? t('cast.lancer.et.rompre.la.concentration')
-              : isCantrip
-                ? t('cast.lancer.le.tour.de.magie')
-                : chosenOption?.pool === 'free'
-                  ? freeCast?.label === 'at-will'
-                    ? t('cast.lancer.a.volonte')
-                    : t('cast.lancer.gratuit')
-                  : t('cast.lancer.au.niveau.level', {
-                      level: chosenOption ? chosenOption.level : '—',
-                    })}
+            : isShield
+              ? t('cast.reagir.bouclier')
+              : concConflict
+                ? t('cast.lancer.et.rompre.la.concentration')
+                : isCantrip
+                  ? t('cast.lancer.le.tour.de.magie')
+                  : chosenOption?.pool === 'free'
+                    ? freeCast?.label === 'at-will'
+                      ? t('cast.lancer.a.volonte')
+                      : t('cast.lancer.gratuit')
+                    : t('cast.lancer.au.niveau.level', {
+                        level: chosenOption ? chosenOption.level : '—',
+                      })}
         </button>
 
         {/* Ritual cast: no slot consumed, +10 minutes */}

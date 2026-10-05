@@ -29,13 +29,19 @@ import {
   fightingStylesOf,
   type InventoryEntry,
 } from '@table-sync/shared';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import api from '../api';
 import { appLang } from '../i18n';
 import { classNameLabel, conditionLabel } from '../i18n/labels';
-import { Chip, EncumbranceBar, HpBar, VitalButton } from './ui';
+import {
+  effectModLabel,
+  fetchSpellEffects,
+  type SpellEffectRow,
+  toActiveAcEffects,
+} from '../spellEffects';
+import { BottomSheet, Chip, EncumbranceBar, HpBar, VitalButton } from './ui';
 
 /** Combat snapshot relevant to the band (subset of the page's hubCombat). */
 export interface StateBandCombat {
@@ -124,18 +130,63 @@ export default function CharacterStateBand({
   // Mémoïsée : computeAC balaie tout l'inventaire (résolutions d'armures
   // magiques incluses) et tournait à CHAQUE render du bandeau — le moindre
   // état local de la page la déclenchait.
+  const dexMod = useMemo(() => abilityModifier(character.dexterity ?? 10), [character]);
+
+  // ---------- Effets de sort sur la CA (v1) ----------
+  // Une requête, cache état local — pas de react-query, cohérent avec le reste
+  // du bandeau. Refetch sur onSaved (l'onglet Sorts vient de caster → PATCH +
+  // POST effet → refreshInventory → la fiche redescend, la relance suit).
+  const [spellEffects, setSpellEffects] = useState<SpellEffectRow[]>([]);
+  const [effectsOpen, setEffectsOpen] = useState(false);
+  const [liftingEffectId, setLiftingEffectId] = useState<number | null>(null);
+  const reloadEffects = useCallback(async () => {
+    // Silencieux en échec (route absente / réseau) : pas de chips, pas
+    // d'erreur — la fiche vit.
+    setSpellEffects(await fetchSpellEffects(character.id));
+  }, [character.id]);
+  useEffect(() => {
+    void reloadEffects();
+  }, [reloadEffects]);
+  const savedRef = useRef(onSaved);
+  savedRef.current = onSaved;
+  // La concentration peut tomber ailleurs (dégâts via traqueur, conditions) :
+  // la fiche redescende → les chips suivent.
+  useEffect(() => {
+    void reloadEffects();
+  }, [reloadEffects, character.currentHp, character.concentrating]);
+
+  /** Lever un effet — DELETE ; le serveur retombe `concentrating` si plus
+   *  rien ne le justifie (contrat Task 3). La ligne disparaît, la CA suit. */
+  const liftEffect = async (row: SpellEffectRow) => {
+    setLiftingEffectId(row.id);
+    try {
+      await api.delete(`/api/spell-effects/${row.id}`);
+      await reloadEffects();
+      await savedRef.current();
+      onNotice(t('band.effets.leve', { name: row.spellName || t('band.effets.sort') }));
+    } catch {
+      onError(t('band.effets.erreur.de.levee'));
+    } finally {
+      setLiftingEffectId(null);
+    }
+  };
+
+  const activeEffects = useMemo(() => toActiveAcEffects(spellEffects), [spellEffects]);
   const acResult = useMemo(
     () =>
       computeAC(
         entries,
-        abilityModifier(character.dexterity ?? 10),
+        dexMod,
         fightingStylesOf(character).has('defense'),
         character,
         appLang(),
+        activeEffects,
       ),
-    [entries, character],
+    [entries, character, dexMod, activeEffects],
   );
-  const effectiveAC = character.armorClassOverride ?? acResult.ac;
+  const hasAcOverride =
+    character.armorClassOverride !== null && character.armorClassOverride !== undefined;
+  const effectiveAC = hasAcOverride ? character.armorClassOverride : acResult.ac;
 
   // Emplacements : les DEUX pools (multiclassage — le pacte recharge au repos
   // court et vit sa vie à côté de l'incantation).
@@ -433,9 +484,21 @@ export default function CharacterStateBand({
               {canEdit ? (
                 <button
                   type="button"
-                  onClick={() => onNavigate('stats')}
-                  className="font-mono text-sm font-semibold text-ink-800 bg-parchment-100 border border-parchment-200 rounded-md px-2 py-1 hover:border-blood-400 transition-colors inline-flex items-center min-h-11"
-                  title={character.armorClassOverride ? t('band.ca.manuelle') : acResult.source}
+                  onClick={() =>
+                    spellEffects.length > 0 ? setEffectsOpen(true) : onNavigate('stats')
+                  }
+                  className={`font-mono text-sm font-semibold text-ink-800 bg-parchment-100 border rounded-md px-2 py-1 hover:border-blood-400 transition-colors inline-flex items-center min-h-11 ${
+                    spellEffects.length > 0
+                      ? 'border-gold-400 ring-1 ring-gold-300 hover:border-gold-500'
+                      : 'border-parchment-200'
+                  }`}
+                  title={
+                    spellEffects.length > 0
+                      ? t('band.ca.effets.actifs.title', { count: spellEffects.length })
+                      : character.armorClassOverride
+                        ? t('band.ca.manuelle')
+                        : acResult.source
+                  }
                   aria-label={t('band.classe.d.armure.effectiveac.ouvrir.les', {
                     effectiveAC,
                   })}
@@ -444,7 +507,11 @@ export default function CharacterStateBand({
                 </button>
               ) : (
                 <span
-                  className="font-mono text-sm font-semibold text-ink-800 bg-parchment-100 border border-parchment-200 rounded-md px-2 py-1"
+                  className={`font-mono text-sm font-semibold text-ink-800 bg-parchment-100 border rounded-md px-2 py-1 ${
+                    spellEffects.length > 0
+                      ? 'border-gold-400 ring-1 ring-gold-300'
+                      : 'border-parchment-200'
+                  }`}
                   title={character.armorClassOverride ? t('band.ca.manuelle') : acResult.source}
                 >
                   🛡 {effectiveAC}
@@ -500,6 +567,53 @@ export default function CharacterStateBand({
             the Caractéristiques tab (Statistiques dérivées). Consequences
             appear only when a tier is breached. */}
           <EncumbranceBar encumbrance={encumbrance} compact />
+
+          {/* Chips d'effets de sort actifs — or = magie. L'override manuel
+              GAGNE : chips affichées mais contribution non appliquée (la CA
+              affichée reste la CA manuelle), avertissement orange règle. */}
+          {spellEffects.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {canEdit ? (
+                <button
+                  type="button"
+                  onClick={() => setEffectsOpen(true)}
+                  className="flex flex-wrap items-center gap-1.5 text-left min-h-11 py-1"
+                  aria-label={t('band.ca.effets.actifs.count', { count: spellEffects.length })}
+                >
+                  {spellEffects.map((row) => (
+                    <Chip
+                      key={row.id}
+                      tone="gold"
+                      title={t('band.effet.chip.title', {
+                        name: row.spellName,
+                        mod: effectModLabel(row),
+                      })}
+                    >
+                      {effectModLabel(row)} · {row.spellName || t('band.effets.sort')}
+                    </Chip>
+                  ))}
+                </button>
+              ) : (
+                spellEffects.map((row) => (
+                  <Chip
+                    key={row.id}
+                    tone="gold"
+                    title={t('band.effet.chip.title', {
+                      name: row.spellName,
+                      mod: effectModLabel(row),
+                    })}
+                  >
+                    {effectModLabel(row)} · {row.spellName || t('band.effets.sort')}
+                  </Chip>
+                ))
+              )}
+              {hasAcOverride && (
+                <Chip tone="orange" title={t('band.ca.manuelle.effet.non.applique.title')}>
+                  {t('band.ca.manuelle.effet.non.applique')}
+                </Chip>
+              )}
+            </div>
+          )}
 
           {/* Expanded detail: states, slots, quick HP edit */}
           {expanded && (
@@ -620,6 +734,58 @@ export default function CharacterStateBand({
         <div ref={bandEndRef} aria-hidden="true" />
       </section>
 
+      {/* Mini-feuille des effets de sort actifs — portaled par BottomSheet
+          (createPortal document.body : le backdrop-blur de .card casserait
+          un fixed interne). « Lever » par ligne ≥ 44 px, aria verbal. */}
+      <BottomSheet
+        open={effectsOpen && canEdit}
+        onClose={() => setEffectsOpen(false)}
+        title={t('band.effets.titre')}
+        mobileOnly={false}
+        size="md"
+      >
+        <div className="space-y-2">
+          {hasAcOverride && (
+            <p className="rounded-lg bg-orange-50 border border-orange-300 px-3 py-2 text-sm text-orange-800">
+              ⚠ {t('band.ca.manuelle.effet.non.applique')}
+            </p>
+          )}
+          {spellEffects.length === 0 && (
+            <p className="text-sm text-ink-500">{t('band.effets.aucun')}</p>
+          )}
+          {spellEffects.map((row) => (
+            <div
+              key={row.id}
+              className="flex items-center justify-between gap-2 bg-parchment-50 border border-parchment-200 rounded-lg px-3 min-h-[52px]"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-ink-800 truncate">
+                  {row.spellName || t('band.effets.sort')}
+                </p>
+                <p className="text-xs text-gold-700 font-mono">
+                  ⛨ {effectModLabel(row)}
+                  {row.tiedToConcentration ? ` · ${t('band.effets.concentre')}` : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => liftEffect(row)}
+                disabled={liftingEffectId !== null}
+                className="shrink-0 min-h-11 px-3 py-2 rounded-lg bg-parchment-200 hover:bg-parchment-300 text-sm font-medium text-ink-700 disabled:opacity-40 transition-colors"
+                aria-label={t('band.effets.lever.name', {
+                  name: row.spellName || t('band.effets.sort'),
+                })}
+              >
+                {liftingEffectId === row.id ? '…' : t('band.effets.lever')}
+              </button>
+            </div>
+          ))}
+          {hasAcOverride && spellEffects.length > 0 && (
+            <p className="text-xs text-ink-400 leading-relaxed">{t('band.ca.manuelle.note')}</p>
+          )}
+        </div>
+      </BottomSheet>
+
       {/* Pinned twin — compact fixed overlay; the flow above never resizes. */}
       {pinned && (
         <div className="band-drop fixed top-[calc(var(--app-header-h)+env(safe-area-inset-top))] inset-x-0 z-20">
@@ -656,7 +822,13 @@ export default function CharacterStateBand({
                         showText
                       />
                     </span>
-                    <span className="font-mono text-sm font-semibold text-ink-800 bg-parchment-100 border border-parchment-200 rounded-md px-2 py-1">
+                    <span
+                      className={`font-mono text-sm font-semibold text-ink-800 bg-parchment-100 border rounded-md px-2 py-1 ${
+                        spellEffects.length > 0
+                          ? 'border-gold-400 ring-1 ring-gold-300'
+                          : 'border-parchment-200'
+                      }`}
+                    >
                       🛡 {effectiveAC}
                     </span>
                     {slotsTotal > 0 && (
