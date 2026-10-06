@@ -147,6 +147,8 @@
   "band.soigner.de.1": "Heal 1",
   "band.soigner.de.5": "Heal 5",
   "conds.annuler": "Cancel",
+
+  "conds.appliquer": "Apply",
   "conds.duree.en.tours.vide.jusqu.a": "Duration in rounds (empty = until dispelled)",
   "skills.ajouter": "Add",
   "skills.armes.de.guerre": "Martial weapons",
