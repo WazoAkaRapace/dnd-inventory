@@ -448,11 +448,232 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
   eq(r.status, 204, 'supprime le bouclier');
   eq(combatantAc(), 13, 'bouclier supprimé : CA du combatant 13');
 
-  // ---------- perso dédié : doublon 409 n\'a pas fui sur un autre perso ----------
+  // ---------- perso dédié : doublon 409 n\\'a pas fui sur un autre perso ----------
   const other = await createCharacter(base, fx.gm.token, fx.partyId, {
     name: 'SansEffet',
     maxHp: 8,
   });
   r = await api(base, 'GET', `/api/characters/${other.id}/spell-effects`, { token: fx.gm.token });
   eq(r.data.effects.length, 0, 'autre perso : aucun effet');
+
+  // ============================================================
+  // v2 : CIBLAGE — cast sur un AUTRE joueur / « Autre »
+  // ============================================================
+
+  // Alya (alice, DEX 12 → +1, sans armure → CA 11) lance sur Bran (DEX 16
+  // → CA 13). Le MD crée la rencontre + ajoute Bran au traqueur pour lire
+  // son miroir CA.
+  const Alya = fx.charAlya.id;
+  const alyaCombatant = await api(
+    base,
+    'POST',
+    `/api/encounters/${enc.data.encounter.id}/combatants/player`,
+    { token: fx.gm.token, body: { characterIds: [Alya] } },
+  );
+  eq(alyaCombatant.status, 201, 'combatant Alya ajoutée');
+  const alyaCombatantId = alyaCombatant.data.combatants[0].id;
+  /** CA courante du combatant miroir d'Alya (base : 11 nu, DEX +1). */
+  const alyaAc = (): number =>
+    srv.query('SELECT armor_class AS ac FROM combatants WHERE id = ?', alyaCombatantId).ac;
+  /** Concentration courante d'un perso. */
+  const concentratingOf = (id: number): number =>
+    srv.query('SELECT concentrating FROM characters WHERE id = ?', id).concentrating;
+  /** Ligne d'effet actif d'un (porteur, sort). */
+  const activeRow = (bearer: number, spell: number): any =>
+    srv.query(
+      'SELECT * FROM character_spell_effects WHERE character_id = ? AND spell_id = ? AND active = 1',
+      bearer,
+      spell,
+    );
+
+  // ---------- validation de la cible ----------
+  r = await api(base, 'POST', `/api/characters/${Alya}/spell-effects`, {
+    token: fx.gm.token,
+    body: { spellId: faith, targetCharacterId: fx.charSecret.id },
+  });
+  eq(r.status, 404, 'cast sur perso CACHÉ du groupe → 404 (le picker ne liste que les visibles)');
+  r = await api(base, 'POST', `/api/characters/${Alya}/spell-effects`, {
+    token: fx.gm.token,
+    body: { spellId: faith, targetCharacterId: other.id, targetLabel: 'Gobelin' },
+  });
+  eq(r.status, 400, 'targetCharacterId + targetLabel à la fois → 400 (fiche XOR Autre)');
+  r = await api(base, 'POST', `/api/characters/${Alya}/spell-effects`, {
+    token: fx.gm.token,
+    body: { spellId: faith, targetLabel: '   ' },
+  });
+  eq(r.status, 400, 'targetLabel blanc → 400');
+  r = await api(base, 'POST', `/api/characters/${Alya}/spell-effects`, {
+    token: fx.gm.token,
+    body: { spellId: faith, targetLabel: 'x'.repeat(61) },
+  });
+  eq(r.status, 400, 'targetLabel > 60 chars → 400');
+
+  // ---------- cast foi sur une CIBLE : la ligne vit chez la cible, la
+  // concentration sur le LANCEUR ----------
+  eq(concentratingOf(Alya), 0, 'pré : Alya ne concentre pas');
+  r = await api(base, 'POST', `/api/characters/${Alya}/spell-effects`, {
+    token: fx.gm.token,
+    body: { spellId: faith, targetCharacterId: A },
+  });
+  eq(r.status, 201, 'Alya cast Bouclier de la foi SUR Bran');
+  const targetedEffect = r.data.effect;
+  eq(targetedEffect.characterId, A, 'ligne PORTEE par Bran (character_id = cible)');
+  eq(targetedEffect.casterCharacterId, Alya, 'ligne CASTÉE par Alya (caster_character_id)');
+  eq(targetedEffect.targetLabel, null, 'pas de label (cible fiche)');
+  eq(concentratingOf(Alya), 1, 'concentration posée sur le LANCEUR (Alya)');
+  eq(concentratingOf(A), 0, 'la CIBLE (Bran) ne concentre pas');
+  eq(combatantAc(), 15, 'CA du combatant de Bran : 13 + 2 (foi castée par Alya)');
+  eq(alyaAc(), 11, "CA du combatant d'Alya inchangée (elle ne porte pas l'effet)");
+
+  // GET côté cible : ligne PORTÉE (role bearer) ; GET côté lanceur : ligne
+  // CASTÉE (role caster) — les chips du lanceur. Bran ne porte QUE cette
+  // ligne (tout le v1 a été levé plus haut).
+  r = await api(base, 'GET', `/api/characters/${A}/spell-effects`, { token: fx.player.token });
+  eq(r.data.effects.length, 1, 'Bran porte exactement la ligne ciblée');
+  const borneLine = r.data.effects.find((e: any) => e.id === targetedEffect.id);
+  ok(borneLine, 'GET côté CIBLE montre la ligne');
+  eq(borneLine.role, 'bearer', 'côté cible : role bearer');
+  r = await api(base, 'GET', `/api/characters/${Alya}/spell-effects`, { token: fx.gm.token });
+  const castLine = r.data.effects.find((e: any) => e.id === targetedEffect.id);
+  ok(castLine, 'GET côté LANCEUR montre la ligne (chips)');
+  eq(castLine.role, 'caster', 'côté lanceur : role caster');
+  eq(castLine.characterId, A, 'le lanceur voit vers QUI la ligne pointe');
+
+  // ---------- doublon PAR PORTEUR : 409 même sort même porteur, mais un
+  // autre lanceur (Bran self-cast hâte) passe ----------
+  r = await api(base, 'POST', `/api/characters/${Alya}/spell-effects`, {
+    token: fx.gm.token,
+    body: { spellId: faith, targetCharacterId: A },
+  });
+  eq(r.status, 409, 'doublon : même sort déjà ACTIF sur le MÊME PORTEUR → 409');
+  r = await api(base, 'POST', `/api/characters/${A}/spell-effects`, {
+    token: fx.player.token,
+    body: { spellId: haste },
+  });
+  eq(r.status, 201, 'un AUTRE sort sur le même porteur passe (hâte self par Bran)');
+  eq(concentratingOf(A), 1, 'hâte self → Bran concentre aussi');
+  const branHasteId = r.data.effect.id;
+
+  // ---------- rupture par DÉGÂTS au LANCEUR (fiche, jet raté) : la ligne
+  // chez la CIBLE tombe + CA cible retombe + miroir ----------
+  r = await api(base, 'PATCH', `/api/characters/${Alya}`, {
+    token: fx.gm.token,
+    body: { currentHp: 15, concentrating: false },
+  });
+  eq(r.status, 200, 'dégâts à Alya + jet raté');
+  eq(concentratingOf(Alya), 0, 'concentration Alya tombée');
+  eq(activeRow(A, faith), undefined, 'ligne foi chez la CIBLE inactive');
+  // Bran garde SA hâte (self-castée, SA concentration tient)
+  ok(activeRow(A, haste), "la hâte SELF de Bran survit à la rupture d'Alya");
+  eq(concentratingOf(A), 1, 'Bran concentre toujours (sa hâte)');
+  eq(combatantAc(), 15, "CA Bran : 13 + 2 hâte (la foi d'Alya est tombée)");
+  // cleanup : PV d'Alya restaurés (mod-combat relit sa fiche : 20 attendus)
+  // puis lever la hâte de Bran pour la suite.
+  await api(base, 'PATCH', `/api/characters/${Alya}`, {
+    token: fx.gm.token,
+    body: { currentHp: 20 },
+  });
+  await api(base, 'DELETE', `/api/spell-effects/${branHasteId}`, { token: fx.player.token });
+  eq(concentratingOf(A), 0, 'hâte levée → Bran ne concentre plus');
+
+  // ---------- rupture par CONDITIONS BRISANTES sur le LANCEUR (traqueur) ----------
+  r = await api(base, 'POST', `/api/characters/${Alya}/spell-effects`, {
+    token: fx.gm.token,
+    body: { spellId: faith, targetCharacterId: A },
+  });
+  eq(r.status, 201, 'Alya re-caste foi sur Bran (conditions traqueur)');
+  eq(combatantAc(), 15, 'CA Bran 15 (13 + 2)');
+  r = await api(base, 'PATCH', `/api/combatants/${alyaCombatantId}`, {
+    token: fx.gm.token,
+    body: { conditions: [{ name: 'Inconscient', duration: 1 }] },
+  });
+  eq(r.status, 200, "MD pose Inconscient sur le combatant d'Alya (le lanceur)");
+  eq(concentratingOf(Alya), 0, 'concentration Alya rompue (traqueur)');
+  eq(activeRow(A, faith), undefined, 'ligne foi chez Bran inactive');
+  eq(combatantAc(), 13, 'CA du combatant de Bran retombée à 13 (miroir cible)');
+  await api(base, 'PATCH', `/api/combatants/${alyaCombatantId}`, {
+    token: fx.gm.token,
+    body: { conditions: [] },
+  });
+
+  // ---------- DELETE depuis la fiche de la CIBLE : concentrating retombe
+  // sur le LANCEUR ----------
+  r = await api(base, 'POST', `/api/characters/${Alya}/spell-effects`, {
+    token: fx.gm.token,
+    body: { spellId: faith, targetCharacterId: A },
+  });
+  eq(r.status, 201, 'Alya cast foi sur Bran (DELETE test)');
+  eq(concentratingOf(Alya), 1, 'Alya concentre');
+  eq(combatantAc(), 15, 'CA Bran 15');
+  const targetRow = activeRow(A, faith);
+  ok(targetRow, 'ligne active chez Bran');
+  // le MD lève l'effet DEPUIS la fiche de la CIBLE
+  r = await api(base, 'DELETE', `/api/spell-effects/${targetRow.id}`, { token: fx.gm.token });
+  eq(r.status, 200, 'DELETE effet posé sur autrui (depuis la fiche cible, par le MD)');
+  eq(
+    r.data.concentrating,
+    false,
+    "plus d'effet concentré CASTÉ par Alya → concentrating LANCEUR = 0",
+  );
+  eq(concentratingOf(Alya), 0, 'concentration Alya retombée');
+  eq(concentratingOf(A), 0, "Bran n'a jamais concentré");
+  eq(combatantAc(), 13, 'CA du combatant de Bran retombée à 13');
+
+  // ---------- « Autre » : label libre, ligne sur le LANCEUR, AUCUNE CA ----------
+  r = await api(base, 'POST', `/api/characters/${Alya}/spell-effects`, {
+    token: fx.gm.token,
+    body: { spellId: faith, targetLabel: '  Gobelin  ' },
+  });
+  eq(r.status, 201, 'cast foi sur « Autre » (Gobelin)');
+  const otherEffect = r.data.effect;
+  eq(otherEffect.characterId, Alya, 'ligne « Autre » vit sur la fiche du LANCEUR');
+  eq(otherEffect.casterCharacterId, Alya, 'caster = lanceur');
+  eq(otherEffect.targetLabel, 'Gobelin', 'label trimé');
+  eq(concentratingOf(Alya), 1, 'lanceur concentre (effet concentré)');
+  eq(alyaAc(), 11, 'AUCUN impact CA lanceur (target_label filtré par activeAcEffectsOf)');
+  // la ligne apparaît côté lanceur (role bearer — elle vit sur sa fiche)
+  r = await api(base, 'GET', `/api/characters/${Alya}/spell-effects`, { token: fx.gm.token });
+  const otherLine = r.data.effects.find((e: any) => e.id === otherEffect.id);
+  ok(otherLine, 'chip « Autre » visible côté lanceur');
+  eq(otherLine.targetLabel, 'Gobelin', 'GET porte le label');
+  // rupture lanceur (fiche) → ligne « Autre » tombe aussi
+  r = await api(base, 'PATCH', `/api/characters/${Alya}`, {
+    token: fx.gm.token,
+    body: { concentrating: false },
+  });
+  eq(r.status, 200, 'concentration Alya abandonnée');
+  eq(
+    srv.query('SELECT active FROM character_spell_effects WHERE id = ?', otherEffect.id).active,
+    0,
+    'ligne « Autre » désactivée par la rupture du lanceur',
+  );
+  eq(alyaAc(), 11, "CA Alya toujours 11 (rien n'a bougé)");
+
+  // ---------- 404 cible d'un AUTRE groupe ----------
+  r = await api(base, 'POST', `/api/characters/${Alya}/spell-effects`, {
+    token: fx.gm.token,
+    body: { spellId: faith, targetCharacterId: A },
+  });
+  eq(r.status, 201, 're-caste pour test cross-party');
+  const daveParty = await api(base, 'POST', '/api/parties', {
+    token: fx.outsider.token,
+    body: { name: 'Groupe de Dave' },
+  });
+  const daveChar = await createCharacter(base, fx.outsider.token, daveParty.data.party.id, {
+    name: 'DaveHero',
+    maxHp: 10,
+  });
+  r = await api(base, 'POST', `/api/characters/${A}/spell-effects`, {
+    token: fx.player.token,
+    body: { spellId: haste, targetCharacterId: daveChar.id },
+  });
+  eq(r.status, 404, 'cible hors du groupe → 404');
+  // cleanup : Alya concentre encore — lever proprement
+  const alyaRow = srv.query(
+    'SELECT id FROM character_spell_effects WHERE character_id = ? AND active = 1',
+    Alya,
+  );
+  if (alyaRow) {
+    await api(base, 'DELETE', `/api/spell-effects/${alyaRow.id}`, { token: fx.gm.token });
+  }
 }

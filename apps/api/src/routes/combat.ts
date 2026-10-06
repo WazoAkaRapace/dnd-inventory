@@ -44,11 +44,7 @@ import {
 } from '../db/schema.ts';
 import { type PushPayload, type PushSendOptions, sendPushToUser } from '../push/send.ts';
 import { bus } from '../sync/bus.ts';
-import {
-  deactivateConcentrationEffects,
-  mirrorAcToCombatants,
-  trackerAcOf,
-} from './character-spell-effects.ts';
+import { breakConcentrationEffectsOnTracker, trackerAcOf } from './character-spell-effects.ts';
 import {
   getUserId,
   isPartyGM,
@@ -991,16 +987,18 @@ export async function combatRoutes(app: FastifyInstance) {
             // Unconscious → concentration ends automatically on the sheet too.
             // Les lignes d'effet liées tombent DANS la même écriture — un
             // effet fantôme ne doit pas survivre à la rupture.
+            let droppedBearers: number[] = [];
             getDb().transaction(() => {
               drizzle
                 .update(charactersTable)
                 .set({ concentrating: 0 })
                 .where(eq(charactersTable.id, ch.id))
                 .run();
-              deactivateConcentrationEffects(ch.id);
-              // La CA du combatant suit la chute des effets (emit: false —
-              // la route émet déjà son combat:change chirurgical).
-              mirrorAcToCombatants(ch.id, userId, { emit: false });
+              // v2 : la rupture se juge sur le LANCEUR — les lignes CASTÉES
+              // par ce perso tombent (sur lui, sur autrui ou « Autre »), et
+              // la CA de CHAQUE porteur fiche touché resynchronise (emit:
+              // false — la route émet déjà son combat:change chirurgical).
+              droppedBearers = breakConcentrationEffectsOnTracker(ch.id, userId);
             })();
             bus.emitChange({
               type: 'character:change',
@@ -1009,6 +1007,18 @@ export async function combatRoutes(app: FastifyInstance) {
               action: 'stats',
               actorUserId: userId,
             });
+            // v2 : les porteurs AUTRES que le lanceur rafraîchissent aussi
+            // (leur CA vient de retomber).
+            for (const bearerId of droppedBearers) {
+              if (bearerId === ch.id) continue;
+              bus.emitChange({
+                type: 'character:change',
+                partyId: enc.party_id,
+                characterId: bearerId,
+                action: 'stats',
+                actorUserId: userId,
+              });
+            }
           }
         }
       }
@@ -1151,16 +1161,18 @@ export async function combatRoutes(app: FastifyInstance) {
           if (ch?.concentrating) {
             // Condition brisante → concentration rompue : les lignes d'effet
             // liées tombent dans la même écriture (pas d'effet fantôme).
+            let droppedBearers: number[] = [];
             getDb().transaction(() => {
               drizzle
                 .update(charactersTable)
                 .set({ concentrating: 0 })
                 .where(eq(charactersTable.id, ch.id))
                 .run();
-              deactivateConcentrationEffects(ch.id);
-              // La CA du combatant suit la chute des effets (emit: false —
-              // la route émet déjà son combat:change chirurgical).
-              mirrorAcToCombatants(ch.id, userId, { emit: false });
+              // v2 : la rupture se juge sur le LANCEUR — les lignes CASTÉES
+              // par ce perso tombent, et la CA de CHAQUE porteur fiche
+              // touché resynchronise (emit: false — la route émet déjà son
+              // combat:change chirurgical).
+              droppedBearers = breakConcentrationEffectsOnTracker(ch.id, userId);
             })();
             bus.emitChange({
               type: 'character:change',
@@ -1169,6 +1181,18 @@ export async function combatRoutes(app: FastifyInstance) {
               action: 'stats',
               actorUserId: userId,
             });
+            // v2 : les porteurs AUTRES que le lanceur rafraîchissent aussi
+            // (leur CA vient de retomber).
+            for (const bearerId of droppedBearers) {
+              if (bearerId === ch.id) continue;
+              bus.emitChange({
+                type: 'character:change',
+                partyId: enc.party_id,
+                characterId: bearerId,
+                action: 'stats',
+                actorUserId: userId,
+              });
+            }
             concentrationBroken = breaking.name;
           }
         }

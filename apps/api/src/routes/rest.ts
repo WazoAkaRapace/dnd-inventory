@@ -74,6 +74,9 @@ export async function restRoutes(app: FastifyInstance) {
       if (body.type !== 'short' && body.type !== 'long') {
         return reply.code(400).send({ error: "type doit valoir 'short' ou 'long'" });
       }
+      // v2 : porteurs des lignes d'effet tombées avec la concentration du
+      // repos long (repos court : la concentration tient, rien ne tombe).
+      let restDroppedBearers: number[] = [];
       if (body.hitDiceSpent !== undefined && !Number.isInteger(body.hitDiceSpent)) {
         return reply.code(400).send({ error: apiMsg(req, 'hitDiceSpent doit être un entier') });
       }
@@ -174,20 +177,39 @@ export async function restRoutes(app: FastifyInstance) {
         drizzle.update(characters).set(values).where(eq(characters.id, char.id)).run();
         // Repos long : la concentration tombe — les lignes d'effet liées
         // tombent avec (même écriture, pas d'effet fantôme au réveil).
+        // v2 : la rupture se juge sur le LANCEUR (caster_character_id) —
+        // les lignes qu'il a castées sur autrui / « Autre » tombent aussi.
+        let droppedBearers: number[] = [];
         if (values.concentrating === 0) {
+          const dropped = drizzle
+            .select({ characterId: characterSpellEffects.characterId })
+            .from(characterSpellEffects)
+            .where(
+              and(
+                eq(characterSpellEffects.casterCharacterId, char.id),
+                eq(characterSpellEffects.tiedToConcentration, 1),
+                eq(characterSpellEffects.active, 1),
+              ),
+            )
+            .all() as any[];
           drizzle
             .update(characterSpellEffects)
             .set({ active: 0 })
             .where(
               and(
-                eq(characterSpellEffects.characterId, char.id),
+                eq(characterSpellEffects.casterCharacterId, char.id),
                 eq(characterSpellEffects.tiedToConcentration, 1),
                 eq(characterSpellEffects.active, 1),
               ),
             )
             .run();
-          // La CA des combatants suit la chute des effets concentrés.
-          mirrorAcToCombatants(char.id, userId);
+          droppedBearers = [...new Set(dropped.map((r) => r.characterId))];
+          // La CA des combatants suit la chute des effets concentrés — pour
+          // CHAQUE porteur fiche touché (la cible peut être en initiative).
+          for (const bearerId of droppedBearers) {
+            mirrorAcToCombatants(bearerId, userId);
+          }
+          restDroppedBearers = droppedBearers;
         }
       }
 
@@ -272,6 +294,19 @@ export async function restRoutes(app: FastifyInstance) {
         action: 'rest',
         actorUserId: userId,
       });
+      // v2 : les lignes tombées pouvaient vivre sur les fiches d'AUTRES
+      // porteurs (effets castés par ce perso) — leur CA bouge, chacun
+      // rafraîchit (actorUserId obligatoire sur tout emitChange).
+      for (const bearerId of restDroppedBearers) {
+        if (bearerId === char.id) continue;
+        bus.emitChange({
+          type: 'character:change',
+          partyId: char.party_id,
+          characterId: bearerId,
+          action: 'stats',
+          actorUserId: userId,
+        });
+      }
 
       const row = drizzle
         .select(cols(characters))

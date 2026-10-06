@@ -21,7 +21,7 @@
  * bouge) — le traqueur suit la CA en continu, plus seulement à l'ajout.
  */
 
-import { and, eq, ne } from 'drizzle-orm';
+import { and, eq, isNull, ne, or } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDrizzle } from '../db/drizzle.ts';
 import { getDb } from '../db/index.ts';
@@ -41,6 +41,10 @@ import { abilityModifier, computeAC, SPELL_AC_EFFECTS } from '@table-sync/shared
 
 interface CreateSpellEffectPayload {
   spellId: number;
+  /** v2 : cible fiche du même groupe (non cachée) — absent = self (v1). */
+  targetCharacterId?: number;
+  /** v2 « Autre » : nom libre de la cible sans fiche (trim non vide, ≤ 60). */
+  targetLabel?: string;
 }
 
 function getCharacter(drizzle: ReturnType<typeof getDrizzle>, id: number): any {
@@ -56,7 +60,11 @@ function isOwnerOrGM(char: any, userId: number): boolean {
   return char.owner_id === userId || isPartyGM(char.party_id, userId);
 }
 
-/** Effets CA actifs du personnage → forme consommée par computeAC (miroir traqueur). */
+/**
+ * Effets CA actifs du personnage → forme consommée par computeAC (miroir
+ * traqueur). v2 : un effet « Autre » (target_label rempli) vit sur la fiche
+ * du LANCEUR pour ses chips mais ne touche PAS sa CA — filtré ici.
+ */
 export function activeAcEffectsOf(
   characterId: number,
 ): Array<{ effectKind: string; acValue: number }> {
@@ -67,7 +75,11 @@ export function activeAcEffectsOf(
     })
     .from(characterSpellEffects)
     .where(
-      and(eq(characterSpellEffects.characterId, characterId), eq(characterSpellEffects.active, 1)),
+      and(
+        eq(characterSpellEffects.characterId, characterId),
+        isNull(characterSpellEffects.targetLabel),
+        eq(characterSpellEffects.active, 1),
+      ),
     )
     .all() as any[];
 }
@@ -78,19 +90,59 @@ export function activeAcEffectsOf(
  * condition brisante posée par le MD) DANS la même transaction que le
  * `concentrating = 0`. Le miroir fiche (characters.ts) couvre ses propres
  * voies via `values.concentrating === 0`.
+ *
+ * v2 : la rupture se juge sur le LANCEUR — les lignes visées sont celles
+ * CASTÉES par :characterId (caster_character_id), qu'il les porte ou les
+ * ait posées sur autrui / « Autre ».
  */
-export function deactivateConcentrationEffects(characterId: number): void {
+export function deactivateConcentrationEffects(casterId: number): void {
   getDrizzle()
     .update(characterSpellEffects)
     .set({ active: 0 })
     .where(
       and(
-        eq(characterSpellEffects.characterId, characterId),
+        // Ciblage v2 : caster NULL = posé à la main par un MD sans lanceur
+        // identifié — ces lignes ne dépendent d'aucune concentration.
+        eq(characterSpellEffects.casterCharacterId, casterId),
         eq(characterSpellEffects.tiedToConcentration, 1),
         eq(characterSpellEffects.active, 1),
       ),
     )
     .run();
+}
+
+/**
+ * Suite d'une rupture de concentration CÔTÉ TRACKER (combat.ts) : désactive
+ * les lignes castées par le lanceur PUIS resynchronise la CA des combatants
+ * de CHAQUE porteur fiche touché (la cible peut être en initiative — c'est
+ * sa ligne traqueur qui doit retomber, pas seulement celle du lanceur).
+ * Retourne les ids des porteurs fiche dont au moins une ligne est tombée
+ * (l'appelant émet le character:change 'stats' de chacun).
+ */
+export function breakConcentrationEffectsOnTracker(
+  casterId: number,
+  actorUserId: number,
+): number[] {
+  const drizzle = getDrizzle();
+  const dropped = drizzle
+    .select({ characterId: characterSpellEffects.characterId })
+    .from(characterSpellEffects)
+    .where(
+      and(
+        eq(characterSpellEffects.casterCharacterId, casterId),
+        eq(characterSpellEffects.tiedToConcentration, 1),
+        eq(characterSpellEffects.active, 1),
+      ),
+    )
+    .all() as any[];
+  deactivateConcentrationEffects(casterId);
+  const bearerIds = [...new Set(dropped.map((r) => r.characterId))];
+  for (const bearerId of bearerIds) {
+    // Les lignes « Autre » vivent sur la fiche du lanceur mais n'y portent
+    // aucune CA ; le miroir est idempotent — sans combatant, rien ne bouge.
+    mirrorAcToCombatants(bearerId, actorUserId, { emit: false });
+  }
+  return bearerIds;
 }
 
 /**
@@ -172,6 +224,8 @@ function mapSpellEffect(row: any, lang: AppLang) {
   return {
     id: row.id,
     characterId: row.character_id,
+    casterCharacterId: row.caster_character_id,
+    targetLabel: row.target_label,
     spellId: row.spell_id,
     effectKind: row.effect_kind,
     acValue: row.ac_value,
@@ -213,10 +267,15 @@ export async function characterSpellEffectRoutes(app: FastifyInstance) {
         return reply.code(404).send({ error: apiMsg(req, 'character not found') });
       }
       const lang = langFromReq(req);
+      // v2 : les effets PORTÉS par :id (SA CA) plus les effets CASTÉS par
+      // :id vers autrui / « Autre » (les chips du lanceur) — role sur chaque
+      // ligne pour l'UI. Une ligne self-castée est 'bearer' (le cas dominant).
       const rows = drizzle
         .select({
           id: characterSpellEffects.id,
           character_id: characterSpellEffects.characterId,
+          caster_character_id: characterSpellEffects.casterCharacterId,
+          target_label: characterSpellEffects.targetLabel,
           spell_id: characterSpellEffects.spellId,
           effect_kind: characterSpellEffects.effectKind,
           ac_value: characterSpellEffects.acValue,
@@ -231,11 +290,22 @@ export async function characterSpellEffectRoutes(app: FastifyInstance) {
         .from(characterSpellEffects)
         .innerJoin(spells, eq(spells.id, characterSpellEffects.spellId))
         .where(
-          and(eq(characterSpellEffects.characterId, char.id), eq(characterSpellEffects.active, 1)),
+          and(
+            or(
+              eq(characterSpellEffects.characterId, char.id),
+              eq(characterSpellEffects.casterCharacterId, char.id),
+            ),
+            eq(characterSpellEffects.active, 1),
+          ),
         )
         .orderBy(characterSpellEffects.createdAt, characterSpellEffects.id)
         .all();
-      return reply.send({ effects: rows.map((r: any) => mapSpellEffect(r, lang)) });
+      return reply.send({
+        effects: rows.map((r: any) => ({
+          ...mapSpellEffect(r, lang),
+          role: r.character_id === char.id ? 'bearer' : 'caster',
+        })),
+      });
     },
   );
 
@@ -276,13 +346,56 @@ export async function characterSpellEffectRoutes(app: FastifyInstance) {
           .send({ error: apiMsg(req, 'ce sort ne pose pas d’effet sur la CA') });
       }
 
-      // Pas de double : un effet ACTIF du même sort → 409.
+      // ---------- v2 : résolution de la cible ----------
+      // Défaut (ni targetCharacterId ni targetLabel) = self, compatible v1.
+      // Les deux à la fois est contradictoire (le contrat est fiche XOR Autre).
+      let target:
+        | { kind: 'self' }
+        | { kind: 'character'; id: number }
+        | { kind: 'label'; label: string } = {
+        kind: 'self',
+      };
+      if (body.targetCharacterId !== undefined && body.targetLabel !== undefined) {
+        return reply
+          .code(400)
+          .send({ error: apiMsg(req, 'cible exclusive : targetCharacterId ou targetLabel') });
+      }
+      if (body.targetCharacterId !== undefined) {
+        if (
+          typeof body.targetCharacterId !== 'number' ||
+          !Number.isInteger(body.targetCharacterId)
+        ) {
+          return reply.code(400).send({ error: apiMsg(req, 'targetCharacterId is required') });
+        }
+        const targetChar = getCharacter(drizzle, body.targetCharacterId);
+        // Le picker ne liste que des persos du même groupe non cachés — la
+        // règle est répliquée côté API : autre groupe / caché / inexistant
+        // → même 404 (un 404 ne divulgue pas l'existence d'une fiche secrète).
+        if (!targetChar || targetChar.party_id !== char.party_id || targetChar.hidden) {
+          return reply.code(404).send({ error: apiMsg(req, 'character not found') });
+        }
+        target = { kind: 'character', id: targetChar.id };
+      } else if (body.targetLabel !== undefined) {
+        const label = typeof body.targetLabel === 'string' ? body.targetLabel.trim() : '';
+        if (!label || label.length > 60) {
+          return reply.code(400).send({ error: apiMsg(req, 'targetLabel is required') });
+        }
+        target = { kind: 'label', label };
+      }
+      // Porteur de la ligne : la cible fiche, ou le LANCEUR pour « Autre »
+      // (pas de fiche : la ligne vit sur sa feuille pour ses chips, sans
+      // toucher sa CA — activeAcEffectsOf filtre target_label IS NULL).
+      const bearerId = target.kind === 'character' ? target.id : char.id;
+
+      // Pas de double : un effet ACTIF du même sort SUR LE MÊME PORTEUR →
+      // 409 (self ou cible dédiée). Deux lanceurs différents peuvent chacun
+      // bénir le même porteur — c'est le MD qui tranche (non-cumul RAW).
       const existing = drizzle
         .select({ id: characterSpellEffects.id })
         .from(characterSpellEffects)
         .where(
           and(
-            eq(characterSpellEffects.characterId, char.id),
+            eq(characterSpellEffects.characterId, bearerId),
             eq(characterSpellEffects.spellId, spell.id),
             eq(characterSpellEffects.active, 1),
           ),
@@ -298,17 +411,20 @@ export async function characterSpellEffectRoutes(app: FastifyInstance) {
         const row = drizzle
           .insert(characterSpellEffects)
           .values({
-            characterId: char.id,
+            characterId: bearerId,
+            casterCharacterId: char.id,
             spellId: spell.id,
             effectKind: def.kind,
             acValue: def.value,
             tiedToConcentration: def.tiedToConcentration ? 1 : 0,
+            targetLabel: target.kind === 'label' ? target.label : null,
             active: 1,
           })
           .returning({ id: characterSpellEffects.id })
           .get();
         // Concentration-dépendant : poser l'effet pose aussi la concentration
-        // (même transaction — les deux tombent ensemble ou pas du tout).
+        // — sur le LANCEUR (même un sort posé sur autrui, c'est lui qui
+        // concentre), même transaction, les deux tombent ensemble ou pas.
         if (def.tiedToConcentration && !char.concentrating) {
           drizzle
             .update(characters)
@@ -316,9 +432,11 @@ export async function characterSpellEffectRoutes(app: FastifyInstance) {
             .where(eq(characters.id, char.id))
             .run();
         }
-        // La CA des combatants suit la pose — même transaction, l'effet est
-        // visible de activeAcEffectsOf relu par le miroir.
-        mirrorAcToCombatants(char.id, userId);
+        // La CA des combatants du PORTEUR suit la pose — même transaction,
+        // l'effet est visible de activeAcEffectsOf relu par le miroir. Pour
+        // « Autre » le porteur de ligne est le lanceur, mais son effet est
+        // étiqueté : aucun impact CA, le miroir ne bouge rien.
+        mirrorAcToCombatants(bearerId, userId);
         return row;
       })();
 
@@ -326,6 +444,8 @@ export async function characterSpellEffectRoutes(app: FastifyInstance) {
         .select({
           id: characterSpellEffects.id,
           character_id: characterSpellEffects.characterId,
+          caster_character_id: characterSpellEffects.casterCharacterId,
+          target_label: characterSpellEffects.targetLabel,
           spell_id: characterSpellEffects.spellId,
           effect_kind: characterSpellEffects.effectKind,
           ac_value: characterSpellEffects.acValue,
@@ -341,13 +461,27 @@ export async function characterSpellEffectRoutes(app: FastifyInstance) {
         .where(eq(characterSpellEffects.id, inserted.id))
         .get();
 
+      // v2 : quand l'effet vit sur une AUTRE fiche, la CIBLE (sa CA bouge)
+      // ET le LANCEUR (ses chips / sa concentration) rafraîchissent chacun —
+      // deux emitChange, chacun avec actorUserId. Pour « Autre » : le lanceur
+      // seul (aucune fiche cible).
+      const bearerRow = target.kind === 'character' ? getCharacter(drizzle, target.id) : null;
       bus.emitChange({
         type: 'character:change',
         partyId: char.party_id,
-        characterId: char.id,
+        characterId: bearerRow ? bearerRow.id : char.id,
         action: 'stats',
         actorUserId: userId,
       });
+      if (bearerRow && bearerRow.id !== char.id) {
+        bus.emitChange({
+          type: 'character:change',
+          partyId: char.party_id,
+          characterId: char.id,
+          action: 'stats',
+          actorUserId: userId,
+        });
+      }
       return reply.code(201).send({ effect: mapSpellEffect(row, langFromReq(req)) });
     },
   );
@@ -370,6 +504,9 @@ export async function characterSpellEffectRoutes(app: FastifyInstance) {
       if (!isPartyMember(char.party_id, userId)) {
         return reply.code(403).send({ error: apiMsg(req, 'not a member') });
       }
+      // Le porteur de ligne reste la porte d'entrée (le MD lève depuis la
+      // fiche de la CIBLE comme depuis celle du lanceur — les deux voient
+      // la ligne) : owner du porteur ou MD du groupe.
       if (!isOwnerOrGM(char, userId)) {
         return reply
           .code(403)
@@ -378,41 +515,52 @@ export async function characterSpellEffectRoutes(app: FastifyInstance) {
       if (!effect.active) {
         return reply.code(409).send({ error: apiMsg(req, 'cet effet est déjà levé') });
       }
+      // v2 : la concentration appartient au LANCEUR — la chute éventuelle se
+      // juge sur LUI. Lignes sans lanceur (posées à la main par un MD) : la
+      // concentration du porteur n'est plus gérée par ces lignes-là.
+      const caster = effect.caster_character_id
+        ? getCharacter(drizzle, effect.caster_character_id)
+        : null;
 
       const stillConcentrating = getDb().transaction(() => {
+        let casterConcentrating = caster ? !!caster.concentrating : false;
         drizzle
           .update(characterSpellEffects)
           .set({ active: 0 })
           .where(eq(characterSpellEffects.id, effect.id))
           .run();
-        // La concentration ne tombe que si PLUS AUCUN effet actif ne la
-        // justifie (le joueur peut concentrer un sort sans effet CA).
-        if (effect.tied_to_concentration) {
+        // La concentration du LANCEUR ne tombe que si PLUS AUCUN effet
+        // actif CASTÉ PAR LUI ne la justifie (le joueur peut concentrer un
+        // sort sans effet CA).
+        if (effect.tied_to_concentration && caster) {
           const remaining = drizzle
             .select({ id: characterSpellEffects.id })
             .from(characterSpellEffects)
             .where(
               and(
-                eq(characterSpellEffects.characterId, char.id),
+                eq(characterSpellEffects.casterCharacterId, caster.id),
                 eq(characterSpellEffects.tiedToConcentration, 1),
                 eq(characterSpellEffects.active, 1),
               ),
             )
             .get();
-          if (!remaining && char.concentrating) {
+          if (!remaining && caster.concentrating) {
             drizzle
               .update(characters)
               .set({ concentrating: 0 })
-              .where(eq(characters.id, char.id))
+              .where(eq(characters.id, caster.id))
               .run();
-            mirrorAcToCombatants(char.id, userId);
-            return false;
+            casterConcentrating = false;
           }
         }
+        // La CA du PORTEUR suit la levée (l'effet étiqueté « Autre » ne
+        // portait aucune CA — miroir idempotent, il ne bouge rien).
         mirrorAcToCombatants(char.id, userId);
-        return !!char.concentrating;
+        return casterConcentrating;
       })();
 
+      // CIBLE (porteur — sa CA peut bouger) puis LANCEUR (ses chips / sa
+      // concentration) : deux emitChange quand la ligne vivait chez autrui.
       bus.emitChange({
         type: 'character:change',
         partyId: char.party_id,
@@ -420,6 +568,15 @@ export async function characterSpellEffectRoutes(app: FastifyInstance) {
         action: 'stats',
         actorUserId: userId,
       });
+      if (caster && caster.id !== char.id) {
+        bus.emitChange({
+          type: 'character:change',
+          partyId: char.party_id,
+          characterId: caster.id,
+          action: 'stats',
+          actorUserId: userId,
+        });
+      }
       return reply.send({ ok: true, concentrating: stillConcentrating });
     },
   );

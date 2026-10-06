@@ -664,6 +664,9 @@ export async function characterRoutes(app: FastifyInstance) {
       // sheet/tracker state. (The condition mirror may emit a sync event
       // from inside the tx; events are best-effort refresh nudges, so a
       // rollback just leaves clients on the pre-tx state.)
+      // v2 : porteurs des lignes d'effet tombées avec la concentration —
+      // rempli par writeTx, relu après pour le fan-out CA + events.
+      let concentrationDroppedBearers: number[] = [];
       const writeTx = getDb().transaction(() => {
         if (Object.keys(values).length > 0) {
           drizzle.update(characters).set(values).where(eq(characters.id, char.id)).run();
@@ -675,24 +678,41 @@ export async function characterRoutes(app: FastifyInstance) {
         // liées à la concentration se désactivent dans la MÊME transaction —
         // sinon un effet fantôme survit à sa rupture (Bouclier de la foi
         // resterait à +2 CA après un Inconscient).
+        // v2 : la rupture se juge sur le LANCEUR — ce perso peut porter des
+        // effets castés par un autre (ils survivent), et les lignes qu'il a
+        // castées sur autrui / « Autre » tombent aussi.
         if (values.concentrating === 0) {
+          const dropped = drizzle
+            .select({ characterId: characterSpellEffects.characterId })
+            .from(characterSpellEffects)
+            .where(
+              and(
+                eq(characterSpellEffects.casterCharacterId, char.id),
+                eq(characterSpellEffects.tiedToConcentration, 1),
+                eq(characterSpellEffects.active, 1),
+              ),
+            )
+            .all() as any[];
           drizzle
             .update(characterSpellEffects)
             .set({ active: 0 })
             .where(
               and(
-                eq(characterSpellEffects.characterId, char.id),
+                eq(characterSpellEffects.casterCharacterId, char.id),
                 eq(characterSpellEffects.tiedToConcentration, 1),
                 eq(characterSpellEffects.active, 1),
               ),
             )
             .run();
+          concentrationDroppedBearers = [...new Set(dropped.map((r) => r.characterId))];
         }
 
         // --- CA : toute écriture qui en change les entrées (rupture de
         // concentration qui désactive des effets, override manuel, DEX/CON/WIS
         // — défense sans armure —, style Défense) resynchronise la CA des
         // combatants en rencontre non terminée — le traqueur suit en continu.
+        // v2 : la rupture peut avoir fait tomber des lignes vivant sur les
+        // fiches D'AUTRES porteurs — CHACUN resynchronise sa ligne traqueur.
         // Relit la fiche ci-dessous : l'UPDATE ci-dessus est déjà passé.
         if (
           values.concentrating === 0 ||
@@ -703,6 +723,9 @@ export async function characterRoutes(app: FastifyInstance) {
           values.fightingStyle !== undefined
         ) {
           mirrorAcToCombatants(char.id, userId);
+          for (const bearerId of concentrationDroppedBearers) {
+            if (bearerId !== char.id) mirrorAcToCombatants(bearerId, userId);
+          }
         }
 
         for (const cr of hpMirrorTargets) {
@@ -917,6 +940,19 @@ export async function characterRoutes(app: FastifyInstance) {
         actorUserId: userId,
         ...(concentrationCheck ? { concentration: concentrationCheck } : {}),
       });
+      // v2 : la rupture de concentration de ce perso peut avoir fait tomber
+      // des lignes vivant sur les fiches d'AUTRES porteurs — leur CA bouge,
+      // chacun rafraîchit (actorUserId obligatoire sur tout emitChange).
+      for (const bearerId of concentrationDroppedBearers) {
+        if (bearerId === char.id) continue;
+        bus.emitChange({
+          type: 'character:change',
+          partyId: char.party_id,
+          characterId: bearerId,
+          action: 'stats',
+          actorUserId: userId,
+        });
+      }
       return reply.send({
         character: mapCharacter(row),
         ...(concentrationCheck ? { concentrationCheck } : {}),
