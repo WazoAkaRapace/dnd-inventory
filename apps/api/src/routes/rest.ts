@@ -35,6 +35,7 @@ import {
   mirrorConditionsToCombatants,
   requireUser,
 } from './helpers.ts';
+import { mirrorAcToCombatants } from './character-spell-effects.ts';
 import { apiMsg } from './messages.ts';
 
 export async function restRoutes(app: FastifyInstance) {
@@ -185,6 +186,8 @@ export async function restRoutes(app: FastifyInstance) {
               ),
             )
             .run();
+          // La CA des combatants suit la chute des effets concentrés.
+          mirrorAcToCombatants(char.id, userId);
         }
       }
 

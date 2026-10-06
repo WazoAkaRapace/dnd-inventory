@@ -16,20 +16,28 @@
  *                                       concentrating = 0 (même tx)
  *
  * Les mutations émettent `character:change action 'stats'` (CA visible du
- * résumé du roster).
+ * résumé du roster) ET resynchronisent la CA des combatants non terminés
+ * (`mirrorAcToCombatants` → `combat:change action 'ac'` quand une ligne
+ * bouge) — le traqueur suit la CA en continu, plus seulement à l'ajout.
  */
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDrizzle } from '../db/drizzle.ts';
 import { getDb } from '../db/index.ts';
 import { cols } from '../db/projections.ts';
-import { characterSpellEffects, characters, spells } from '../db/schema.ts';
+import { characterSpellEffects, characters, combatants, encounters, spells } from '../db/schema.ts';
 import { bus } from '../sync/bus.ts';
-import { characterVisibleTo, isPartyGM, isPartyMember, requireUser } from './helpers.ts';
+import {
+  characterVisibleTo,
+  equippedAcRows,
+  isPartyGM,
+  isPartyMember,
+  requireUser,
+} from './helpers.ts';
 import { type AppLang, langFromReq } from './lang.ts';
 import { apiMsg } from './messages.ts';
-import { SPELL_AC_EFFECTS } from '@table-sync/shared';
+import { abilityModifier, computeAC, SPELL_AC_EFFECTS } from '@table-sync/shared';
 
 interface CreateSpellEffectPayload {
   spellId: number;
@@ -83,6 +91,81 @@ export function deactivateConcentrationEffects(characterId: number): void {
       ),
     )
     .run();
+}
+
+/**
+ * CA effective du personnage TELLE QUE PORTÉE PAR UN COMBATTANT : équipement
+ * + effets de sort actifs, l'override manuel GAGNE (même règle qu'à l'ajout
+ * du combatant — combat.ts). Relu à chaque appel : les lignes d'effet et la
+ * fiche viennent d'être écrites par l'appelant, la relecture les voit.
+ */
+export function trackerAcOf(char: any): number {
+  const invRows = equippedAcRows(char.id);
+  const acResult = computeAC(
+    invRows.map((r: any) => ({
+      item: {
+        category: r.category,
+        acBase: r.ac_base,
+        strMin: r.str_min,
+        nameFr: r.name_fr,
+        name: r.name,
+      },
+      equipped: !!r.equipped,
+    })),
+    abilityModifier(char.dexterity ?? 10),
+    char.fighting_style === 'defense',
+    {
+      constitution: char.constitution,
+      wisdom: char.wisdom,
+      characterClass: char.character_class,
+    },
+    'fr',
+    activeAcEffectsOf(char.id),
+  );
+  return char.armor_class_override ?? acResult.ac;
+}
+
+/**
+ * Fiche → traqueur : resynchronise la CA des combatants du personnage dans
+ * les rencontres non terminées. Appelé par TOUTE écriture qui change une
+ * entrée de la CA (effet posé/levé, rupture de concentration — y compris
+ * depuis le traqueur, override manuel, DEX, équipement). Idempotent : ni
+ * écriture ni événement si la CA calculée égale celle des lignes.
+ * En forme sauvage, les miroirs wild shape possèdent la CA du combatant —
+ * on n'y touche pas. `emit: false` quand la route appelante émet déjà son
+ * combat:change chirurgical (PATCH combatant, qui porte l'encounterId).
+ */
+export function mirrorAcToCombatants(
+  charId: number,
+  actorUserId: number,
+  options: { emit?: boolean } = {},
+): void {
+  const drizzle = getDrizzle();
+  const char = getCharacter(drizzle, charId);
+  if (!char || char.wild_shape_slug) return;
+  const rows = drizzle
+    .select({ id: combatants.id, armor_class: combatants.armorClass })
+    .from(combatants)
+    .innerJoin(encounters, eq(combatants.encounterId, encounters.id))
+    .where(
+      and(
+        eq(combatants.characterId, charId),
+        eq(combatants.type, 'player'),
+        ne(encounters.status, 'ended'),
+      ),
+    )
+    .all() as any[];
+  if (rows.length === 0) return;
+  const ac = trackerAcOf(char);
+  let changed = false;
+  for (const row of rows) {
+    if (row.armor_class === ac) continue;
+    drizzle.update(combatants).set({ armorClass: ac }).where(eq(combatants.id, row.id)).run();
+    changed = true;
+  }
+  if (changed && options.emit !== false) {
+    bus.emitChange({ type: 'combat:change', partyId: char.party_id, action: 'ac', actorUserId });
+  }
 }
 
 function mapSpellEffect(row: any, lang: AppLang) {
@@ -233,6 +316,9 @@ export async function characterSpellEffectRoutes(app: FastifyInstance) {
             .where(eq(characters.id, char.id))
             .run();
         }
+        // La CA des combatants suit la pose — même transaction, l'effet est
+        // visible de activeAcEffectsOf relu par le miroir.
+        mirrorAcToCombatants(char.id, userId);
         return row;
       })();
 
@@ -319,9 +405,11 @@ export async function characterSpellEffectRoutes(app: FastifyInstance) {
               .set({ concentrating: 0 })
               .where(eq(characters.id, char.id))
               .run();
+            mirrorAcToCombatants(char.id, userId);
             return false;
           }
         }
+        mirrorAcToCombatants(char.id, userId);
         return !!char.concentrating;
       })();
 

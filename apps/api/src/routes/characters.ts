@@ -25,8 +25,6 @@ import {
   characterSpellEffects,
   combatants,
   encounters,
-  inventory,
-  items,
   parties as partiesTable,
   users,
 } from '../db/schema.ts';
@@ -34,6 +32,7 @@ import { bus } from '../sync/bus.ts';
 import {
   attachCharacterClasses,
   characterVisibleTo,
+  equippedAcRows,
   isPartyGM,
   isPartyMember,
   mapCharacter,
@@ -45,7 +44,7 @@ import {
 } from './helpers.ts';
 import { sendCachedJson } from './httpCache.ts';
 import { loadInventoryView } from './inventory.ts';
-import { activeAcEffectsOf } from './character-spell-effects.ts';
+import { activeAcEffectsOf, mirrorAcToCombatants } from './character-spell-effects.ts';
 import { langFromReq } from './lang.ts';
 import { apiMsg } from './messages.ts';
 
@@ -75,22 +74,6 @@ function activePlayerCombatants(characterId: number): any[] {
       ),
     )
     .orderBy(desc(encounters.createdAt), desc(combatants.id))
-    .all() as any[];
-}
-
-/** AC input rows from the character's equipped items (sheet-side recompute). */
-function equippedAcRows(characterId: number): any[] {
-  return getDrizzle()
-    .select({
-      category: items.category,
-      ac_base: items.acBase,
-      str_min: items.strMin,
-      name_fr: items.nameFr,
-      name: items.name,
-    })
-    .from(inventory)
-    .innerJoin(items, eq(items.id, inventory.itemId))
-    .where(and(eq(inventory.characterId, characterId), eq(inventory.equipped, 1)))
     .all() as any[];
 }
 
@@ -704,6 +687,22 @@ export async function characterRoutes(app: FastifyInstance) {
               ),
             )
             .run();
+        }
+
+        // --- CA : toute écriture qui en change les entrées (rupture de
+        // concentration qui désactive des effets, override manuel, DEX/CON/WIS
+        // — défense sans armure —, style Défense) resynchronise la CA des
+        // combatants en rencontre non terminée — le traqueur suit en continu.
+        // Relit la fiche ci-dessous : l'UPDATE ci-dessus est déjà passé.
+        if (
+          values.concentrating === 0 ||
+          values.armorClassOverride !== undefined ||
+          values.dexterity !== undefined ||
+          values.constitution !== undefined ||
+          values.wisdom !== undefined ||
+          values.fightingStyle !== undefined
+        ) {
+          mirrorAcToCombatants(char.id, userId);
         }
 
         for (const cr of hpMirrorTargets) {

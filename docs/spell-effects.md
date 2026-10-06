@@ -41,6 +41,10 @@ des appelants existants.
 - Les **3 voies de rupture de concentration** (dégâts → jet raté, condition
   brisante, nouveau sort concentré) désactivent les lignes liées dans la MÊME
   transaction que `concentrating = 0` — aucun effet fantôme.
+- **Miroir traqueur continu** (`mirrorAcToCombatants` + `trackerAcOf`,
+  exportés de `character-spell-effects.ts`) : la formule d'ajout d'un
+  combatant ET celle du miroir sont LA MÊME fonction — création et
+  rafraîchissement ne peuvent pas diverger.
 - Conditions brisantes (`CONCENTRATION_BREAKING_CONDITIONS_FR`) : Neutralisé,
   Étourdi, Inconscient, Paralysé, Pétrifié.
 
@@ -64,9 +68,16 @@ des appelants existants.
 
 - **Pas d'horloge** : Armure de mage (8 h) et Bouclier (1 round) se lèvent à la
   main — même geste que le joueur cochant ses conditions.
-- **Combatant en initiative** : la CA d'un combatant DÉJÀ créé ne suit PAS en
-  continu — elle se met à jour au prochain **miroir** (miroir PV, ajout de
-  combatant, wild shape…). Un combatant créé APRÈS le cast porte la bonne CA.
+- **Combatant en initiative** : la CA suit EN CONTINU. Toute écriture qui
+  change une entrée de la CA (effet posé/levé, rupture de concentration — y
+  compris DEPUIS le traqueur : condition brisante posée par le MD, 0 PV au
+  PATCH combatant —, override manuel, DEX/CON/WIS, style Défense, équipement
+  d'armure/bouclier, transfert d'objet équipé) resynchronise
+  `combatants.armor_class` dans la même écriture (`mirrorAcToCombatants`) et
+  émet `combat:change action 'ac'` quand une ligne bouge (les PATCH combatant
+  s'appuient sur leur propre `combat:change` chirurgical). Seule exception :
+  en **forme sauvage**, les miroirs wild shape possèdent la CA du combatant
+  (elle repasse au miroir générique au retour à la forme normale).
 - **Un seul sort à effet par ligne** : POST en double → 409 (pas de double
   effet) ; l'historique inactif est conservé en base.
 - **E2E** : `e2e/spell-effects.spec.ts` (chromium, pas de @smoke — la spec

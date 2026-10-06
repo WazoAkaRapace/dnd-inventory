@@ -28,7 +28,6 @@ import type {
 import {
   abilityModifier,
   CONCENTRATION_BREAKING_CONDITIONS_FR,
-  computeAC,
   HIDDEN_COMBATANT_NAME,
   rollHitPoints,
 } from '@table-sync/shared';
@@ -41,13 +40,15 @@ import {
   characters as charactersTable,
   combatants as combatantsTable,
   encounters as encountersTable,
-  inventory,
-  items,
   monsters,
 } from '../db/schema.ts';
 import { type PushPayload, type PushSendOptions, sendPushToUser } from '../push/send.ts';
 import { bus } from '../sync/bus.ts';
-import { activeAcEffectsOf, deactivateConcentrationEffects } from './character-spell-effects.ts';
+import {
+  deactivateConcentrationEffects,
+  mirrorAcToCombatants,
+  trackerAcOf,
+} from './character-spell-effects.ts';
 import {
   getUserId,
   isPartyGM,
@@ -132,23 +133,6 @@ function getCombatant(drizzle: ReturnType<typeof getDrizzle>, id: number): any {
     .from(combatantsTable)
     .where(eq(combatantsTable.id, id))
     .get() as any;
-}
-
-/** AC input rows from a character's equipped items. */
-function equippedAcRows(characterId: number): any[] {
-  return getDrizzle()
-    .select({
-      category: items.category,
-      ac_base: items.acBase,
-      str_min: items.strMin,
-      name_fr: items.nameFr,
-      name: items.name,
-      equipped: inventory.equipped,
-    })
-    .from(inventory)
-    .innerJoin(items, eq(items.id, inventory.itemId))
-    .where(and(eq(inventory.characterId, characterId), eq(inventory.equipped, 1)))
-    .all() as any[];
 }
 
 /**
@@ -316,13 +300,16 @@ export async function combatRoutes(app: FastifyInstance) {
       const combatantCount = sql<number>`(SELECT COUNT(*) FROM combatants c WHERE c.encounter_id = encounters.id)`;
 
       let rows: any[];
+      // createdAt a une granularité SECONDE : deux rencontres nées dans la
+      // même seconde départagent arbitrairement — id descendant en tie-break
+      // (la plus récente d'abord, de façon déterministe).
       if (gm) {
         // GM sees all encounters
         rows = drizzle
           .select({ ...cols(encountersTable), combatant_count: combatantCount })
           .from(encountersTable)
           .where(eq(encountersTable.partyId, partyId))
-          .orderBy(desc(encountersTable.createdAt))
+          .orderBy(desc(encountersTable.createdAt), desc(encountersTable.id))
           .all();
       } else {
         // Players only see encounters where they have a combatant (their character is in the fight)
@@ -346,7 +333,7 @@ export async function combatRoutes(app: FastifyInstance) {
               ),
             ),
           )
-          .orderBy(desc(encountersTable.createdAt))
+          .orderBy(desc(encountersTable.createdAt), desc(encountersTable.id))
           .all();
       }
 
@@ -735,34 +722,11 @@ export async function combatRoutes(app: FastifyInstance) {
       const createdIds: number[] = [];
       getDb().transaction(() => {
         for (const char of chars) {
-          // Compute AC from equipped armor
-          const invRows = equippedAcRows(char.id);
           const dexMod = abilityModifier(char.dexterity ?? 10);
-          const acResult = computeAC(
-            invRows.map((r) => ({
-              item: {
-                category: r.category,
-                acBase: r.ac_base,
-                strMin: r.str_min,
-                nameFr: r.name_fr,
-                name: r.name,
-              },
-              equipped: !!r.equipped,
-            })),
-            dexMod,
-            char.fighting_style === 'defense',
-            {
-              constitution: char.constitution,
-              wisdom: char.wisdom,
-              characterClass: char.character_class,
-            },
-            'fr',
-            // Effets de sort actifs : le combatant créé APRÈS un cast porte
-            // la bonne CA (v1 : un combatant déjà en initiative suit au
-            // prochain miroir HP — documenté, pas de réplication par événement).
-            activeAcEffectsOf(char.id),
-          );
-          const ac = char.armor_class_override ?? acResult.ac;
+          // CA d'ajout = équipement + effets de sort actifs, override GAGNE —
+          // la même formule que mirrorAcToCombatants : création et miroirs ne
+          // peuvent pas diverger.
+          const ac = trackerAcOf(char);
 
           const { id } = drizzle
             .insert(combatantsTable)
@@ -1034,6 +998,9 @@ export async function combatRoutes(app: FastifyInstance) {
                 .where(eq(charactersTable.id, ch.id))
                 .run();
               deactivateConcentrationEffects(ch.id);
+              // La CA du combatant suit la chute des effets (emit: false —
+              // la route émet déjà son combat:change chirurgical).
+              mirrorAcToCombatants(ch.id, userId, { emit: false });
             })();
             bus.emitChange({
               type: 'character:change',
@@ -1191,6 +1158,9 @@ export async function combatRoutes(app: FastifyInstance) {
                 .where(eq(charactersTable.id, ch.id))
                 .run();
               deactivateConcentrationEffects(ch.id);
+              // La CA du combatant suit la chute des effets (emit: false —
+              // la route émet déjà son combat:change chirurgical).
+              mirrorAcToCombatants(ch.id, userId, { emit: false });
             })();
             bus.emitChange({
               type: 'character:change',
