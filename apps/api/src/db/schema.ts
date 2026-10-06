@@ -520,11 +520,18 @@ export const characterFeatures = sqliteTable(
 
 // ---------- Effets de sort actifs sur la fiche (v1 : CA) ----------
 
-// Posé au lancement d'un sort à effet sur soi (Bouclier de la foi, Hâte,
-// Peau d'écorce, Armure de mage, Bouclier, Costume d'Outremonde). Une ligne
+// Posé au lancement d'un sort à effet (v1 : CA sur soi ; v2 : ciblage d'un
+// AUTRE personnage du groupe ou d'une cible « Autre » à nom libre). Une ligne
 // par effet POSÉ ; `active = 0` conserve l'historique (levée manuelle ou
-// rupture de concentration). v2 : target_character_id, expires_at, autres
-// stats que la CA.
+// rupture de concentration).
+//
+// v2 ciblage : `character_id` = le PORTEUR de l'effet (la CA se calcule sur
+// lui) ; `caster_character_id` = le LANCEUR (qui concentre — la rupture se
+// juge sur LUI). Pour « Autre » (pas de fiche) : `character_id` = le lanceur
+// (la ligne vit sur sa fiche pour ses chips) + `target_label` rempli — un
+// effet étiqueté ne touche JAMAIS la CA du porteur de ligne
+// (`activeAcEffectsOf` filtre `target_label IS NULL`). Contrat : effet fiche
+// (target_label NULL) XOR effet « Autre » (target_label rempli).
 export const characterSpellEffects = sqliteTable(
   'character_spell_effects',
   {
@@ -532,6 +539,11 @@ export const characterSpellEffects = sqliteTable(
     characterId: integer('character_id')
       .notNull()
       .references(() => characters.id, { onDelete: 'cascade' }),
+    // Le lanceur (NULL = posé à la main par un MD sans lanceur identifié ;
+    // les lignes v1 ont été backfillées caster = character_id).
+    casterCharacterId: integer('caster_character_id').references(() => characters.id, {
+      onDelete: 'cascade',
+    }),
     spellId: integer('spell_id')
       .notNull()
       .references(() => spells.id, { onDelete: 'cascade' }),
@@ -539,8 +551,10 @@ export const characterSpellEffects = sqliteTable(
     effectKind: text('effect_kind').notNull(),
     /** Pour ac_bonus : ±N ; ac_floor : 16 ; ac_set_formula : 13 (base, +DEX au calcul). */
     acValue: integer('ac_value').notNull(),
-    /** Concentration-dépendant ? (levée auto quand la concentration tombe) */
+    /** Concentration-dépendant ? (levée auto quand la concentration du LANCEUR tombe) */
     tiedToConcentration: integer('tied_to_concentration').notNull().default(1),
+    /** v2 « Autre » : nom libre de la cible sans fiche (ex. « Gobelin »), ≤ 60 chars. */
+    targetLabel: text('target_label'),
     active: integer('active').notNull().default(1),
     createdAt: text('created_at')
       .notNull()
@@ -549,6 +563,7 @@ export const characterSpellEffects = sqliteTable(
   (t) => [
     index('idx_spell_effects_character').on(t.characterId),
     index('idx_spell_effects_active').on(t.characterId, t.active),
+    index('idx_spell_effects_caster').on(t.casterCharacterId),
   ],
 );
 

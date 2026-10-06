@@ -232,6 +232,13 @@
       "when": 1791232326676,
       "tag": "0032_cultured_quasar",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1791268009477,
+      "tag": "0033_even_manta",
+      "breakpoints": true
     }
   ]
 }
