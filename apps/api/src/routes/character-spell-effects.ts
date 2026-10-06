@@ -225,6 +225,7 @@ function mapSpellEffect(row: any, lang: AppLang) {
     id: row.id,
     characterId: row.character_id,
     casterCharacterId: row.caster_character_id,
+    targetCharacterId: row.target_character_id ?? null,
     targetLabel: row.target_label,
     spellId: row.spell_id,
     effectKind: row.effect_kind,
@@ -286,6 +287,10 @@ export async function characterSpellEffectRoutes(app: FastifyInstance) {
           spell_name_fr: spells.nameFr,
           spell_name_en: spells.name,
           spell_srd_index: spells.srdIndex,
+          // v2 : le porteur EFFECTIF de la ligne quand il diffère du lanceur
+          // (lignes castées sur autrui — l'UI en tire targetCharacterId pour
+          // le nom de la cible). Pour « Autre », target_label fait foi.
+          target_character_id: characterSpellEffects.characterId,
         })
         .from(characterSpellEffects)
         .innerJoin(spells, eq(spells.id, characterSpellEffects.spellId))
@@ -303,7 +308,10 @@ export async function characterSpellEffectRoutes(app: FastifyInstance) {
       return reply.send({
         effects: rows.map((r: any) => ({
           ...mapSpellEffect(r, lang),
-          role: r.character_id === char.id ? 'bearer' : 'caster',
+          // « Autre » vit sur la fiche du LANCEUR (character_id = lanceur,
+          // colonne notNull) mais n'est PAS un effet porté : étiquetée, elle
+          // ne touche aucune CA — role 'caster' pour les chips pense-bête.
+          role: r.character_id === char.id && !r.target_label ? 'bearer' : 'caster',
         })),
       });
     },
@@ -455,6 +463,7 @@ export async function characterSpellEffectRoutes(app: FastifyInstance) {
           spell_name: spells.name,
           spell_name_fr: spells.nameFr,
           spell_srd_index: spells.srdIndex,
+          target_character_id: characterSpellEffects.characterId,
         })
         .from(characterSpellEffects)
         .innerJoin(spells, eq(spells.id, characterSpellEffects.spellId))

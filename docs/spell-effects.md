@@ -4,7 +4,7 @@
 > « auto-sur-soi » posent un état d'effet au lancement ; la CA de la fiche ET
 > du traqueur MD suit automatiquement ; la concentration rompue retire
 > l'effet. Édition 2014 uniquement, valeurs vérifiées contre `spells-seed.json`
-> (FR officiel AideDD).
+> (FR officiel AideDD). La suite : **ciblage v2** (section dédiée ci-dessous).
 
 ## Les 6 sorts
 
@@ -96,7 +96,93 @@ des appelants existants.
 
 Règle commune : v1 = sorts auto-sur-soi uniquement, pas de sélecteur de cible.
 
-## Extension v2 (prévue par le schéma)
+## Extension v2 : ciblage d'un autre joueur / « Autre » (implémentée)
+
+Plan `effets-sort-ca-v2` (2026-10-06) : les 5 sorts à cible possible —
+Bouclier de la foi, Peau d'écorce, Hâte, Costume d'Outremonde (concentration)
+ET Armure de mage (touch, « une créature consentante », sans concentration) —
+peuvent être posés sur un AUTRE personnage du groupe (non caché) ou une cible
+« Autre » à nom libre (PNJ/monstre). **Bouclier reste self-only** (réaction,
+1 tour, RAW) — pas de picker.
+
+### Modèle de données (migration `0033`)
+
+- `character_id` = le PORTEUR de l'effet (la CA se calcule sur lui) ;
+- `caster_character_id` (nullable) = le LANCEUR, **celui qui concentre** ;
+- `target_label` (nullable) = nom libre quand la cible n'a pas de fiche
+  (« Gobelin ») — la ligne vit alors sur la fiche du LANCEUR
+  (`character_id` = lanceur, colonne notNull) et `activeAcEffectsOf` filtre
+  `target_label IS NULL` : un effet étiqueté ne touche JAMAIS la CA du
+  porteur de ligne ;
+- contrat : `character_id` (porteur fiche) **XOR** `target_label` (porteur
+  sans fiche), au moins l'un des deux ;
+- backfill migration : `caster_character_id = character_id` pour les lignes
+  v1 (le poseur v1 était toujours le lanceur = le porteur).
+
+### API
+
+- `POST /characters/:id/spell-effects` — `:id` = le LANCEUR (owner/GM).
+  Payload `{ spellId, targetCharacterId?, targetLabel? }` ; ni l'un ni
+  l'autre = self (compatible v1). Validation : cible du même groupe non
+  cachée (404 sinon), label trimmé ≤ 60 caractères, doublon actif du même
+  sort sur le MÊME porteur → 409.
+- `GET /characters/:id/spell-effects` — effets PORTÉS par `:id` **plus**
+  effets CASTÉS par `:id` vers autrui/« Autre », flag `role:
+  'bearer' | 'caster'` par ligne (l'UI sépare chips CA et chips « → cible »).
+- **La concentration reste celle du LANCEUR** : la rupture se juge sur
+  `caster_character_id` (`deactivateConcentrationEffects` des sites traqueur
+  et le bloc fiche filtrant sur le lanceur) — une condition brisante posée
+  au LANCEUR (Neutralisé, Étourdi, Inconscient, Paralysé, Pétrifié), un jet
+  raté après dégâts au lanceur ou un nouveau sort concentré font tomber
+  TOUTES ses lignes, y compris celles qui vivent sur d'autres fiches ; le
+  miroir traqueur de chaque porteur touché resynchronise
+  (`mirrorAcToCombatants` par porteur).
+- `DELETE /spell-effects/:id` : la levée est possible **depuis l'une ou
+  l'autre fiche** — par le MD depuis la fiche du porteur, ou par le lanceur
+  depuis sa mini-feuille (section « Posés sur autrui ») ; `concentrating`
+  retombe sur le LANCEUR si plus aucun effet actif concentré casté par lui.
+- Événements : poser un effet sur une autre fiche émet `character:change
+  action 'stats'` pour la CIBLE **et** pour le LANCEUR ; « Autre » n'émet
+  que pour le lanceur.
+
+### UX
+
+1. **Rangée « Cible »** dans la feuille d'incantation (sous l'annonce CA,
+   avant les boutons d'emplacement) : pastille « Moi » pré-sélectionnée,
+   le libellé ouvre le BottomSheet de cibles. L'annonce CA se RECALCULE
+   pour la cible choisie (« CA 20 → 22 » = la CA de Kael) ; « Autre »
+   affiche la formule seule (« +2 · CA de Gobelin »), sans chiffre.
+2. **BottomSheet** : « Moi » épinglé, membres non cachés (lignes réglées,
+   CA effective visible, aria « Cibler Kael avec Bouclier de la foi »),
+   entrée « Autre… » à nom libre. Choisir ne lance RIEN : le bouton
+   principal devient « Lancer sur Kael ».
+3. **Après le cast** : chez le LANCEUR, chip or
+   « +2 · Bouclier de la foi → Kael » (title : formule + « tenu par votre
+   concentration ») et section « Posés sur autrui » dans la mini-feuille ;
+   chez la CIBLE, même rendu que v1 (tuile CA liserée or, chips, title
+   « posé par Mira ») — le miroir traqueur suit.
+4. **« Autre »** : chip pense-bête du lanceur, sans delta CA, levée
+   manuelle ou rupture — pas de tracker de PNJ.
+
+### Règles de non-cumul (arbitrage MD)
+
+- **Doublon par PORTEUR** : l'API refuse (409) un effet ACTIF du même sort
+  sur le même porteur, self ou cible dédiée.
+- **Même nom, deux lanceurs** : deux lanceurs différents peuvent chacun
+  bénir le même porteur (deux lignes, deux +2 affichés). RAW, les bonus de
+  même nom ne se cumulent PAS — **l'app suit les lignes, c'est le MD qui
+  tranche à la table** (il lève l'une des deux depuis la fiche du porteur).
+
+### E2E
+
+`e2e/spell-effects-target.spec.ts` (chromium, pas de @smoke) : cast de Mira
+sur Kael via le picker → CA 20 → 22 chez Kael + chips des deux fiches ;
+Neutralisé sur MIRA rompt SA concentration → CA de Kael retombe, chips
+disparaissent des deux fiches ; « Autre » avec « Gobelin » → chip lanceur
+sans impact CA. beforeEach/afterEach relèvent les effets et réarment les
+deux fiches (rendu idempotent).
+
+## Extensions futures (prévues par le schéma)
 
 - `target_character_id` — effets sur cible tierce (Lien de protection, Lenteur,
   bénédiction de chance…) avec visibilité appropriée pour la cible.
