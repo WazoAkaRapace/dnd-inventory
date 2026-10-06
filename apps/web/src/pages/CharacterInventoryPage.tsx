@@ -8,7 +8,13 @@ import type {
   Rarity,
   StorageLocation,
 } from '@table-sync/shared';
-import { computeInventoryWeights, findClass } from '@table-sync/shared';
+import {
+  computeInventoryWeights,
+  computeAC,
+  abilityModifier,
+  fightingStylesOf,
+  findClass,
+} from '@table-sync/shared';
 import {
   keepPreviousData,
   useInfiniteQuery,
@@ -22,6 +28,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import api from '../api';
 import { useAuth } from '../auth';
 import { invalidateCombat, useActiveEncounters } from '../combatLive';
+import { appLang } from '../i18n';
 import CharacterStateBand from '../components/CharacterStateBand';
 import ConcentrationAlert from '../components/ConcentrationAlert';
 import {
@@ -151,16 +158,19 @@ export default function CharacterInventoryPage() {
   // Toast system — errors linger longer than successes (noisy table)
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastId = useRef(0);
-  const pushToast = useCallback((message: string, kind: 'success' | 'error' = 'success') => {
-    const id = ++toastId.current;
-    setToasts((prev) => [...prev, { id, message, kind }]);
-    setTimeout(
-      () => {
-        setToasts((prev) => prev.filter((t) => t.id !== id));
-      },
-      kind === 'error' ? 6000 : 2500,
-    );
-  }, []);
+  const pushToast = useCallback(
+    (message: string, kind: 'success' | 'error' | 'warn' = 'success') => {
+      const id = ++toastId.current;
+      setToasts((prev) => [...prev, { id, message, kind }]);
+      setTimeout(
+        () => {
+          setToasts((prev) => prev.filter((t) => t.id !== id));
+        },
+        kind === 'error' ? 6000 : kind === 'warn' ? 6000 : 2500,
+      );
+    },
+    [],
+  );
   const dismissToast = useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
@@ -763,7 +773,11 @@ export default function CharacterInventoryPage() {
   const hubEncountersQuery = useActiveEncounters(Number(partyId) || null, !!user);
   const hubCombat: HubCombat | null = useMemo(() => {
     const character = data?.character;
-    if (!character) return null;
+    // La carte de combat vit sur la fiche de son PROPRIÉTAIRE (le bandeau
+    // d'en-tête fait pareil — CombatWidget.checkIsMyCharacter) : le MD ou un
+    // autre joueur qui visite la fiche n'a pas le pouce du joueur, et le
+    // serveur refuserait de toute façon son « J'ai fini mon tour ».
+    if (!character || character.ownerId !== user?.id) return null;
     const dexMod = Math.floor(((character.dexterity ?? 10) - 10) / 2);
     for (const detail of hubEncountersQuery.data ?? []) {
       const mine = detail.combatants.find((c: any) => c.characterId === Number(charId));
@@ -782,11 +796,33 @@ export default function CharacterInventoryPage() {
       };
     }
     return null;
-  }, [hubEncountersQuery.data, data?.character, charId]);
+  }, [hubEncountersQuery.data, data?.character, charId, user?.id]);
 
   // "Your turn" screen-wide blood-cut (document-level singleton — fires once
   // whoever detects the transition: dock card, hub or desktop strip)
   useTurnSlash(!!hubCombat?.isMyTurn);
+
+  // CA effective SANS les effets de sort (override manuel inclus — il gagne) :
+  // base de l'annonce « CA X → Y » de la feuille d'incantation. Le bandeau
+  // recalcule AVEC les effets pour sa propre tuile (source localisée).
+  // DOIT rester au-dessus des gardes de rendu : un hook après un return
+  // conditionnel change le compte de hooks entre renders et crashe React
+  // (même leçon que #310 — la fiche passait de « chargement » à « chargée »
+  // et le useMemo apparaissait en cours de route).
+  const baseAcNoEffects = useMemo(
+    () =>
+      data?.character?.armorClassOverride ??
+      (data
+        ? computeAC(
+            data.entries,
+            abilityModifier(data.character.dexterity ?? 10),
+            fightingStylesOf(data.character).has('defense'),
+            data.character,
+            appLang(),
+          ).ac
+        : null),
+    [data],
+  );
 
   // Haptic cue the moment the initiative prompt appears
   const needsInitNow = !!hubCombat?.needsInitiative;
@@ -1281,6 +1317,8 @@ export default function CharacterInventoryPage() {
             charId={Number(charId)}
             onSaved={refreshInventory}
             onError={(msg) => pushToast(msg, 'error')}
+            onWarn={(msg) => pushToast(msg, 'warn')}
+            currentEffectiveAc={baseAcNoEffects ?? undefined}
           />
         )}
         {activeTab === 'features' && (

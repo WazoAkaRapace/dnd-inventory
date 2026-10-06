@@ -2,9 +2,11 @@ import type { Spell } from '@table-sync/shared';
 import {
   type CharacterClassSource,
   agonizingBlastBonus,
+  applyAcEffects,
   classLevelOf,
   eldritchBlastRays,
   formatModifier,
+  SPELL_AC_EFFECTS,
   spellDamageAtLevel,
   spellHealingAtLevel,
   spellSaveDC,
@@ -13,7 +15,15 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { damageType } from '../i18n/labels';
+import {
+  defToEffect,
+  effectModLabel,
+  type TargetableMember,
+  isTargetableAcSpell,
+  previewAc,
+} from '../spellEffects';
 import { Chip } from './ui';
+import TargetPickerSheet, { type CastTarget } from './TargetPickerSheet';
 
 /**
  * Bottom sheet (mobile) / dialog (desktop) to cast a known spell:
@@ -36,7 +46,11 @@ export default function CastSpellSheet({
   charLevel,
   character,
   invocationIds,
+  activeAcEffects,
+  currentEffectiveAc,
+  dexMod,
   freeCasts,
+  targets,
   onClose,
   onCast,
 }: {
@@ -56,23 +70,43 @@ export default function CastSpellSheet({
    *  (rayons par niveau de classe, +CHA de Décharge déchirante, portée de
    *  Lance occulte). Passe la fiche ENTIÈRE : classLevelOf lit les lignes
    *  de classe (multiclassage), pas le seul niveau total. */
-  character?: CharacterClassSource & { charisma?: number | null; level?: number | null };
+  character?: CharacterClassSource & {
+    charisma?: number | null;
+    level?: number | null;
+    name?: string | null;
+    portraitUrl?: string | null;
+  };
   /** Ids de manifestations connues (invocationIdsOf sur les traits chargés). */
   invocationIds?: string[];
+  /** Effets de sort CA actifs (bandeau) — l'annonce part de la CA effective
+   *  ACTUELLE, effets déjà posés inclus. */
+  activeAcEffects?: Array<{ effectKind: string; acValue: number }>;
+  /** CA effective actuelle (override manuel inclus) — base de l'annonce. */
+  currentEffectiveAc?: number;
+  /** Modificateur de DEX — formules « 13 + DEX » (Armure de mage). */
+  dexMod?: number;
   /** Lancers gratuits 1/RL des manifestations free-cast et Arcanum : clé =
    * slug du sort, valeur = { featureId, counterCurrent, label }. */
   freeCasts?: Record<string, { featureId: number; counterCurrent: number; label: string }>;
+  /** Autres membres du groupe non cachés, avec CA effective et DEX — picker
+   *  de cible (v2 ciblage) pour les 5 sorts ciblables. Bouclier EXCLU
+   *  (réaction self, pas de picker). */
+  targets?: TargetableMember[];
   onClose: () => void;
   /** Called with the chosen slot level (0 = cantrip, no slot), whether it's
-   * a ritual cast (no slot either) and WHICH pool the slot comes from —
-   * SRD magie de pacte : les deux pools sont interchangeables, LE JOUEUR
-   * choisit (un emplacement de pacte lance le sort au niveau de SON dé).
-   * 'free' : lancer sans emplacement (manifestation à volonté / compteur
-   * free-cast / Arcanum) — le parent décrémente le compteur du trait. */
+   *  a ritual cast (no slot either) and WHICH pool the slot comes from —
+   *  SRD magie de pacte : les deux pools sont interchangeables, LE JOUEUR
+   *  choisit (un emplacement de pacte lance le sort au niveau de SON dé).
+   *  'free' : lancer sans emplacement (manifestation à volonté / compteur
+   *  free-cast / Arcanum) — le parent décrémente le compteur du trait.
+   *  target : cible choisie (v2) — self par défaut, fiche du groupe ou
+   *  « Autre » à nom libre ; le parent enchaîne PATCH puis POST
+   *  spell-effects avec targetCharacterId/targetLabel selon la sélection. */
   onCast: (
     level: number,
     ritual?: boolean,
     pool?: 'spellcasting' | 'pact' | 'free',
+    target?: CastTarget,
   ) => Promise<void> | void;
 }) {
   const { t } = useTranslation();
@@ -152,6 +186,29 @@ export default function CastSpellSheet({
   const chosenOption = castOptions.find((o) => o.key === chosenKey) ?? null;
   const [casting, setCasting] = useState(false);
 
+  // ---------- Cible (v2 ciblage) ----------
+  // Rangée « Cible » SOUS l'annonce CA pour les 5 sorts ciblables — Bouclier
+  // EXCLU (réaction self, pas de picker). « Moi » pré-sélectionné (cas
+  // dominant) ; la sélection est un état LOCAL de la feuille, confirmé au
+  // cast — choisir une cible ne lance rien.
+  const isTargetable = isTargetableAcSpell(spell.srdIndex);
+  const [target, setTarget] = useState<CastTarget>({ kind: 'self' });
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // Réarmé au changement de sort : la feuille vit pendant toute la session.
+  useEffect(() => {
+    setTarget({ kind: 'self' });
+    setPickerOpen(false);
+  }, [spell.id]);
+  const targetName =
+    target.kind === 'self'
+      ? t('cast.cible.moi')
+      : target.kind === 'character'
+        ? target.name
+        : target.label;
+  const otherTargets = targets ?? [];
+  const selectedMember =
+    target.kind === 'character' ? (otherTargets.find((m) => m.id === target.id) ?? null) : null;
+
   // Same dialog contract as BottomSheet: Escape closes, body scroll locks.
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -167,10 +224,63 @@ export default function CastSpellSheet({
 
   const concConflict = spell.concentration && concentrating;
 
+  // ---------- Annonce CA (effets de sort v1 + ciblage v2) ----------
+  // « ⛨ CA 18 → 20 (+2, tant que concentré) » sous le résumé — or = magie,
+  // AVANT consommation d'emplacement. La base est la CA effective ACTUELLE :
+  // override manuel inclus (il gagne, la base reste la CA affichée), effets
+  // déjà posés inclus (le parent passe la CA nue + les effets actifs).
+  //
+  // v2 ciblage : l'annonce suit la CIBLE —
+  //  - « Moi » : CA effective du lanceur (comportement v1),
+  //  - fiche du groupe : CA effective de la cible (roster) avec SA DEX
+  //    (« CA 16 → 18 » devient la CA de Kael),
+  //  - « Autre » : pas de chiffre, pas de fiche — « +2 · CA de Gobelin —
+  //    tenu par votre concentration » (pense-bête de règle).
+  const acEffectDef = SPELL_AC_EFFECTS[spell.srdIndex];
+  const acEffect = acEffectDef ? defToEffect(acEffectDef) : null;
+  const isMageArmor = spell.srdIndex === 'mage-armor';
+  const selfAcFrom =
+    currentEffectiveAc !== undefined && dexMod !== undefined
+      ? activeAcEffects && activeAcEffects.length > 0
+        ? applyAcEffects(currentEffectiveAc, activeAcEffects, dexMod)
+        : currentEffectiveAc
+      : undefined;
+  let acFrom: number | undefined;
+  if (target.kind === 'self') acFrom = selfAcFrom;
+  else if (target.kind === 'character' && selectedMember) acFrom = selectedMember.ac ?? undefined;
+  const acDexMod = target.kind === 'character' && selectedMember ? selectedMember.dexMod : dexMod;
+  const acTo =
+    acEffect && acFrom !== undefined && acDexMod !== undefined
+      ? previewAc(acFrom, acDexMod, acEffect)
+      : null;
+  const acAnnouncement =
+    acEffect && target.kind !== 'label' && acFrom !== undefined && acTo !== null && acTo !== acFrom
+      ? { from: acFrom, to: acTo, mod: effectModLabel(acEffect) }
+      : acEffect &&
+          target.kind !== 'label' &&
+          acFrom !== undefined &&
+          acTo !== null &&
+          acTo === acFrom
+        ? { from: acFrom, to: acTo, mod: effectModLabel(acEffect), flat: true }
+        : null;
+  // « Autre » : annonce sans chiffre — la formule seule (« +2 », « 13 + DEX »).
+  const otherAnnouncement =
+    acEffect && target.kind === 'label' ? { mod: effectModLabel(acEffect) } : null;
+  // Mention sous l'annonce : concentration = celle du LANCEUR (même posé sur
+  // autrui) ; Armure de mage (touch, pas de concentration) se lève à la main.
+  const mentionKey = acEffectDef?.tiedToConcentration
+    ? ('cast.ca.annonce.tant.que.concentre' as const)
+    : isTargetable && !acEffectDef?.tiedToConcentration
+      ? ('cast.ca.annonce.a.lever.main' as const)
+      : null;
+  // Bouclier : réaction — le libellé du bouton principal le dit (données
+  // déjà « 1 réaction », ici c'est la voix).
+  const isShield = spell.srdIndex === 'shield';
+
   const cast = async (level: number, ritual = false, pool?: 'spellcasting' | 'pact' | 'free') => {
     setCasting(true);
     try {
-      await onCast(level, ritual, pool);
+      await onCast(level, ritual, pool, isTargetable ? target : undefined);
     } finally {
       setCasting(false);
     }
@@ -227,6 +337,97 @@ export default function CastSpellSheet({
               <strong>{spell.name}</strong>
               {t('cast.mettra.fin.au.sort.precedent')}
             </p>
+          </div>
+        )}
+
+        {/* Annonce de calcul AVANT consommation — or = magie. Flat : l'effet
+            ne CHANGE pas la CA (plancher déjà atteint) mais se posera quand
+            même (la ligne reste, la règle aussi). « Autre » : sans chiffre —
+            pense-bête de règle sur une cible sans fiche. Armure de mage :
+            la mention devient « jusqu'à 8 h — à lever à la main » (pas de
+            concentration). */}
+        {acAnnouncement && (
+          <div
+            className="rounded-lg bg-gold-50 border border-gold-300 p-3 mb-3 text-sm text-gold-800"
+            aria-label={
+              acAnnouncement.flat
+                ? t('cast.ca.annonce.plate.from.mod.autant', {
+                    from: acAnnouncement.from,
+                    mod: acAnnouncement.mod,
+                  })
+                : t('cast.ca.annonce.from.to.mod', {
+                    from: acAnnouncement.from,
+                    to: acAnnouncement.to,
+                    mod: acAnnouncement.mod,
+                  })
+            }
+          >
+            {acAnnouncement.flat ? (
+              <p className="font-medium">
+                ⛨{' '}
+                {t('cast.ca.annonce.plate.from.mod.autant', {
+                  from: acAnnouncement.from,
+                  mod: acAnnouncement.mod,
+                })}
+              </p>
+            ) : (
+              <p className="font-medium">
+                ⛨{' '}
+                {t('cast.ca.annonce.from.to.mod', {
+                  from: acAnnouncement.from,
+                  to: acAnnouncement.to,
+                  mod: acAnnouncement.mod,
+                })}
+              </p>
+            )}
+            {mentionKey && <p className="mt-0.5 text-xs text-gold-700">{t(mentionKey)}</p>}
+          </div>
+        )}
+        {otherAnnouncement && (
+          <div
+            className="rounded-lg bg-gold-50 border border-gold-300 p-3 mb-3 text-sm text-gold-800"
+            aria-label={t('cast.ca.annonce.autre.aria', {
+              mod: otherAnnouncement.mod,
+              name: (target.kind === 'label' && target.label) || '',
+              spell: spell.name,
+            })}
+          >
+            <p className="font-medium">
+              ⛨ {t('cast.ca.annonce.autre', { mod: otherAnnouncement.mod, name: targetName })}
+            </p>
+            <p className="mt-0.5 text-xs text-gold-700">
+              {isMageArmor
+                ? t('cast.ca.annonce.a.lever.main')
+                : t('cast.ca.annonce.tant.que.concentre')}
+            </p>
+          </div>
+        )}
+
+        {/* Rangée « Cible » (v2 ciblage) — sous l'annonce CA, AVANT les
+            boutons d'emplacement. Pastille courante + ouverture du picker
+            (BottomSheet portaled, mobileOnly={false} comme la mini-feuille
+            de levée). Sélection = état local, confirmé au cast. */}
+        {isTargetable && (
+          <div className="mb-3">
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              className="w-full flex items-center justify-between gap-2 rounded-lg border border-parchment-200 bg-parchment-50 hover:border-gold-400 px-3 min-h-11 py-2 text-left transition-colors"
+              aria-label={t('cast.cible.ouvrir.aria', {
+                spell: spell.name,
+                target: targetName,
+              })}
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="text-xs font-medium text-ink-500">{t('cast.cible')}</span>
+                <span className="truncate text-sm font-semibold text-gold-800">
+                  {target.kind === 'self' ? t('cast.cible.moi.pastille') : targetName}
+                </span>
+              </span>
+              <span className="shrink-0 text-ink-400" aria-hidden="true">
+                ›
+              </span>
+            </button>
           </div>
         )}
 
@@ -418,17 +619,21 @@ export default function CastSpellSheet({
         >
           {casting
             ? '…'
-            : concConflict
-              ? t('cast.lancer.et.rompre.la.concentration')
-              : isCantrip
-                ? t('cast.lancer.le.tour.de.magie')
-                : chosenOption?.pool === 'free'
-                  ? freeCast?.label === 'at-will'
-                    ? t('cast.lancer.a.volonte')
-                    : t('cast.lancer.gratuit')
-                  : t('cast.lancer.au.niveau.level', {
-                      level: chosenOption ? chosenOption.level : '—',
-                    })}
+            : isShield
+              ? t('cast.reagir.bouclier')
+              : concConflict
+                ? t('cast.lancer.et.rompre.la.concentration')
+                : isCantrip
+                  ? t('cast.lancer.le.tour.de.magie')
+                  : isTargetable && target.kind !== 'self'
+                    ? t('cast.lancer.sur', { target: targetName })
+                    : chosenOption?.pool === 'free'
+                      ? freeCast?.label === 'at-will'
+                        ? t('cast.lancer.a.volonte')
+                        : t('cast.lancer.gratuit')
+                      : t('cast.lancer.au.niveau.level', {
+                          level: chosenOption ? chosenOption.level : '—',
+                        })}
         </button>
 
         {/* Ritual cast: no slot consumed, +10 minutes */}
@@ -442,6 +647,22 @@ export default function CastSpellSheet({
             {t('cast.rituel.10.minutes')}{' '}
             <span className="font-normal text-purple-500">{t('cast.sans.emplacement')}</span>
           </button>
+        )}
+
+        {/* Picker de cible (v2) — BottomSheet portaled DEUXIÈME niveau :
+            « Moi » épinglé, membres non cachés, « Autre… » à nom libre. */}
+        {isTargetable && (
+          <TargetPickerSheet
+            open={pickerOpen}
+            onClose={() => setPickerOpen(false)}
+            spellName={spell.name}
+            selfName={character?.name ?? ''}
+            selfMeta={null}
+            selfPortraitUrl={character?.portraitUrl ?? null}
+            members={otherTargets}
+            selected={target}
+            onSelect={setTarget}
+          />
         )}
       </div>
     </div>,

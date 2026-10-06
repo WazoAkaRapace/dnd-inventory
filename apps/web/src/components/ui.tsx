@@ -940,7 +940,7 @@ export function ConfirmButton({
 export interface Toast {
   id: number;
   message: string;
-  kind: 'success' | 'error';
+  kind: 'success' | 'error' | 'warn';
 }
 
 export function ToastStack({
@@ -960,7 +960,11 @@ export function ToastStack({
         <div
           key={t.id}
           className={`toast-enter pointer-events-auto px-4 py-2.5 rounded-xl shadow-lg text-sm font-medium max-w-sm ${
-            t.kind === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+            t.kind === 'success'
+              ? 'bg-green-600 text-white'
+              : t.kind === 'warn'
+                ? 'bg-orange-500 text-white'
+                : 'bg-red-600 text-white'
           }`}
           onClick={() => onDismiss(t.id)}
         >

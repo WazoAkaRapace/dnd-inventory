@@ -23,6 +23,7 @@ import {
   type SpellSchool,
   spellDamageAtLevel,
   spellHealingAtLevel,
+  SPELL_AC_EFFECTS,
   spellSaveDC,
 } from '@table-sync/shared';
 import { findWarlockInvocation } from '@table-sync/shared/warlockInvocations';
@@ -30,6 +31,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../api';
 import CastSpellSheet from '../components/CastSpellSheet';
+import type { CastTarget } from '../components/TargetPickerSheet';
 import { SpellProse } from '../components/SpellProse';
 import {
   BottomSheet,
@@ -40,6 +42,12 @@ import {
   SkeletonRegion,
 } from '../components/ui';
 import { abilityShort, classNameLabel, damageType, schoolLabel } from '../i18n/labels';
+import {
+  fetchSpellEffects,
+  type SpellEffectRow,
+  type TargetableMember,
+  toActiveAcEffects,
+} from '../spellEffects';
 import { useResyncOnReconnect } from '../sync';
 
 interface Props {
@@ -47,6 +55,12 @@ interface Props {
   charId: number;
   onSaved: () => Promise<void>;
   onError: (msg: string) => void;
+  /** Toast orange (règle) — échec non bloquant du POST d'effet de sort. */
+  onWarn: (msg: string) => void;
+  /** CA effective actuelle SANS les effets de sort (override manuel inclus) —
+   *  base de l'annonce « CA X → Y » (le bandeau la possède déjà, la page la
+   *  recalcule pour l'onglet). */
+  currentEffectiveAc?: number;
 }
 
 type DomainSpell = Spell & { domainLevel: number };
@@ -77,7 +91,14 @@ const SCHOOL_TEXT: Record<string, string> = {
   transmutation: 'text-orange-700',
 };
 
-export default function CharacterSpellsTab({ character, charId, onSaved, onError }: Props) {
+export default function CharacterSpellsTab({
+  character,
+  charId,
+  onSaved,
+  onError,
+  onWarn,
+  currentEffectiveAc,
+}: Props) {
   const { t } = useTranslation();
   const [charSpells, setCharSpells] = useState<CharacterSpell[]>([]);
   const [loadingSpells, setLoadingSpells] = useState(true);
@@ -288,6 +309,74 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
   // rechargent silencieusement après un trou de connexion.
   useResyncOnReconnect(fetchCharSpells);
 
+  // ---------- Effets de sort sur la CA (v1) ----------
+  // Une requête au montage (cache état local, pas de react-query — même
+  // régime que le reste de l'onglet). Refetch après un cast : le POST
+  // d'effet vient de passer (ou échouer) et l'annonce « CA X → Y » de la
+  // feuille suivante part de la CA réelle.
+  const [spellEffects, setSpellEffects] = useState<SpellEffectRow[]>([]);
+  const reloadEffects = useCallback(async () => {
+    setSpellEffects(await fetchSpellEffects(charId));
+  }, [charId]);
+  useEffect(() => {
+    void reloadEffects();
+  }, [reloadEffects]);
+
+  // ---------- Cibles du picker (v2 ciblage) ----------
+  // Les membres non cachés du groupe avec leur CA effective : UNE requête
+  // sur le roster-overview existant (le MD l'utilise déjà — il sert la CA
+  // calculée de chaque fiche, effets de sort inclus) + le détail de groupe
+  // pour les méta classe/niveau. Silencieux en échec : le picker retombe
+  // sur « Moi » + « Autre », la feuille reste utilisable.
+  const [targets, setTargets] = useState<TargetableMember[]>([]);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const [overviewRes, partyRes] = await Promise.all([
+          api.get(`/api/parties/${character.partyId}/roster-overview`),
+          api.get(`/api/parties/${character.partyId}/characters`),
+        ]);
+        if (!alive) return;
+        const overview: Array<{ characterId: number; ac: number | null }> =
+          overviewRes.data?.overview ?? [];
+        const acById = new Map(overview.map((o) => [o.characterId, o.ac]));
+        const chars: Array<{
+          id: number;
+          name: string;
+          hidden?: boolean;
+          portraitUrl?: string | null;
+          dexterity?: number | null;
+          level?: number | null;
+          characterClass?: string | null;
+          classes?: Array<{ classKey: string; level: number }>;
+        }> = partyRes.data?.characters ?? [];
+        setTargets(
+          chars
+            .filter((c) => c.id !== charId && !c.hidden)
+            .map((c) => ({
+              id: c.id,
+              name: c.name,
+              portraitUrl: c.portraitUrl ?? null,
+              meta:
+                (c.classes && c.classes.length > 1
+                  ? c.classes.map((e) => `${classNameLabel(e.classKey)} ${e.level}`).join(' / ')
+                  : c.characterClass
+                    ? `${classNameLabel(c.characterClass)} ${c.level ?? ''}`.trim()
+                    : '') || '',
+              ac: acById.get(c.id) ?? null,
+              dexMod: abilityModifier(c.dexterity ?? 10),
+            })),
+        );
+      } catch {
+        if (alive) setTargets([]);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [character.partyId, charId]);
+
   // Always-prepared bonus spells: cleric domain, druid circle terrain,
   // paladin oath (derived — refetched with the character)
   const hasBonusSource = classesOf(character).some((c) => {
@@ -491,6 +580,7 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
     castLevel: number,
     ritual = false,
     pool?: 'spellcasting' | 'pact' | 'free',
+    target?: CastTarget,
   ) => {
     if (!castingSpell) return;
     const rowId = castingRowId;
@@ -544,6 +634,29 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
       } catch {
         // Le sort est lancé ; l'échec du compteur n'annule rien — la fiche
         // survit à un compteur optimiste (correction manuelle possible).
+      }
+    }
+    // Effet CA (v1 + ciblage v2) : le sort posé est un des 6 — POST
+    // /spell-effects APRÈS le PATCH (l'emplacement est consommé d'abord :
+    // l'échec du POST ne doit pas l'avoir été pour rien). Cible : la
+    // sélection du picker (targetCharacterId pour une fiche, targetLabel
+    // pour « Autre », rien = self — v1 compatible). Un échec de POST
+    // N'ANNULE RIEN : toast orange règle « effet non posé — lève/pose à la
+    // main », sans rollback.
+    if (ok && SPELL_AC_EFFECTS[castingSpell.srdIndex] && !ritual) {
+      try {
+        const payload: Record<string, unknown> = { spellId: castingSpell.id };
+        if (target?.kind === 'character') payload.targetCharacterId = target.id;
+        else if (target?.kind === 'label') payload.targetLabel = target.label;
+        await api.post(`/api/characters/${charId}/spell-effects`, payload);
+      } catch (err) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status !== 409) {
+          // 409 = effet déjà actif (double-cast) : rien à poser, pas d'alerte.
+          onWarn(t('sorts.effet.ca.non.pose'));
+        }
+      } finally {
+        await reloadEffects();
       }
     }
     if (ok) {
@@ -1021,7 +1134,13 @@ export default function CharacterSpellsTab({ character, charId, onSaved, onError
           character={character}
           invocationIds={invIds}
           freeCasts={freeCastMap}
+          activeAcEffects={
+            character.armorClassOverride == null ? toActiveAcEffects(spellEffects) : undefined
+          }
+          currentEffectiveAc={currentEffectiveAc}
+          dexMod={abilityModifier(character.dexterity ?? 10)}
           concentrating={!!character.concentrating}
+          targets={targets}
           onClose={() => {
             setCastingSpell(null);
             setCastingRowId(null);

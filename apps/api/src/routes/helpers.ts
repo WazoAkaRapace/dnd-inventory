@@ -31,6 +31,8 @@ import {
   characters,
   combatants,
   encounters,
+  inventory,
+  items,
   partyMembers,
 } from '../db/schema.ts';
 import { bus } from '../sync/bus.ts';
@@ -594,6 +596,23 @@ function parseCombatantConditions(raw: any): Array<{ name: string; duration: num
   } catch {
     return [];
   }
+}
+
+/** Rows of equipped items feeding computeAC (armour/shield base, STR min). */
+export function equippedAcRows(characterId: number): any[] {
+  return getDrizzle()
+    .select({
+      category: items.category,
+      ac_base: items.acBase,
+      str_min: items.strMin,
+      name_fr: items.nameFr,
+      name: items.name,
+      equipped: inventory.equipped,
+    })
+    .from(inventory)
+    .innerJoin(items, eq(items.id, inventory.itemId))
+    .where(and(eq(inventory.characterId, characterId), eq(inventory.equipped, 1)))
+    .all() as any[];
 }
 
 /**

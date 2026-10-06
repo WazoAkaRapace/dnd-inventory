@@ -36,6 +36,7 @@ import {
   mapInventoryEntry,
   requireUser,
 } from './helpers.ts';
+import { mirrorAcToCombatants } from './character-spell-effects.ts';
 import { sendCachedJson } from './httpCache.ts';
 import { type AppLang, langFromReq } from './lang.ts';
 import { apiMsg } from './messages.ts';
@@ -336,6 +337,9 @@ export async function inventoryRoutes(app: FastifyInstance) {
           },
         })
         .run();
+      // L'upsert réécrit `equipped` : une armure/bouclier équipé (ou déséquipé)
+      // resynchronise la CA des combatants (no-op sinon).
+      mirrorAcToCombatants(char.id, userId);
 
       // Log transaction
       const itemRow = itemDisplayName(body.itemId);
@@ -409,6 +413,11 @@ export async function inventoryRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: apiMsg(req, 'no fields to update') });
       }
       drizzle.update(inventory).set(values).where(eq(inventory.id, inv.id)).run();
+      // Équiper/déséquiper change une entrée de la CA — le traqueur suit
+      // (no-op si la CA ne bouge pas : arme, objet quelconque).
+      if (body.equipped !== undefined) {
+        mirrorAcToCombatants(char.id, userId);
+      }
 
       // If quantity changed, log transaction
       if (body.quantity !== undefined) {
@@ -430,6 +439,9 @@ export async function inventoryRoutes(app: FastifyInstance) {
       // If quantity reached 0, delete the entry
       if (body.quantity === 0) {
         drizzle.delete(inventory).where(eq(inventory.id, inv.id)).run();
+        // L'entrée supprimée pouvait être une armure/portée équipée — la CA
+        // des combatants suit sa disparition.
+        mirrorAcToCombatants(char.id, userId);
         bus.emitChange({
           type: 'inventory:change',
           partyId: char.party_id,
@@ -483,6 +495,9 @@ export async function inventoryRoutes(app: FastifyInstance) {
       });
 
       drizzle.delete(inventory).where(eq(inventory.id, inv.id)).run();
+      // L'entrée supprimée pouvait être une armure/bouclier équipé — la CA
+      // des combatants suit sa disparition (no-op sinon).
+      mirrorAcToCombatants(char.id, userId);
       bus.emitChange({
         type: 'inventory:change',
         partyId: char.party_id,
@@ -588,6 +603,10 @@ export async function inventoryRoutes(app: FastifyInstance) {
           reason: 'transfer-in',
           actorUserId: userId,
         });
+        // L'entrée transférée arrive NON équipée : si elle était équipée au
+        // départ, la CA du donneur suit (celle du receveur ne bouge pas).
+        mirrorAcToCombatants(fromCharId, userId);
+        mirrorAcToCombatants(toCharacterId, userId);
       })();
 
       // Emit events for both source and destination characters

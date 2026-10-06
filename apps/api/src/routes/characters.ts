@@ -22,10 +22,9 @@ import { cols } from '../db/projections.ts';
 import {
   characterClasses,
   characters,
+  characterSpellEffects,
   combatants,
   encounters,
-  inventory,
-  items,
   parties as partiesTable,
   users,
 } from '../db/schema.ts';
@@ -33,6 +32,7 @@ import { bus } from '../sync/bus.ts';
 import {
   attachCharacterClasses,
   characterVisibleTo,
+  equippedAcRows,
   isPartyGM,
   isPartyMember,
   mapCharacter,
@@ -44,6 +44,7 @@ import {
 } from './helpers.ts';
 import { sendCachedJson } from './httpCache.ts';
 import { loadInventoryView } from './inventory.ts';
+import { activeAcEffectsOf, mirrorAcToCombatants } from './character-spell-effects.ts';
 import { langFromReq } from './lang.ts';
 import { apiMsg } from './messages.ts';
 
@@ -73,22 +74,6 @@ function activePlayerCombatants(characterId: number): any[] {
       ),
     )
     .orderBy(desc(encounters.createdAt), desc(combatants.id))
-    .all() as any[];
-}
-
-/** AC input rows from the character's equipped items (sheet-side recompute). */
-function equippedAcRows(characterId: number): any[] {
-  return getDrizzle()
-    .select({
-      category: items.category,
-      ac_base: items.acBase,
-      str_min: items.strMin,
-      name_fr: items.nameFr,
-      name: items.name,
-    })
-    .from(inventory)
-    .innerJoin(items, eq(items.id, inventory.itemId))
-    .where(and(eq(inventory.characterId, characterId), eq(inventory.equipped, 1)))
     .all() as any[];
 }
 
@@ -255,6 +240,10 @@ export async function characterRoutes(app: FastifyInstance) {
             dexMod,
             character.fightingStyle === 'defense',
             character,
+            'fr',
+            // Effets de sort actifs (Bouclier de la foi…) : la CA du
+            // tableau MD suit — le miroir de roster-overview.
+            activeAcEffectsOf(character.id),
           );
           // Rations / eau : mêmes règles que la carte du tableau (les gourdes
           // VIDES portent « empty » en note et ne comptent pas).
@@ -530,6 +519,10 @@ export async function characterRoutes(app: FastifyInstance) {
                 abilityModifier(char.dexterity ?? 10),
                 char.fighting_style === 'defense',
                 char,
+                'fr',
+                // Effets de sort actifs : la CA du combatant suit le miroir
+                // (v1 : au prochain miroir HP, pas en continu — documenté).
+                activeAcEffectsOf(char.id),
               );
               drizzle
                 .update(combatants)
@@ -671,9 +664,68 @@ export async function characterRoutes(app: FastifyInstance) {
       // sheet/tracker state. (The condition mirror may emit a sync event
       // from inside the tx; events are best-effort refresh nudges, so a
       // rollback just leaves clients on the pre-tx state.)
+      // v2 : porteurs des lignes d'effet tombées avec la concentration —
+      // rempli par writeTx, relu après pour le fan-out CA + events.
+      let concentrationDroppedBearers: number[] = [];
       const writeTx = getDb().transaction(() => {
         if (Object.keys(values).length > 0) {
           drizzle.update(characters).set(values).where(eq(characters.id, char.id)).run();
+        }
+
+        // --- Concentration tombée (0 PV, condition brisante, remplacement
+        // par un nouveau sort concentré — `values.concentrating === 0` est
+        // posé par ces trois voies ci-dessus) : les lignes d'effet de sort
+        // liées à la concentration se désactivent dans la MÊME transaction —
+        // sinon un effet fantôme survit à sa rupture (Bouclier de la foi
+        // resterait à +2 CA après un Inconscient).
+        // v2 : la rupture se juge sur le LANCEUR — ce perso peut porter des
+        // effets castés par un autre (ils survivent), et les lignes qu'il a
+        // castées sur autrui / « Autre » tombent aussi.
+        if (values.concentrating === 0) {
+          const dropped = drizzle
+            .select({ characterId: characterSpellEffects.characterId })
+            .from(characterSpellEffects)
+            .where(
+              and(
+                eq(characterSpellEffects.casterCharacterId, char.id),
+                eq(characterSpellEffects.tiedToConcentration, 1),
+                eq(characterSpellEffects.active, 1),
+              ),
+            )
+            .all() as any[];
+          drizzle
+            .update(characterSpellEffects)
+            .set({ active: 0 })
+            .where(
+              and(
+                eq(characterSpellEffects.casterCharacterId, char.id),
+                eq(characterSpellEffects.tiedToConcentration, 1),
+                eq(characterSpellEffects.active, 1),
+              ),
+            )
+            .run();
+          concentrationDroppedBearers = [...new Set(dropped.map((r) => r.characterId))];
+        }
+
+        // --- CA : toute écriture qui en change les entrées (rupture de
+        // concentration qui désactive des effets, override manuel, DEX/CON/WIS
+        // — défense sans armure —, style Défense) resynchronise la CA des
+        // combatants en rencontre non terminée — le traqueur suit en continu.
+        // v2 : la rupture peut avoir fait tomber des lignes vivant sur les
+        // fiches D'AUTRES porteurs — CHACUN resynchronise sa ligne traqueur.
+        // Relit la fiche ci-dessous : l'UPDATE ci-dessus est déjà passé.
+        if (
+          values.concentrating === 0 ||
+          values.armorClassOverride !== undefined ||
+          values.dexterity !== undefined ||
+          values.constitution !== undefined ||
+          values.wisdom !== undefined ||
+          values.fightingStyle !== undefined
+        ) {
+          mirrorAcToCombatants(char.id, userId);
+          for (const bearerId of concentrationDroppedBearers) {
+            if (bearerId !== char.id) mirrorAcToCombatants(bearerId, userId);
+          }
         }
 
         for (const cr of hpMirrorTargets) {
@@ -888,6 +940,19 @@ export async function characterRoutes(app: FastifyInstance) {
         actorUserId: userId,
         ...(concentrationCheck ? { concentration: concentrationCheck } : {}),
       });
+      // v2 : la rupture de concentration de ce perso peut avoir fait tomber
+      // des lignes vivant sur les fiches d'AUTRES porteurs — leur CA bouge,
+      // chacun rafraîchit (actorUserId obligatoire sur tout emitChange).
+      for (const bearerId of concentrationDroppedBearers) {
+        if (bearerId === char.id) continue;
+        bus.emitChange({
+          type: 'character:change',
+          partyId: char.party_id,
+          characterId: bearerId,
+          action: 'stats',
+          actorUserId: userId,
+        });
+      }
       return reply.send({
         character: mapCharacter(row),
         ...(concentrationCheck ? { concentrationCheck } : {}),

@@ -1,13 +1,17 @@
 /**
  * Bottom sheet for editing conditions on a combatant.
  * Uses the 16 SRD conditions (DND_CONDITIONS_FR) with optional durations.
+ *
+ * Dessin des lignes = LE picker de l'onglet Survie (emoji, libellé, indice de
+ * règle, 🌀 interrompt la concentration, état actif sanguin) — un seul ajout
+ * propre au traqueur : l'indicateur de durée en tours par état actif.
  */
 
 import type { CombatantCondition } from '@table-sync/shared';
-import { DND_CONDITIONS_FR } from '@table-sync/shared';
+import { CONCENTRATION_BREAKING_CONDITIONS_FR, DND_CONDITIONS_FR } from '@table-sync/shared';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { conditionLabel } from '../i18n/labels';
+import { conditionHintKey, conditionLabel } from '../i18n/labels';
 import { BottomSheet } from './ui';
 
 interface Props {
@@ -79,7 +83,7 @@ export default function ConditionsEditor({
       title={t('conds.conditions.combatantname', { combatantName: combatantName })}
       size="md"
       mobileOnly={false}
-      bodyClassName="space-y-2"
+      bodyClassName="space-y-1.5"
       footer={
         <>
           <button type="button" onClick={onClose} className="btn-secondary flex-1">
@@ -93,7 +97,7 @@ export default function ConditionsEditor({
             }}
             className="btn-primary flex-1"
           >
-            Appliquer
+            {t('conds.appliquer')}
           </button>
         </>
       }
@@ -101,26 +105,42 @@ export default function ConditionsEditor({
       {DND_CONDITIONS_FR.map((cond) => {
         const active = activeSet.has(cond);
         const entry = draft.find((c) => c.name === cond);
+        const breaksConcentration = CONCENTRATION_BREAKING_CONDITIONS_FR.includes(cond);
         return (
           <div
             key={cond}
-            className={`flex items-center gap-3 p-2 rounded-lg border transition-colors ${
-              active ? 'border-blood-300 bg-blood-50' : 'border-parchment-200'
+            className={`flex items-center gap-2 rounded-lg border transition-colors ${
+              active
+                ? 'bg-blood-50 border-blood-200'
+                : 'bg-parchment-50 border-parchment-200 hover:border-blood-300'
             }`}
           >
             <button
               type="button"
               onClick={() => toggle(cond)}
-              className={`w-9 h-9 rounded-lg flex items-center justify-center text-lg shrink-0 transition-colors ${
-                active ? 'bg-blood-100' : 'bg-parchment-100 hover:bg-parchment-200'
-              }`}
-              aria-label={conditionLabel(cond)}
+              aria-pressed={active}
+              className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left"
             >
-              {CONDITION_ICONS[cond] ?? '❓'}
+              <span className="text-lg shrink-0" aria-hidden="true">
+                {CONDITION_ICONS[cond] ?? '❓'}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-ink-800">
+                  {conditionLabel(cond)}
+                </span>
+                <span className="block text-xs text-ink-500">{t(conditionHintKey(cond))}</span>
+              </span>
+              {breaksConcentration && (
+                <span
+                  className="text-sm shrink-0 text-indigo-600"
+                  title={t('survie.interrompt.la.concentration')}
+                >
+                  🌀
+                </span>
+              )}
             </button>
-            <span className="flex-1 text-sm font-medium">{conditionLabel(cond)}</span>
             {active && (
-              <div className="flex items-center gap-1">
+              <div className="flex shrink-0 items-center gap-1 pr-3">
                 <input
                   type="number"
                   min={1}
@@ -134,7 +154,7 @@ export default function ConditionsEditor({
                   className="input w-14 text-center text-sm"
                   title={t('conds.duree.en.tours.vide.jusqu.a')}
                 />
-                <span className="text-xs text-ink-400 w-12">
+                <span className="w-12 text-xs text-ink-400">
                   {entry?.duration == null ? 'tours ∞' : 'tours'}
                 </span>
               </div>

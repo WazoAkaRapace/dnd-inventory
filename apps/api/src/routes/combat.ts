@@ -28,7 +28,6 @@ import type {
 import {
   abilityModifier,
   CONCENTRATION_BREAKING_CONDITIONS_FR,
-  computeAC,
   HIDDEN_COMBATANT_NAME,
   rollHitPoints,
 } from '@table-sync/shared';
@@ -41,12 +40,11 @@ import {
   characters as charactersTable,
   combatants as combatantsTable,
   encounters as encountersTable,
-  inventory,
-  items,
   monsters,
 } from '../db/schema.ts';
 import { type PushPayload, type PushSendOptions, sendPushToUser } from '../push/send.ts';
 import { bus } from '../sync/bus.ts';
+import { breakConcentrationEffectsOnTracker, trackerAcOf } from './character-spell-effects.ts';
 import {
   getUserId,
   isPartyGM,
@@ -131,23 +129,6 @@ function getCombatant(drizzle: ReturnType<typeof getDrizzle>, id: number): any {
     .from(combatantsTable)
     .where(eq(combatantsTable.id, id))
     .get() as any;
-}
-
-/** AC input rows from a character's equipped items. */
-function equippedAcRows(characterId: number): any[] {
-  return getDrizzle()
-    .select({
-      category: items.category,
-      ac_base: items.acBase,
-      str_min: items.strMin,
-      name_fr: items.nameFr,
-      name: items.name,
-      equipped: inventory.equipped,
-    })
-    .from(inventory)
-    .innerJoin(items, eq(items.id, inventory.itemId))
-    .where(and(eq(inventory.characterId, characterId), eq(inventory.equipped, 1)))
-    .all() as any[];
 }
 
 /**
@@ -315,13 +296,16 @@ export async function combatRoutes(app: FastifyInstance) {
       const combatantCount = sql<number>`(SELECT COUNT(*) FROM combatants c WHERE c.encounter_id = encounters.id)`;
 
       let rows: any[];
+      // createdAt a une granularité SECONDE : deux rencontres nées dans la
+      // même seconde départagent arbitrairement — id descendant en tie-break
+      // (la plus récente d'abord, de façon déterministe).
       if (gm) {
         // GM sees all encounters
         rows = drizzle
           .select({ ...cols(encountersTable), combatant_count: combatantCount })
           .from(encountersTable)
           .where(eq(encountersTable.partyId, partyId))
-          .orderBy(desc(encountersTable.createdAt))
+          .orderBy(desc(encountersTable.createdAt), desc(encountersTable.id))
           .all();
       } else {
         // Players only see encounters where they have a combatant (their character is in the fight)
@@ -345,7 +329,7 @@ export async function combatRoutes(app: FastifyInstance) {
               ),
             ),
           )
-          .orderBy(desc(encountersTable.createdAt))
+          .orderBy(desc(encountersTable.createdAt), desc(encountersTable.id))
           .all();
       }
 
@@ -734,29 +718,11 @@ export async function combatRoutes(app: FastifyInstance) {
       const createdIds: number[] = [];
       getDb().transaction(() => {
         for (const char of chars) {
-          // Compute AC from equipped armor
-          const invRows = equippedAcRows(char.id);
           const dexMod = abilityModifier(char.dexterity ?? 10);
-          const acResult = computeAC(
-            invRows.map((r) => ({
-              item: {
-                category: r.category,
-                acBase: r.ac_base,
-                strMin: r.str_min,
-                nameFr: r.name_fr,
-                name: r.name,
-              },
-              equipped: !!r.equipped,
-            })),
-            dexMod,
-            char.fighting_style === 'defense',
-            {
-              constitution: char.constitution,
-              wisdom: char.wisdom,
-              characterClass: char.character_class,
-            },
-          );
-          const ac = char.armor_class_override ?? acResult.ac;
+          // CA d'ajout = équipement + effets de sort actifs, override GAGNE —
+          // la même formule que mirrorAcToCombatants : création et miroirs ne
+          // peuvent pas diverger.
+          const ac = trackerAcOf(char);
 
           const { id } = drizzle
             .insert(combatantsTable)
@@ -1019,11 +985,21 @@ export async function combatRoutes(app: FastifyInstance) {
             };
           } else if (realHp <= 0) {
             // Unconscious → concentration ends automatically on the sheet too.
-            drizzle
-              .update(charactersTable)
-              .set({ concentrating: 0 })
-              .where(eq(charactersTable.id, ch.id))
-              .run();
+            // Les lignes d'effet liées tombent DANS la même écriture — un
+            // effet fantôme ne doit pas survivre à la rupture.
+            let droppedBearers: number[] = [];
+            getDb().transaction(() => {
+              drizzle
+                .update(charactersTable)
+                .set({ concentrating: 0 })
+                .where(eq(charactersTable.id, ch.id))
+                .run();
+              // v2 : la rupture se juge sur le LANCEUR — les lignes CASTÉES
+              // par ce perso tombent (sur lui, sur autrui ou « Autre »), et
+              // la CA de CHAQUE porteur fiche touché resynchronise (emit:
+              // false — la route émet déjà son combat:change chirurgical).
+              droppedBearers = breakConcentrationEffectsOnTracker(ch.id, userId);
+            })();
             bus.emitChange({
               type: 'character:change',
               partyId: enc.party_id,
@@ -1031,6 +1007,18 @@ export async function combatRoutes(app: FastifyInstance) {
               action: 'stats',
               actorUserId: userId,
             });
+            // v2 : les porteurs AUTRES que le lanceur rafraîchissent aussi
+            // (leur CA vient de retomber).
+            for (const bearerId of droppedBearers) {
+              if (bearerId === ch.id) continue;
+              bus.emitChange({
+                type: 'character:change',
+                partyId: enc.party_id,
+                characterId: bearerId,
+                action: 'stats',
+                actorUserId: userId,
+              });
+            }
           }
         }
       }
@@ -1171,11 +1159,21 @@ export async function combatRoutes(app: FastifyInstance) {
             .where(eq(charactersTable.id, combatant.character_id))
             .get() as any;
           if (ch?.concentrating) {
-            drizzle
-              .update(charactersTable)
-              .set({ concentrating: 0 })
-              .where(eq(charactersTable.id, ch.id))
-              .run();
+            // Condition brisante → concentration rompue : les lignes d'effet
+            // liées tombent dans la même écriture (pas d'effet fantôme).
+            let droppedBearers: number[] = [];
+            getDb().transaction(() => {
+              drizzle
+                .update(charactersTable)
+                .set({ concentrating: 0 })
+                .where(eq(charactersTable.id, ch.id))
+                .run();
+              // v2 : la rupture se juge sur le LANCEUR — les lignes CASTÉES
+              // par ce perso tombent, et la CA de CHAQUE porteur fiche
+              // touché resynchronise (emit: false — la route émet déjà son
+              // combat:change chirurgical).
+              droppedBearers = breakConcentrationEffectsOnTracker(ch.id, userId);
+            })();
             bus.emitChange({
               type: 'character:change',
               partyId: enc.party_id,
@@ -1183,6 +1181,18 @@ export async function combatRoutes(app: FastifyInstance) {
               action: 'stats',
               actorUserId: userId,
             });
+            // v2 : les porteurs AUTRES que le lanceur rafraîchissent aussi
+            // (leur CA vient de retomber).
+            for (const bearerId of droppedBearers) {
+              if (bearerId === ch.id) continue;
+              bus.emitChange({
+                type: 'character:change',
+                partyId: enc.party_id,
+                characterId: bearerId,
+                action: 'stats',
+                actorUserId: userId,
+              });
+            }
             concentrationBroken = breaking.name;
           }
         }

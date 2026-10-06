@@ -31,6 +31,7 @@ import {
   monsters,
 } from '../db/schema.ts';
 import { bus } from '../sync/bus.ts';
+import { activeAcEffectsOf } from './character-spell-effects.ts';
 import { isPartyGM, requireUser } from './helpers.ts';
 import { langFromReq, pickLocalized } from './lang.ts';
 import { apiMsg } from './messages.ts';
@@ -154,6 +155,10 @@ function normalAC(char: any): number | null {
     dexMod,
     char.fighting_style === 'defense',
     char,
+    'fr',
+    // Effets de sort actifs : la CA de la forme suivie (miroir wild shape)
+    // intègre les effets posés — v1 : recalculé au prochain miroir.
+    activeAcEffectsOf(char.id),
   );
   return char.armor_class_override ?? acResult.ac;
 }

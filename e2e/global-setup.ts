@@ -185,10 +185,15 @@ export default async function globalSetup(): Promise<void> {
   ] as const) {
     await addItem(playerToken, mira.id, name, equipped);
   }
+  // Bouclier de la foi / Armure de mage : les 6 sorts à effet CA (v1) se
+  // testent en E2E sur Mira (spell-effects.spec.ts) — concentration rompue
+  // par condition brisante, set 13+DEX sous CA d'équipement déjà couverte.
   for (const [name, prepared] of [
     ['Flamme sacrée', true],
     ['Mot de guérison', true],
     ['Blessure', true],
+    ['Bouclier de la foi', true],
+    ['Armure de mage', false],
   ] as const) {
     await addSpell(playerToken, mira.id, name, prepared);
   }
