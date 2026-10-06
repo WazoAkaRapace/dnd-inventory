@@ -773,7 +773,11 @@ export default function CharacterInventoryPage() {
   const hubEncountersQuery = useActiveEncounters(Number(partyId) || null, !!user);
   const hubCombat: HubCombat | null = useMemo(() => {
     const character = data?.character;
-    if (!character) return null;
+    // La carte de combat vit sur la fiche de son PROPRIÉTAIRE (le bandeau
+    // d'en-tête fait pareil — CombatWidget.checkIsMyCharacter) : le MD ou un
+    // autre joueur qui visite la fiche n'a pas le pouce du joueur, et le
+    // serveur refuserait de toute façon son « J'ai fini mon tour ».
+    if (!character || character.ownerId !== user?.id) return null;
     const dexMod = Math.floor(((character.dexterity ?? 10) - 10) / 2);
     for (const detail of hubEncountersQuery.data ?? []) {
       const mine = detail.combatants.find((c: any) => c.characterId === Number(charId));
@@ -792,7 +796,7 @@ export default function CharacterInventoryPage() {
       };
     }
     return null;
-  }, [hubEncountersQuery.data, data?.character, charId]);
+  }, [hubEncountersQuery.data, data?.character, charId, user?.id]);
 
   // "Your turn" screen-wide blood-cut (document-level singleton — fires once
   // whoever detects the transition: dock card, hub or desktop strip)
