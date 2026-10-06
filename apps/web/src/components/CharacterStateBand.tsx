@@ -36,6 +36,8 @@ import api from '../api';
 import { appLang } from '../i18n';
 import { classNameLabel, conditionLabel } from '../i18n/labels';
 import {
+  bearerAcRows,
+  castOnOthersRows,
   effectModLabel,
   fetchSpellEffects,
   type SpellEffectRow,
@@ -139,6 +141,26 @@ export default function CharacterStateBand({
   const [spellEffects, setSpellEffects] = useState<SpellEffectRow[]>([]);
   const [effectsOpen, setEffectsOpen] = useState(false);
   const [liftingEffectId, setLiftingEffectId] = useState<number | null>(null);
+  // v2 : id → nom des personnages du groupe — les lignes caster portent
+  // targetCharacterId ; le nom vit côté client (roster léger, UNE requête).
+  const [nameById, setNameById] = useState<Map<number, string>>(new Map());
+  useEffect(() => {
+    let alive = true;
+    api
+      .get(`/api/parties/${character.partyId}/characters`)
+      .then((res) => {
+        if (!alive) return;
+        const chars: Array<{ id: number; name: string; hidden?: boolean }> =
+          res.data?.characters ?? [];
+        setNameById(new Map(chars.filter((c) => !c.hidden).map((c) => [c.id, c.name])));
+      })
+      .catch(() => {
+        /* silencieux : chips « → id » dégradées en nom inconnu */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [character.partyId]);
   const reloadEffects = useCallback(async () => {
     // Silencieux en échec (route absente / réseau) : pas de chips, pas
     // d'erreur — la fiche vit.
@@ -175,7 +197,31 @@ export default function CharacterStateBand({
     }
   };
 
-  const activeEffects = useMemo(() => toActiveAcEffects(spellEffects), [spellEffects]);
+  // v2 ciblage : le GET renvoie les effets PORTÉS (bearer — ils comptent dans
+  // la CA) ET les effets CASTÉS par ce personnage vers autrui (caster —
+  // chips « → Kael »). Les lignes « Autre » étiquetées vivent côté lanceur
+  // sans toucher sa CA.
+  const bearerRows = useMemo(() => bearerAcRows(spellEffects), [spellEffects]);
+  const castRows = useMemo(() => castOnOthersRows(spellEffects), [spellEffects]);
+  /** Nom affiché d'une cible fiche — l'API ne joint pas le nom, le roster
+   *  léger le donne (fallback : l'id, jamais vide). */
+  const targetDisplayName = useCallback(
+    (row: SpellEffectRow): string =>
+      row.targetName ??
+      (row.targetCharacterId != null
+        ? (nameById.get(row.targetCharacterId) ?? `#${row.targetCharacterId}`)
+        : ''),
+    [nameById],
+  );
+  /** Nom du lanceur d'un effet porté (title « posé par X »). */
+  const casterDisplayName = useCallback(
+    (row: SpellEffectRow): string | null =>
+      row.casterName ??
+      (row.casterCharacterId != null ? (nameById.get(row.casterCharacterId) ?? null) : null),
+    [nameById],
+  );
+
+  const activeEffects = useMemo(() => toActiveAcEffects(bearerRows), [bearerRows]);
   const acResult = useMemo(
     () =>
       computeAC(
@@ -489,16 +535,16 @@ export default function CharacterStateBand({
                 <button
                   type="button"
                   onClick={() =>
-                    spellEffects.length > 0 ? setEffectsOpen(true) : onNavigate('stats')
+                    bearerRows.length > 0 ? setEffectsOpen(true) : onNavigate('stats')
                   }
                   className={`font-mono text-sm font-semibold text-ink-800 bg-parchment-100 border rounded-md px-2 py-1 hover:border-blood-400 transition-colors inline-flex items-center min-h-11 ${
-                    spellEffects.length > 0
+                    bearerRows.length > 0
                       ? 'border-gold-400 ring-1 ring-gold-300 hover:border-gold-500'
                       : 'border-parchment-200'
                   }`}
                   title={
-                    spellEffects.length > 0
-                      ? t('band.ca.effets.actifs.title', { count: spellEffects.length })
+                    bearerRows.length > 0
+                      ? t('band.ca.effets.actifs.title', { count: bearerRows.length })
                       : character.armorClassOverride
                         ? t('band.ca.manuelle')
                         : acResult.source
@@ -512,7 +558,7 @@ export default function CharacterStateBand({
               ) : (
                 <span
                   className={`font-mono text-sm font-semibold text-ink-800 bg-parchment-100 border rounded-md px-2 py-1 ${
-                    spellEffects.length > 0
+                    bearerRows.length > 0
                       ? 'border-gold-400 ring-1 ring-gold-300'
                       : 'border-parchment-200'
                   }`}
@@ -574,17 +620,22 @@ export default function CharacterStateBand({
 
           {/* Chips d'effets de sort actifs — or = magie. L'override manuel
               GAGNE : chips affichées mais contribution non appliquée (la CA
-              affichée reste la CA manuelle), avertissement orange règle. */}
-          {spellEffects.length > 0 && (
+              affichée reste la CA manuelle), avertissement orange règle.
+              v2 : les effets posés SUR AUTRUI par ce personnage s'ajoutent
+              en chips « → cible » (role caster) — les chips « Autre » ne
+              portent AUCUN delta CA (pense-bête, pas de fiche). */}
+          {(bearerRows.length > 0 || castRows.length > 0) && (
             <div className="flex flex-wrap items-center gap-1.5">
               {canEdit ? (
                 <button
                   type="button"
                   onClick={() => setEffectsOpen(true)}
                   className="flex flex-wrap items-center gap-1.5 text-left min-h-11 py-1"
-                  aria-label={t('band.ca.effets.actifs.count', { count: spellEffects.length })}
+                  aria-label={t('band.ca.effets.actifs.count', {
+                    count: bearerRows.length + castRows.length,
+                  })}
                 >
-                  {spellEffects.map((row) => (
+                  {bearerRows.map((row) => (
                     <Chip
                       key={row.id}
                       tone="gold"
@@ -596,20 +647,76 @@ export default function CharacterStateBand({
                       {effectModLabel(row)} · {row.spellName || t('band.effets.sort')}
                     </Chip>
                   ))}
+                  {castRows.map((row) =>
+                    row.targetLabel ? (
+                      <Chip
+                        key={row.id}
+                        tone="gold"
+                        title={t('band.effet.chip.caster.autre.title', {
+                          name: row.spellName,
+                          target: row.targetLabel,
+                        })}
+                      >
+                        {row.spellName || t('band.effets.sort')} → {row.targetLabel}
+                      </Chip>
+                    ) : (
+                      <Chip
+                        key={row.id}
+                        tone="gold"
+                        title={t('band.effet.chip.caster.title', {
+                          name: row.spellName,
+                          mod: effectModLabel(row),
+                          target: targetDisplayName(row),
+                        })}
+                      >
+                        {effectModLabel(row)} · {row.spellName || t('band.effets.sort')} →{' '}
+                        {targetDisplayName(row)}
+                      </Chip>
+                    ),
+                  )}
                 </button>
               ) : (
-                spellEffects.map((row) => (
-                  <Chip
-                    key={row.id}
-                    tone="gold"
-                    title={t('band.effet.chip.title', {
-                      name: row.spellName,
-                      mod: effectModLabel(row),
-                    })}
-                  >
-                    {effectModLabel(row)} · {row.spellName || t('band.effets.sort')}
-                  </Chip>
-                ))
+                <>
+                  {bearerRows.map((row) => (
+                    <Chip
+                      key={row.id}
+                      tone="gold"
+                      title={t('band.effet.chip.title', {
+                        name: row.spellName,
+                        mod: effectModLabel(row),
+                      })}
+                    >
+                      {effectModLabel(row)} · {row.spellName || t('band.effets.sort')}
+                    </Chip>
+                  ))}
+                  {castRows.map((row) =>
+                    row.targetLabel ? (
+                      <Chip
+                        key={row.id}
+                        tone="gold"
+                        title={t('band.effet.chip.caster.autre.title', {
+                          name: row.spellName,
+                          target: row.targetLabel,
+                        })}
+                      >
+                        {row.spellName || t('band.effets.sort')} → {row.targetLabel}
+                      </Chip>
+                    ) : (
+                      <Chip
+                        key={row.id}
+                        tone="gold"
+                        title={t('band.effet.chip.caster.title', {
+                          name: row.spellName,
+                          mod: effectModLabel(row),
+                          target: targetDisplayName(row),
+                        })}
+                      >
+                        {effectModLabel(row)} · {row.spellName || t('band.effets.sort')} →{' '}
+                        {targetDisplayName(row)}
+                      </Chip>
+                    ),
+                  )}
+                </>
               )}
               {hasAcOverride && (
                 <Chip tone="orange" title={t('band.ca.manuelle.effet.non.applique.title')}>
@@ -754,13 +861,18 @@ export default function CharacterStateBand({
               ⚠ {t('band.ca.manuelle.effet.non.applique')}
             </p>
           )}
-          {spellEffects.length === 0 && (
+          {bearerRows.length === 0 && castRows.length === 0 && (
             <p className="text-sm text-ink-500">{t('band.effets.aucun')}</p>
           )}
-          {spellEffects.map((row) => (
+          {bearerRows.map((row) => (
             <div
               key={row.id}
               className="flex items-center justify-between gap-2 bg-parchment-50 border border-parchment-200 rounded-lg px-3 min-h-[52px]"
+              title={
+                casterDisplayName(row)
+                  ? t('band.effets.pose.par', { name: casterDisplayName(row) ?? '' })
+                  : undefined
+              }
             >
               <div className="min-w-0">
                 <p className="text-sm font-medium text-ink-800 truncate">
@@ -769,6 +881,9 @@ export default function CharacterStateBand({
                 <p className="text-xs text-gold-700 font-mono">
                   ⛨ {effectModLabel(row)}
                   {row.tiedToConcentration ? ` · ${t('band.effets.concentre')}` : ''}
+                  {casterDisplayName(row)
+                    ? ` · ${t('band.effets.pose.par.court', { name: casterDisplayName(row) ?? '' })}`
+                    : ''}
                 </p>
               </div>
               <button
@@ -784,7 +899,53 @@ export default function CharacterStateBand({
               </button>
             </div>
           ))}
-          {hasAcOverride && spellEffects.length > 0 && (
+
+          {/* v2 : effets posés sur autrui — le lanceur voit ses sorts actifs
+              chez les autres ; LEVER retombe `concentrating` si plus rien. */}
+          {castRows.length > 0 && (
+            <div className="pt-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-500 mb-1.5">
+                {t('band.effets.sur.autrui')}
+              </p>
+              <div className="space-y-2">
+                {castRows.map((row) => {
+                  const who = row.targetLabel ?? targetDisplayName(row);
+                  return (
+                    <div
+                      key={row.id}
+                      className="flex items-center justify-between gap-2 bg-gold-50 border border-gold-200 rounded-lg px-3 min-h-[52px]"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-ink-800 truncate">
+                          {row.spellName || t('band.effets.sort')} → {who}
+                        </p>
+                        <p className="text-xs text-gold-700 font-mono">
+                          {row.targetLabel ? t('band.effets.sans.ca') : `⛨ ${effectModLabel(row)}`}
+                          {row.tiedToConcentration
+                            ? ` · ${t('band.effets.concentre')}`
+                            : row.effectKind === 'ac_set_formula'
+                              ? ` · ${t('band.effets.a.lever.main')}`
+                              : ''}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => liftEffect(row)}
+                        disabled={liftingEffectId !== null}
+                        className="shrink-0 min-h-11 px-3 py-2 rounded-lg bg-parchment-200 hover:bg-parchment-300 text-sm font-medium text-ink-700 disabled:opacity-40 transition-colors"
+                        aria-label={t('band.effets.lever.name', {
+                          name: `${row.spellName || t('band.effets.sort')} → ${who}`,
+                        })}
+                      >
+                        {liftingEffectId === row.id ? '…' : t('band.effets.lever')}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {hasAcOverride && bearerRows.length > 0 && (
             <p className="text-xs text-ink-400 leading-relaxed">{t('band.ca.manuelle.note')}</p>
           )}
         </div>
