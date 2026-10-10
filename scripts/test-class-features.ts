@@ -21,6 +21,7 @@ import {
   CLASS_SUBCLASSES,
   classFeatureResourceMax,
   effectiveFeatureReset,
+  featuresByClassFor,
   featuresForCharacter,
   findClassFeature,
   nextClassFeatureGain,
@@ -150,6 +151,75 @@ check('rage @20 = ∞ (null)', resourceMaxOf('barbare-rage', barb(20)), null);
 
 // Ki = niveau (repos court) ; points de sorcellerie = niveau (repos long)
 check('ki @7 = 7', resourceMaxOf('moine-ki', mkChar({ characterClass: 'Moine', level: 7 })), 7);
+
+// PHB 2014 : les 3 voies du Moine au catalogue (paume, ombre, quatre éléments)
+check(
+  'sous-classes Moine : 3 voies PHB',
+  CLASS_SUBCLASSES.Moine.map((s) => s.key).sort(),
+  ['main-ouverte', 'ombre', 'quatre-elements'].sort(),
+);
+
+// PHB 2014 : Voie de l'ombre — Arts des ombres @3, Foulée d'ombre @6,
+// Linceul d'ombre @11, Opportuniste @17 (paliers de tradition monastique)
+check(
+  'voie de l’ombre : paliers d’acquisition 3/6/11/17',
+  [
+    'moine-ombre-arts-des-ombres',
+    'moine-ombre-foulee-d-ombre',
+    'moine-ombre-linceul-d-ombre',
+    'moine-ombre-opportuniste',
+  ].map((id) => findClassFeature(id)?.level),
+  [3, 6, 11, 17],
+);
+check(
+  'voie de l’ombre : Arts des ombres sans compteur (ki dépensé depuis le pool Ki)',
+  findClassFeature('moine-ombre-arts-des-ombres')?.resource ?? null,
+  null,
+);
+check(
+  'Moine/Ombre @11 voit le Linceul d’ombre',
+  featuresForCharacter({ characterClass: 'Moine', subclass: 'ombre', level: 11 }).some(
+    (f) => f.id === 'moine-ombre-linceul-d-ombre',
+  ),
+  true,
+);
+check(
+  'Moine/Ombre @10 ne voit PAS encore le Linceul d’ombre',
+  featuresByClassFor({
+    characterClass: 'Moine',
+    level: 10,
+    classes: [
+      { classKey: 'Moine', level: 10, subclassKey: 'ombre', hitDiceUsed: 0, fightingStyle: null },
+    ],
+  })[0].features.some((f) => f.id === 'moine-ombre-linceul-d-ombre'),
+  false,
+);
+
+// PHB 2014 : Voie des quatre éléments — Disciple des éléments @3 (discipline
+// supplémentaire aux niveaux 6/11/17 ; coûts en ki dans la description)
+check(
+  'voie des quatre éléments : Disciple des éléments acquis au niveau 3',
+  findClassFeature('moine-quatre-elements-disciple')?.level,
+  3,
+);
+check(
+  'voie des quatre éléments : pas de compteur dédié (coûts ki décrits, jamais automatisés)',
+  findClassFeature('moine-quatre-elements-disciple')?.resource ?? null,
+  null,
+);
+check(
+  'Moine/4 éléments @3 voit Disciple des éléments',
+  featuresForCharacter({ characterClass: 'Moine', subclass: 'quatre-elements', level: 3 }).some(
+    (f) => f.id === 'moine-quatre-elements-disciple',
+  ),
+  true,
+);
+check(
+  'voie des quatre éléments : le pool ki alimente les disciplines (ki @5 = 5)',
+  resourceMaxOf('moine-ki', mkChar({ characterClass: 'Moine', level: 5 })),
+  5,
+);
+
 check(
   'sorcellerie @13 = 13',
   resourceMaxOf(

@@ -2256,6 +2256,55 @@ export const CLASS_SUBCLASSES: Record<string, SubclassDef[]> = {
         },
       ],
     },
+    {
+      key: 'ombre',
+      label: 'Voie de l’ombre',
+      level: 3,
+      features: [
+        {
+          id: 'moine-ombre-arts-des-ombres',
+          level: 3,
+          name: 'Arts des ombres',
+          description:
+            'Par une action, dépensez 2 points ki pour lancer Ténèbres, Vision dans le noir, Passage sans trace ou Silence (sans composantes matérielles) ; vous gagnez aussi le sort mineur Illusion mineure si vous ne le connaissez pas déjà.',
+        },
+        {
+          id: 'moine-ombre-foulee-d-ombre',
+          level: 6,
+          name: 'Foulée d’ombre',
+          description:
+            'En action bonus, depuis une zone de lumière faible ou de ténèbres : téléportez-vous jusqu’à 18 m vers un espace inoccupé visible, lui aussi en lumière faible ou dans les ténèbres ; avantage à votre première attaque au corps à corps avant la fin de votre tour.',
+        },
+        {
+          id: 'moine-ombre-linceul-d-ombre',
+          level: 11,
+          name: 'Linceul d’ombre',
+          description:
+            'Par une action, dans une zone de lumière faible ou de ténèbres : vous devenez invisible jusqu’à ce que vous attaquiez, lanciez un sort ou vous retrouviez dans une zone de lumière vive.',
+        },
+        {
+          id: 'moine-ombre-opportuniste',
+          level: 17,
+          name: 'Opportuniste',
+          description:
+            'En réaction, quand une créature située à 1,50 m ou moins de vous est touchée par une attaque d’une autre créature que vous : effectuez une attaque de corps à corps contre elle.',
+        },
+      ],
+    },
+    {
+      key: 'quatre-elements',
+      label: 'Voie des quatre éléments',
+      level: 3,
+      features: [
+        {
+          id: 'moine-quatre-elements-disciple',
+          level: 3,
+          name: 'Disciple des éléments',
+          description:
+            'Vous connaissez la discipline Lien élémentaire et une autre de votre choix ; une discipline supplémentaire aux niveaux 6, 11 et 17 (remplacement possible). Sorts d’une discipline : coût en ki indiqué, sans composantes matérielles ; dès le niv. 5, +1 ki par niveau de sort supérieur (max 3 ki/sort aux niv. 5-8, 4 aux 9-12, 5 aux 13-16, 6 aux 17-20). Disciplines : Lien élémentaire (effets élémentaires mineurs) ; Crochets du serpent de feu (1 ki : allonge +3 m et dégâts de feu, +1 ki pour 1d10 supplémentaires) ; Frappe de cendres (2 ki : Mains brûlantes) ; Poing des quatre tonnerres (2 ki : Vague tonnante) ; Ruée des esprits du vent (2 ki : Bourrasque) ; Fouet de l’onde (2 ki : 3d10 contondants +1d10 par ki, cible tirée ou mise à terre) ; Poing de l’air (2 ki : 3d10 contondants +1d10 par ki, repoussée 6 m et mise à terre) ; Façonnage de la rivière (1 ki : eau ⇄ glace remodelée) ; Étreinte du vent du nord @6 (3 ki : Immobilisation de personne) ; Gong du sommet @6 (3 ki : Fracassement) ; Destrier des vents @11 (4 ki : Vol) ; Flammes du phénix @11 (4 ki : Boule de feu) ; Posture de brume @11 (4 ki : Forme gazeuse) ; Défense de la montagne éternelle @17 (5 ki : Peau de pierre) ; Torrent de flammes voraces @17 (5 ki : Mur de feu) ; Souffle de l’hiver @17 (6 ki : Cône de froid) ; Vague de terre grondante @17 (6 ki : Mur de pierre).',
+        },
+      ],
+    },
   ],
   Occultiste: [
     {

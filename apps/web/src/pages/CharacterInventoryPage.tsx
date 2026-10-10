@@ -63,12 +63,13 @@ import CharacterStatsTab from './CharacterStatsTab';
 import { CatalogSearch } from './character/CatalogSearch';
 import { CategoryGroup } from './character/CategoryGroup';
 import { type CoinMode, CoinPurse } from './character/CoinPurse';
+import { CoinGiveModal } from './character/CoinGiveModal';
 import { CoinTransactionModal } from './character/CoinTransactionModal';
 import { LocationWeightBar } from './character/LocationWeightBar';
 import { NewLocationModal } from './character/NewLocationModal';
 import { CHARACTER_TABS, type CharacterTab, SheetTabBar } from './character/SheetTabBar';
 import { SurvivalPanel, type SurvivalConsumeResult } from './character/SurvivalPanel';
-import { TransferModal } from './character/TransferModal';
+import { ContainerTransferModal, TransferModal } from './character/TransferModal';
 import {
   apiError,
   type CoinsState,
@@ -198,6 +199,8 @@ export default function CharacterInventoryPage() {
   });
   // The coin modal's open door: 'gain' | 'spend' — null = closed ('set' only via chips)
   const [coinExchange, setCoinExchange] = useState<CoinMode | null>(null);
+  // « Donner à… » — its own sheet (transfer between characters, not a purse write)
+  const [coinGiveOpen, setCoinGiveOpen] = useState(false);
 
   // Catalog (in bottom-sheet on mobile, right column on desktop)
   const [catalogOpen, setCatalogOpen] = useState(false); // mobile sheet
@@ -236,6 +239,8 @@ export default function CharacterInventoryPage() {
 
   // Transfer modal
   const [transferEntry, setTransferEntry] = useState<InventoryEntry | null>(null);
+  // Container transfer modal (« Transférer à… » on a container location tab)
+  const [transferLocation, setTransferLocation] = useState<StorageLocation | null>(null);
 
   // Storage locations: active tab + new-transport modal
   const [activeLocationId, setActiveLocationId] = useState<number | null>(null);
@@ -1390,6 +1395,21 @@ export default function CharacterInventoryPage() {
                           {pct}%
                         </span>
                       </button>
+                      {/* Give-container + delete buttons for non-carried locations.
+                          « Transférer à… » n'existe que pour les conteneurs
+                          (loc.type === 'container') — même gabarit que la
+                          suppression voisine, visible au doigt, jamais hover-only. */}
+                      {loc.type === 'container' && isActive && canEdit && (
+                        <button
+                          type="button"
+                          onClick={() => setTransferLocation(loc)}
+                          className="ml-1 w-7 h-7 rounded-full flex items-center justify-center text-sm bg-parchment-200 text-ink-500 hover:bg-parchment-300 hover:text-ink-700 transition-colors shrink-0"
+                          aria-label={t('inv.transferer.conteneur.name', { name: loc.name })}
+                          title={t('inv.transferer.conteneur.name', { name: loc.name })}
+                        >
+                          ↗
+                        </button>
+                      )}
                       {/* Delete button for non-carried locations */}
                       {loc.type !== 'carried' && isActive && canEdit && (
                         <button
@@ -1522,7 +1542,10 @@ export default function CharacterInventoryPage() {
               <CoinPurse
                 coins={coins}
                 readOnly={!canEdit}
-                onOpenExchange={setCoinExchange}
+                onOpenExchange={(mode) => {
+                  if (mode === 'give') setCoinGiveOpen(true);
+                  else setCoinExchange(mode);
+                }}
                 onAdjust={adjustCoin}
               />
             </section>
@@ -1559,6 +1582,21 @@ export default function CharacterInventoryPage() {
         onConfirm={savePurse}
       />
 
+      {/* ---------- Coin give modal (« Donner à… » — transfert entre personnages) ---------- */}
+      <CoinGiveModal
+        open={coinGiveOpen}
+        charId={Number(charId)}
+        partyId={partyId}
+        coins={coins}
+        onClose={() => setCoinGiveOpen(false)}
+        onTransferred={async () => {
+          setCoinGiveOpen(false);
+          await refreshInventory();
+          pushToast(t('bourse.donnee'));
+        }}
+        onError={(msg) => pushToast(msg, 'error')}
+      />
+
       {/* ---------- Transfer modal ---------- */}
       <TransferModal
         open={transferEntry !== null}
@@ -1570,6 +1608,29 @@ export default function CharacterInventoryPage() {
           setTransferEntry(null);
           await refreshInventory();
           pushToast(t('inv.transfere', { name: itemName }));
+        }}
+        onError={(msg) => pushToast(msg, 'error')}
+      />
+
+      {/* ---------- Container transfer modal (« Transférer à… ») ---------- */}
+      <ContainerTransferModal
+        open={transferLocation !== null}
+        location={transferLocation}
+        contentCount={
+          transferLocation
+            ? (data?.entries ?? []).filter((e) => e.storageLocationId === transferLocation.id)
+                .length
+            : 0
+        }
+        charId={Number(charId)}
+        partyId={partyId}
+        onClose={() => setTransferLocation(null)}
+        onTransferred={async (containerName: string) => {
+          setTransferLocation(null);
+          // Le conteneur actif vient de partir : retour au sac à dos porté.
+          setActiveLocationId(findCarriedLocation(locations)?.id ?? null);
+          await refreshInventory();
+          pushToast(t('inv.transfere', { name: containerName }));
         }}
         onError={(msg) => pushToast(msg, 'error')}
       />

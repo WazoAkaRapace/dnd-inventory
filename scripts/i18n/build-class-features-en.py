@@ -42,6 +42,8 @@ SUBCLASS_SHORTNAME = {
   ('Magicien', 'illusion'): 'Illusion', ('Magicien', 'invocation'): 'Conjuration',
   ('Magicien', 'necromancie'): 'Necromancy', ('Magicien', 'transmutation'): 'Transmutation',
   ('Moine', 'main-ouverte'): 'Open Hand',
+  ('Moine', 'ombre'): 'Shadow',
+  ('Moine', 'quatre-elements'): 'Four Elements',
   ('Occultiste', 'archfee'): 'Archfey', ('Occultiste', 'fielon'): 'Fiend',
   ('Occultiste', 'grand-ancien'): 'Great Old One',
   ('Paladin', 'devotion'): 'Devotion', ('Paladin', 'anciennes'): 'Ancients',
@@ -305,6 +307,13 @@ F = {
  'Moine|main-ouverte|Plénitude physique': 'Wholeness of Body',
  'Moine|main-ouverte|Tranquillité': 'Tranquility',
  'Moine|main-ouverte|Paume frémissante': 'Quivering Palm',
+ 'Moine|ombre|Arts des ombres': 'Shadow Arts',
+ 'Moine|ombre|Foulée d’ombre': 'Shadow Step',
+ 'Moine|ombre|Linceul d’ombre': 'Cloak of Shadows',
+ 'Moine|ombre|Opportuniste': 'Opportunist',
+ # FR combiné (acquisition + liste de disciplines) → les deux entrées PHB L3
+ 'Moine|quatre-elements|Disciple des éléments':
+   ['Disciple of the Elements', 'Elemental Disciplines'],
  # --- Occultiste
  'Occultiste|archfee|Présence féerique': 'Fey Presence',
  'Occultiste|archfee|Échappatoire brumeuse': 'Misty Escape',

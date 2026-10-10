@@ -19,8 +19,10 @@ export const COIN_FIELDS: {
   { key: 'platinum', unit: 'pp', color: '#e5e4e2' }, // platinum (white-silver)
 ];
 
-/** The three verbs of the coin modal: receive / spend / correct the purse. */
-export type CoinMode = 'gain' | 'spend' | 'set';
+/** The four verbs of the coin modal: receive / spend / correct / hand over.
+ *  « give » (Donner à…) a sa propre feuille (CoinGiveModal) — un transfert
+ *  entre personnages, pas une écriture de bourse locale. */
+export type CoinMode = 'gain' | 'spend' | 'set' | 'give';
 
 interface CoinPurseProps {
   coins: CoinsState;
@@ -139,6 +141,13 @@ export function CoinPurse({ coins, readOnly = false, onOpenExchange, onAdjust }:
                   onClick={() => onOpenExchange('spend')}
                 >
                   − {t('bourse.depenser')}
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary col-span-2"
+                  onClick={() => onOpenExchange('give')}
+                >
+                  ↗ {t('bourse.donner')}
                 </button>
               </div>
             )}
