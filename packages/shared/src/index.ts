@@ -4711,14 +4711,21 @@ export interface CampaignState {
   note: string | null;
 }
 
-/** Un jour archivé : figé quand l'horloge avance (le journal des jours passés).
- *  N'entre au registre que s'il porte météo OU note. */
+// ---------- Calendrier partagé (#159) : journal de table + notes privées ----------
+
+/** Journal de table d'un jour — PARTAGÉ, éditable par tout membre du groupe.
+ *  Ajouté au type historique CampaignDay (le carnet MD lit les deux champs). */
 export interface CampaignDay {
   id: number;
   partyId: number;
   day: number;
   weather: string | null;
+  /** Journal privé du MD (colonne `note`) — servi au MD seul. */
   note: string | null;
+  /** Journal de table partagé (colonne `table_note`). */
+  tableNote?: string | null;
+  /** Alias de `note` côté calendrier : null pour les joueurs, contenu MD sinon. */
+  dmNote?: string | null;
 }
 
 /** Échéance nommée. La cible est un jour ABSOLU — l'affichage « J−N » est
@@ -4800,6 +4807,48 @@ export interface CreateCampaignCountdownPayload {
 export interface PatchCampaignCountdownPayload {
   label?: string;
   targetDay?: number;
+}
+
+/** Horloge du calendrier partagé (GET /parties/:id/campaign/calendar). */
+export interface CampaignCalendarState {
+  day: number;
+  season: CampaignSeason;
+  /** Météo du jour courant — visible de tous, éditée par le MD seul. */
+  weather: string | null;
+}
+
+/** Un jour de la plage du calendrier partagé — seuls les jours EXISTANTS de
+ *  campaign_days sont servis (le client matérialise les jours manquants). */
+export interface CampaignCalendarDay {
+  day: number;
+  weather: string | null;
+  /** Journal de table partagé. */
+  tableNote: string | null;
+  /** Note MD privée — null pour un demandeur non-MD. */
+  dmNote: string | null;
+}
+
+/** Réponse de GET /parties/:id/campaign/calendar?from=&to=. */
+export interface CampaignCalendarResponse {
+  state: CampaignCalendarState;
+  days: CampaignCalendarDay[];
+  /** Le demandeur est-il le MD de ce groupe (zone MD côté client). */
+  isGM: boolean;
+}
+
+/** PUT /parties/:id/campaign/table-note — upsert du journal de table d'un jour. */
+export interface PutCampaignTableNotePayload {
+  day: number;
+  /** ≤ 2000 caractères, trimé ; chaîne vide = journal vidé. */
+  note: string | null;
+}
+
+/** PUT /parties/:id/campaign/day-note — note privée d'un personnage pour un jour. */
+export interface PutCampaignDayNotePayload {
+  characterId: number;
+  day: number;
+  /** ≤ 2000 caractères, trimé ; chaîne vide = suppression de la ligne. */
+  note: string | null;
 }
 
 export interface CreateDmNotePayload {
