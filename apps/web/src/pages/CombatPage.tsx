@@ -1347,15 +1347,20 @@ function InitiativeRail({
                       💀
                     </span>
                   )}
-                  {!c.defeated && c.type === 'player' && (c.hitPoints ?? 0) <= 0 && (
-                    <span
-                      aria-hidden="true"
-                      className="shrink-0 text-xs"
-                      title={t('combat.mourant')}
-                    >
-                      🩸
-                    </span>
-                  )}
+                  {!c.defeated &&
+                    c.type === 'player' &&
+                    // Vie réelle si visible (MD / propre combatant), sinon
+                    // l'indicateur dérivé du serveur — jamais (null ?? 0),
+                    // qui affichait « à terre » pour toute vue rédigée (#168).
+                    (c.hitPoints !== null ? (c.hitPoints ?? 0) <= 0 : c.dying === true) && (
+                      <span
+                        aria-hidden="true"
+                        className="shrink-0 text-xs"
+                        title={t('combat.mourant')}
+                      >
+                        🩸
+                      </span>
+                    )}
                 </span>
                 {hp && (
                   <HpBar
