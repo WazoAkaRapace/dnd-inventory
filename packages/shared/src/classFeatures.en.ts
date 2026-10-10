@@ -1,8 +1,5 @@
 // GÉNÉRÉ par scripts/i18n/build-class-features-en.py — ne pas éditer à la main.
 // Source : miroir GitHub de 2014.5e.tools (voir docs/i18n-english-plan.md).
-// Les petites tables (CLASS_NAMES_EN, SUBCLASS_SHORTNAMES_EN) vivent dans
-// catalogs.en.ts : index.ts les réexporte pour toute l'app sans entraîner
-// les ~150 KB de descriptions qui suivent.
 
 export const CLASS_FEATURES_EN: Record<string, { name: string; description: string }> = {
   'artificier-bricolage-magique': {
@@ -1315,6 +1312,31 @@ export const CLASS_FEATURES_EN: Record<string, { name: string; description: stri
     name: 'Quivering Palm',
     description:
       "You gain the ability to set up lethal vibrations in someone's body. When you hit a creature with an unarmed strike, you can spend 3 ki points to start these imperceptible vibrations, which last for a number of days equal to your monk level. The vibrations are harmless unless you use your action to end them. To do so, you and the target must be on the same plane of existence. When you use this action, the creature must make a Constitution saving throw. If it fails, it is reduced to 0 hit points. If it succeeds, it takes 10d10 necrotic damage.\n\nYou can have only one creature under the effect of this feature at a time. You can choose to end the vibrations harmlessly without using an action.",
+  },
+  'moine-ombre-arts-des-ombres': {
+    name: 'Shadow Arts',
+    description:
+      "You can use your ki to duplicate the effects of certain spells. As an action, you can spend 2 ki points to cast darkness, darkvision, pass without trace, or silence, without providing material components. Additionally, you gain the minor illusion cantrip if you don't already know it.",
+  },
+  'moine-ombre-foulee-d-ombre': {
+    name: 'Shadow Step',
+    description:
+      'You gain the ability to step from one shadow into another. When you are in dim light or darkness, as a bonus action you can teleport up to 60 feet to an unoccupied space you can see that is also in dim light or darkness. You then have advantage on the first melee attack you make before the end of the turn.',
+  },
+  'moine-ombre-linceul-d-ombre': {
+    name: 'Cloak of Shadows',
+    description:
+      'By 11th level, you have learned to become one with the shadows. When you are in an area of dim light or darkness, you can use your action to become invisible. You remain invisible until you make an attack, cast a spell, or are in an area of bright light.',
+  },
+  'moine-ombre-opportuniste': {
+    name: 'Opportunist',
+    description:
+      "At 17th level, you can exploit a creature's momentary distraction when it is hit by an attack. Whenever a creature within 5 feet of you is hit by an attack made by a creature other than you, you can use your reaction to make a melee attack against that creature.",
+  },
+  'moine-quatre-elements-disciple': {
+    name: 'Disciple of the Elements / Elemental Disciplines',
+    description:
+      "You learn magical disciplines that harness the power of the four elements. A discipline requires you to spend ki points each time you use it.\n\nYou know the Elemental Attunement discipline and one other elemental discipline of your choice. You learn one additional elemental discipline of your choice at 6th, 11th, and 17th level.\n\nWhenever you learn a new elemental discipline, you can also replace one elemental discipline that you already know with a different discipline.\n\nCasting Elemental Spells.\nSome elemental disciplines allow you to cast spells. See chapter 10 of the Player's Handbook for the general rules of spellcasting. To cast one of these spells, you use its casting time and other rules, but you don't need to provide material components for it.\n\nOnce you reach 5th level in this class, you can spend additional ki points to increase the level of an elemental discipline spell that you cast, provided that the spell has an enhanced effect at a higher level, as burning hands does. The spell's level increases by 1 for each additional ki point you spend. For example, if you are a 5th-level monk and use Sweeping Cinder Strike to cast burning hands, you can spend 3 ki points to cast it as a 2nd-level spell (the discipline's base cost of 2 ki points plus 1).\n\nThe maximum number of ki points you can spend to cast a spell in this way (including its base ki point cost and any additional ki points you spend to increase its level) is determined by your monk level, as shown in the Spells and Ki Points table. At 5th level, you may spend up to 3 ki points; this increases to 4 ki points at 9th level, 5 at 13th level, and 6 at 17th level.\n\nMonk Levels | Maximum Ki Points for a Spell\n------ | ---------------\n5th-8th | 3\n9th-12th | 4\n13th-16th | 5\n17th-20th | 6\n\nThe elemental disciplines are presented in alphabetical order. If a discipline requires a level, you must be the level in this class to learn the discipline.",
   },
   'archfee-presence-feerique': {
     name: 'Fey Presence',
