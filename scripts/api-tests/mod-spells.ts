@@ -185,6 +185,40 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
     'link removed',
   );
 
+  // ---------- scalesAtHigherLevel (#171 — drapeau structuré) ----------
+  // Les sorts à upcast purement textuel (Aide : prose higher_level, AUCUNE
+  // table damage_json) doivent porter le drapeau dans le régime RÉSUMÉ où la
+  // prose n'est pas servie — c'est le bug qui bloquait Aide au niveau natif.
+  const aid = srv.query("SELECT id FROM spells WHERE srd_index = 'aid'");
+  ok(aid, 'aid seeded');
+  const shield = srv.query("SELECT id FROM spells WHERE srd_index = 'shield'");
+  ok(shield, 'shield (no upcast) seeded');
+
+  r = await api(base, 'GET', `/api/spells/${aid.id}`, { token: fx.gm.token });
+  eq(r.data.spell.scalesAtHigherLevel, true, 'detail: Aide flag=true (prose seule)');
+  r = await api(base, 'GET', `/api/spells/${shield.id}`, { token: fx.gm.token });
+  eq(r.data.spell.scalesAtHigherLevel, false, 'detail: Bouclier flag=false (ni prose ni table)');
+
+  for (const sp of [aid, shield]) {
+    r = await api(base, 'POST', `/api/characters/${A}/spells`, {
+      token: fx.gm.token,
+      body: { spellId: sp.id },
+    });
+    eq(r.status, 201, `learn srd_index=${sp.srd_index} for flag check`);
+  }
+  r = await api(base, 'GET', `/api/characters/${A}/spells`, { token: fx.player.token });
+  eq(r.status, 200, 'list for flag check');
+  const listed = (r.data.spells as any[]).filter(
+    (s: any) => s.spell.id === aid.id || s.spell.id === shield.id,
+  );
+  eq(listed.length, 2, 'both flag-check spells in the summary list');
+  const aidRow = listed.find((s: any) => s.spell.id === aid.id);
+  const shieldRow = listed.find((s: any) => s.spell.id === shield.id);
+  ok(aidRow && shieldRow, 'rows resolved');
+  eq(aidRow.spell.higherLevel, null, 'summary regime still serves higherLevel:null');
+  eq(aidRow.spell.scalesAtHigherLevel, true, 'summary: Aide flag=true (upcast textuel)');
+  eq(shieldRow.spell.scalesAtHigherLevel, false, 'summary: Bouclier flag=false (aucun upcast)');
+
   // ---------- domain spells (always prepared) ----------
   const clerc = await createCharacter(base, fx.gm.token, fx.partyId, {
     name: 'Sœur Foi',

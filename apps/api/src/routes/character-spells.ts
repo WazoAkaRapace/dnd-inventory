@@ -80,12 +80,17 @@ const LINK_WITH_SPELL = {
   s_duration: spells.duration,
   s_concentration: spells.concentration,
   s_ritual: spells.ritual,
-  // Pas de prose (description/description_fr/higher_level×2) : mapCharacterSpell
+  // Pas de prose SERVIE (description/description_fr) : mapCharacterSpell
   // mappe en RÉSUMÉ (mapSpell summary=true) et le client charge la prose à
   // l'ouverture (SpellProse → fetchSpellDetail, cache de session) — lire les
-  // 4 colonnes TEXT par sort connu était du I/O jeté, et la liste redescend
-  // à CHAQUE lancé de sort (l'incantation écrit spell_slots_used →
+  // colonnes TEXT longues par sort connu était du I/O jeté, et la liste
+  // redescend à CHAQUE lancé de sort (l'incantation écrit spell_slots_used →
   // character:change → refetch).
+  // EXCEPTION #171 : higher_level × 2 descendent (COLONNES courtes) pour
+  // calculer le drapeau scalesAtHigherLevel — sans lui, les sorts à upcast
+  // purement textuel (Aide, Héroïsme…) restaient bloqués au niveau natif.
+  s_higher_level: spells.higherLevel,
+  s_higher_level_fr: spells.higherLevelFr,
   s_attack_type: spells.attackType,
   s_damage_json: spells.damageJson,
   s_dc_json: spells.dcJson,

@@ -4417,6 +4417,16 @@ export interface Spell {
   /** Localisés par l'API selon la langue de la requête (repli FR si absent). */
   description: string | null;
   higherLevel: string | null;
+  /**
+   * Évolution aux niveaux supérieurs (drapeau structuré, #171) : true si le
+   * sort a une prose higher_level OU des tables damage_at_slot_level /
+   * heal_at_slot_level dans son damage_json. Posé par l'API dans TOUS les
+   * régimes — y compris les listes résumées, où la prose est absente — pour
+   * que CastSpellSheet décide de l'upcast sans lazy-loader GET /spells/:id
+   * (les sorts à évolution purement textuelle — Aide, Armure d'Agathys… —
+   * n'ont AUCUNE table). Optionnel/nullable pour compat avec les vieux payloads.
+   */
+  scalesAtHigherLevel?: boolean | null;
   attackType: string | null; // "ranged"/"melee" or null
   damageJson: string | null;
   dcJson: string | null;

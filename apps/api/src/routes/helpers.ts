@@ -489,6 +489,28 @@ export function mapInventoryEntry(row: any, lang: AppLang = 'fr'): InventoryEntr
  * description/higherLevel à null — la feuille d'incantation (SpellDetailSheet)
  * et l'aperçu détaillé chargent GET /spells/:id à l'ouverture.
  */
+/**
+ * Le sort évolue-t-il aux niveaux supérieurs ? (#171) — drapeau structuré
+ * posé dans TOUS les régimes (résumé compris, où la prose est absente) :
+ * prose higher_level (FR ou EN — la FR peut manquer, ex. Héroïsme) OU
+ * tables damage_at_slot_level / heal_at_slot_level du damage_json. Les listes
+ * résumées doivent sélectionner higher_level (COLONNE courte, pas la prose
+ * description) pour le calculer sans lazy-loader GET /spells/:id.
+ */
+function spellScalesAtHigherLevel(row: any): boolean {
+  if (row.higher_level && String(row.higher_level).trim()) return true;
+  if (row.higher_level_fr && String(row.higher_level_fr).trim()) return true;
+  if (row.damage_json) {
+    try {
+      const d = JSON.parse(row.damage_json) as any;
+      return !!(d?.damage_at_slot_level || d?.heal_at_slot_level);
+    } catch {
+      // damage_json invalide : la prose seule tranche
+    }
+  }
+  return false;
+}
+
 export function mapSpell(row: any, lang: AppLang = 'fr', summary = false): Spell {
   return {
     id: row.id,
@@ -505,6 +527,8 @@ export function mapSpell(row: any, lang: AppLang = 'fr', summary = false): Spell
     ritual: !!row.ritual,
     description: summary ? null : pickLocalized(lang, row.description, row.description_fr),
     higherLevel: summary ? null : pickLocalized(lang, row.higher_level, row.higher_level_fr),
+    // Drapeau structuré #171 : présent dans le résumé (la prose, elle, absente)
+    scalesAtHigherLevel: spellScalesAtHigherLevel(row),
     attackType: row.attack_type ?? null,
     // damage_json / dc_json are kept as raw JSON strings per the Spell type
     damageJson: row.damage_json ?? null,
@@ -535,6 +559,10 @@ export function mapCharacterSpell(row: any, lang: AppLang = 'fr'): CharacterSpel
     ritual: row.s_ritual,
     // Prose absente de la projection (mode résumé — voir LINK_WITH_SPELL) :
     // description/higher_level restent null, le client les charge à l'ouverture.
+    // EXCEPTION #171 : higher_level × 2 (COLONNES courtes) servent à calculer
+    // le drapeau scalesAtHigherLevel — la prose SERVIE reste null.
+    higher_level: row.s_higher_level,
+    higher_level_fr: row.s_higher_level_fr,
     attack_type: row.s_attack_type,
     damage_json: row.s_damage_json,
     dc_json: row.s_dc_json,
