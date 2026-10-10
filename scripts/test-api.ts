@@ -21,6 +21,7 @@ import { run as authRefresh } from './api-tests/mod-auth-refresh.ts';
 import { run as campaign } from './api-tests/mod-carnet.ts';
 import { run as characters } from './api-tests/mod-characters.ts';
 import { run as combat } from './api-tests/mod-combat.ts';
+import { run as containerTransfer } from './api-tests/mod-container-transfer.ts';
 import { run as email } from './api-tests/mod-email.ts';
 import { run as featuresNotes } from './api-tests/mod-features-notes.ts';
 import { run as gma } from './api-tests/mod-gma.ts';
@@ -58,6 +59,7 @@ const MODULES: Array<{
   { name: 'npcs + monsters', run: npcsMonsters },
   { name: 'carnet du MD', run: campaign },
   { name: 'combat', run: combat },
+  { name: 'transfert de conteneur (#161)', run: containerTransfer },
   { name: 'correspondance secrète', run: messages },
   { name: 'multiclassage', run: multiclass },
   { name: 'wild shape + rests', run: wildshapeRest },
