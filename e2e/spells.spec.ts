@@ -46,4 +46,23 @@ playerTest.describe('Sorts (clerc)', () => {
       }),
     ).toBeVisible();
   });
+
+  playerTest('les tours de magie ne comptent pas dans la limite de préparation', async ({
+    page,
+  }) => {
+    // SRD : les tours de magie sont toujours lançables, jamais « préparés » —
+    // ni bascule ★/☆, ni consommation du compteur Préparés N / limite (#164).
+    // Mira : Clerc niv. 5, SAG 18 → mod +4, limite 9. Le seed pose 3 sorts de
+    // niveau 1 préparés (Mot de guérison, Blessure, Bouclier de la foi) et un
+    // tour (Flamme sacrée) AUSSI seedé prepared:1 — le compteur doit rester à
+    // 3 / 9 : le tour ne compte pas, et sa rangée porte l'indicateur ◆ « toujours
+    // préparé » (pas de bascule).
+    await expect(page.getByRole('button', { name: /Préparés 3 \/ 9/ })).toBeVisible();
+    const row = page.getByRole('button', { name: /Flamme sacrée/ }).first();
+    await expect(row).toBeVisible();
+    // La ligne du tour porte l'img ◆ « toujours préparé » (pas la bascule ★).
+    await expect(
+      page.getByRole('img', { name: 'Tour de magie toujours préparé' }).first(),
+    ).toBeVisible();
+  });
 });

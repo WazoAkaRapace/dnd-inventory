@@ -334,6 +334,8 @@
   "sorts.restaurer.tout": "↻ Restore all",
   "sorts.sort.de.domaine.toujours.prepare": "Domain spell — always prepared",
   "sorts.sort.de.domaine.toujours.prepare.ne": "Domain spell — always prepared, doesn't count against the limit",
+  "sorts.tour.de.magie.toujours.prepare": "Cantrip — always prepared",
+  "sorts.tour.de.magie.toujours.prepare.ne": "Cantrip — always prepared, doesn't count against the limit",
   "sorts.tapez.le.nom.d.un.sort": "Type a spell's name or filter by level/school.",
   "sorts.tous": "All",
   "sorts.tous.niveaux": "All levels",

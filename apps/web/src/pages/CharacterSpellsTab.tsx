@@ -277,7 +277,13 @@ export default function CharacterSpellsTab({
   const domainIds = new Set(domainSpells.map((sp) => sp.id));
   const preparedCountFor = (classKey: string) =>
     charSpells.filter(
-      (cs) => cs.prepared && !domainIds.has(cs.spell.id) && cs.classSource === classKey,
+      (cs) =>
+        // Tours de magie (niveau 0) : toujours lançables, jamais « préparés » —
+        // ils ne consomment pas la limite (SRD). Comme les sorts de domaine.
+        cs.spell.level > 0 &&
+        cs.prepared &&
+        !domainIds.has(cs.spell.id) &&
+        cs.classSource === classKey,
     ).length;
 
   // Fetch character's known spells + features (manifestations : compteurs,
@@ -961,6 +967,17 @@ export default function CharacterSpellsTab({
                                     title={t('sorts.sort.de.domaine.toujours.prepare.ne')}
                                     role="img"
                                     aria-label={t('sorts.sort.de.domaine.toujours.prepare')}
+                                  >
+                                    ◆
+                                  </span>
+                                ) : spell.level === 0 ? (
+                                  // Tour de magie : toujours lançable, jamais
+                                  // « préparé » (SRD) — indicateur ◆ or, hors limite.
+                                  <span
+                                    className="w-11 h-11 flex items-center justify-center text-lg text-gold-600 shrink-0"
+                                    title={t('sorts.tour.de.magie.toujours.prepare.ne')}
+                                    role="img"
+                                    aria-label={t('sorts.tour.de.magie.toujours.prepare')}
                                   >
                                     ◆
                                   </span>

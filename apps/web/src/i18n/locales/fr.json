@@ -334,6 +334,8 @@
   "sorts.restaurer.tout": "↻ Restaurer tout",
   "sorts.sort.de.domaine.toujours.prepare": "Sort de domaine toujours préparé",
   "sorts.sort.de.domaine.toujours.prepare.ne": "Sort de domaine — toujours préparé, ne compte pas dans la limite",
+  "sorts.tour.de.magie.toujours.prepare": "Tour de magie toujours préparé",
+  "sorts.tour.de.magie.toujours.prepare.ne": "Tour de magie — toujours préparé, ne compte pas dans la limite",
   "sorts.tapez.le.nom.d.un.sort": "Tapez le nom d'un sort ou filtrez par niveau/école.",
   "sorts.tous": "Tous",
   "sorts.tous.niveaux": "Tous niveaux",
