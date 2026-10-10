@@ -1433,6 +1433,127 @@ export async function combatRoutes(app: FastifyInstance) {
       return reply.send({ encounter: mapEncounter(row) });
     },
   );
+
+  // ===== Previous turn (GM only, #169): undo the LAST advance — restores the
+  // pre-advance position (turnIndex/round) and the conditions the advance
+  // expired/decremented (real time-travel of turn state). Single-step history:
+  // the snapshot is consumed (NULLed) — a second consecutive prev 400s. PV,
+  // defeated, initiative, morts are deliberately untouched (documented
+  // non-goals): the undo covers the TURN state, damage stays table reality.
+  app.post(
+    '/encounters/:id/prev-turn',
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const userId = requireUser(req, reply);
+      if (userId === null) return;
+      const drizzle = getDrizzle();
+      const enc = drizzle
+        .select()
+        .from(encountersTable)
+        .where(eq(encountersTable.id, Number(req.params.id)))
+        .get();
+      if (!enc) return reply.code(404).send({ error: apiMsg(req, 'Rencontre introuvable') });
+      if (!isPartyGM(enc.partyId, userId))
+        return reply.code(403).send({ error: apiMsg(req, 'Réservé au MD') });
+      if (enc.status !== 'active')
+        return reply.code(400).send({ error: apiMsg(req, 'Combat non actif') });
+
+      const snapshot = parseTurnSnapshot(enc.turnSnapshot ?? null);
+      if (!snapshot)
+        return reply.code(400).send({ error: apiMsg(req, "Plus d'historique de tour") });
+
+      const db = getDb();
+      const prevTx = db.transaction(() => {
+        // Restore each snapshotted combatant's full conditions array (durations
+        // included) — expired conditions come back, decremented ones regain
+        // their turn count. Sheet mirrors follow (player conditions travel
+        // sheet↔tracker); monsters carry no sheet.
+        for (const entry of snapshot.conditions) {
+          const row = drizzle
+            .select()
+            .from(combatantsTable)
+            .where(eq(combatantsTable.id, entry.combatantId))
+            .get();
+          // Combatant deleted since the advance — nothing to restore for it.
+          if (!row) continue;
+          const before = JSON.parse(row.conditions || '[]') as CombatantCondition[];
+          drizzle
+            .update(combatantsTable)
+            .set({ conditions: JSON.stringify(entry.conditions) })
+            .where(eq(combatantsTable.id, entry.combatantId))
+            .run();
+          if (row.type === 'player' && row.characterId) {
+            const removed = before
+              .filter((c) => !entry.conditions.some((e) => e.name === c.name))
+              .map((c) => c.name);
+            const added = entry.conditions
+              .filter((c) => !before.some((e) => e.name === c.name))
+              .map((c) => c.name);
+            if (removed.length > 0 || added.length > 0) {
+              mirrorConditionsToCharacter(enc.partyId, row.characterId, added, removed, userId);
+            }
+          }
+        }
+
+        // Restore the pre-advance position and consume the single-step history
+        // (a second consecutive prev 400s — re-advancing re-snapshots).
+        drizzle
+          .update(encountersTable)
+          .set({
+            turnIndex: snapshot.turnIndex,
+            round: snapshot.round,
+            turnSnapshot: null,
+          })
+          .where(eq(encountersTable.id, enc.id))
+          .run();
+      });
+      prevTx();
+
+      const row = drizzle
+        .select()
+        .from(encountersTable)
+        .where(eq(encountersTable.id, enc.id))
+        .get();
+      bus.emitChange({
+        type: 'combat:change',
+        partyId: enc.partyId,
+        encounterId: enc.id,
+        action: 'turn',
+        actorUserId: userId,
+      });
+      return reply.send({ encounter: mapEncounter(row) });
+    },
+  );
+}
+
+/**
+ * #169 — état annulable du dernier advance (cran unique). `conditions` ne
+ * couvre QUE les combattants du tour terminé dont les durées vont bouger
+ * (durée non nulle) : leur tableau complet AVANT décrément/expiration.
+ * `turnIndex`/`round` suffisent au reste — position d'avant tour.
+ */
+interface TurnSnapshot {
+  turnIndex: number;
+  round: number;
+  conditions: Array<{ combatantId: number; conditions: CombatantCondition[] }>;
+}
+
+function parseTurnSnapshot(raw: string | null): TurnSnapshot | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      typeof parsed.turnIndex === 'number' &&
+      typeof parsed.round === 'number' &&
+      Array.isArray(parsed.conditions)
+    ) {
+      return parsed as TurnSnapshot;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -1445,9 +1566,15 @@ export async function combatRoutes(app: FastifyInstance) {
  * expire conditions without advancing the turn (or vice-versa). Sync events
  * emitted from inside are best-effort refresh nudges; a rollback just leaves
  * clients on the pre-tx state.
+ *
+ * #179/#169 : AVANT de muter, capture dans encounters.turn_snapshot l'état que
+ * CE advance peut défaire (position + conditions avant expiry) — historique à
+ * cran unique que POST /encounters/:id/prev-turn consomme. Toujours écrit
+ * (conditions: [] quand rien ne bouge — la seule position reste annulable) ;
+ * le passage setup→active de next-turn ne passe PAS ici et ne snapshotte pas.
  */
 function advanceTurnTx(
-  enc: { id: number; partyId: number; round: number },
+  enc: { id: number; partyId: number; round: number; turnIndex: number },
   sorted: Combatant[],
   currentIdx: number,
   userId: number,
@@ -1459,6 +1586,7 @@ function advanceTurnTx(
   const advanceTx = db.transaction(() => {
     // --- Condition expiry for ALL combatants whose turn is ending ---
     // (grouped monsters share initiative, so they share a turn)
+    const snapshotConditions: TurnSnapshot['conditions'] = [];
     if (currentCombatant) {
       const currentGroup = currentCombatant.groupId;
       // Find all combatants sharing this turn (same group, or same initiative
@@ -1467,6 +1595,11 @@ function advanceTurnTx(
         (c) => (currentGroup && c.groupId === currentGroup) || c.id === currentCombatant.id,
       );
       for (const c of sameTurn) {
+        // Snapshot BEFORE mutating: only combatants whose durations will move
+        // (null duration = until dispelled, never touched by the advance)
+        if (c.conditions.some((cond) => cond.duration !== null)) {
+          snapshotConditions.push({ combatantId: c.id, conditions: c.conditions });
+        }
         if (c.conditions.length === 0) continue;
         let changed = false;
         const expired: string[] = [];
@@ -1555,6 +1688,20 @@ function advanceTurnTx(
     drizzle
       .update(encountersTable)
       .set({ turnIndex: nextIndex, round })
+      .where(eq(encountersTable.id, enc.id))
+      .run();
+
+    // #169 — snapshot du cran unique : position d'avant + conditions d'avant.
+    // Écrit DANS la transaction (une advance sans snapshot ne serait pas
+    // annulable). Toujours écrit, même sans conditions (position seule).
+    const snapshot: TurnSnapshot = {
+      turnIndex: enc.turnIndex,
+      round: enc.round,
+      conditions: snapshotConditions,
+    };
+    drizzle
+      .update(encountersTable)
+      .set({ turnSnapshot: JSON.stringify(snapshot) })
       .where(eq(encountersTable.id, enc.id))
       .run();
   });

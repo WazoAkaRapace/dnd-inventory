@@ -851,6 +851,162 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
   r = await api(base, 'DELETE', `/api/encounters/${enc2.id}`, { token: fx.gm.token });
   eq(r.status, 204, 'delete encounter');
 
+  // ---------- #169 prev-turn : undo du dernier advance (time-travel réel) ----------
+  const encPrev = (
+    await api(base, 'POST', `/api/parties/${P}/encounters`, {
+      token: fx.gm.token,
+      body: { name: 'Rembobinage' },
+    })
+  ).data.encounter;
+  const prevGob = (
+    await api(base, 'POST', `/api/encounters/${encPrev.id}/combatants/monster`, {
+      token: fx.gm.token,
+      body: { monsterSlug: goblin.slug, count: 1 },
+    })
+  ).data.combatants[0];
+  const prevBran = (
+    await api(base, 'POST', `/api/encounters/${encPrev.id}/combatants/player`, {
+      token: fx.gm.token,
+      body: { characterId: fx.charBran.id },
+    })
+  ).data.combatants[0];
+  await api(base, 'PATCH', `/api/encounters/${encPrev.id}/combatants/${prevGob.id}/initiative`, {
+    token: fx.gm.token,
+    body: { initiative: 20 },
+  });
+  await api(base, 'PATCH', `/api/encounters/${encPrev.id}/combatants/${prevBran.id}/initiative`, {
+    token: fx.gm.token,
+    body: { initiative: 5 },
+  });
+
+  // garde-fous avant tout advance
+  r = await api(base, 'POST', `/api/encounters/${encPrev.id}/prev-turn`, {
+    token: fx.player.token,
+  });
+  eq(r.status, 403, 'prev-turn non-GM → 403');
+  r = await api(base, 'POST', '/api/encounters/999999/prev-turn', { token: fx.gm.token });
+  eq(r.status, 404, 'prev-turn 404');
+
+  // démarrage : setup→active NE snapshotte pas (rien à défaire)
+  await api(base, 'POST', `/api/encounters/${encPrev.id}/next-turn`, { token: fx.gm.token });
+  r = await api(base, 'POST', `/api/encounters/${encPrev.id}/prev-turn`, {
+    token: fx.gm.token,
+  });
+  eq(r.status, 400, 'prev right after setup start → 400 (no snapshot)');
+
+  // le gobelin porte une durée 2 + Bran une durée 1 (expirera)
+  await api(base, 'PATCH', `/api/combatants/${prevGob.id}`, {
+    token: fx.gm.token,
+    body: { conditions: [{ name: 'Aveuglé', duration: 2 }] },
+  });
+  await api(base, 'PATCH', `/api/combatants/${prevBran.id}`, {
+    token: fx.gm.token,
+    body: { conditions: [{ name: 'Engourdi', duration: 1 }] },
+  });
+
+  // advance 1 : fin du tour du gobelin → Aveuglé décrémente à 1
+  r = await api(base, 'POST', `/api/encounters/${encPrev.id}/next-turn`, { token: fx.gm.token });
+  eq(r.data.encounter.turnIndex, 1, 'advanced to Bran');
+  eq(
+    JSON.parse(srv.query('SELECT conditions AS c FROM combatants WHERE id = ?', prevGob.id).c).find(
+      (c: any) => c.name === 'Aveuglé',
+    )?.duration,
+    1,
+    'duration decremented by advance',
+  );
+  // PV volontairement modifiés APRÈS l'advance : le prev ne doit pas y toucher
+  await api(base, 'PATCH', `/api/combatants/${prevBran.id}`, {
+    token: fx.gm.token,
+    body: { hitPoints: 7 },
+  });
+
+  // prev : position + durée restaurées, Engourdi (pas encore expiré) intact,
+  // PV de Bran inchangés (hors périmètre documenté)
+  r = await api(base, 'POST', `/api/encounters/${encPrev.id}/prev-turn`, {
+    token: fx.gm.token,
+  });
+  eq(r.status, 200, 'prev restores the last advance');
+  eq(r.data.encounter.turnIndex, 0, 'turn index back to the goblin');
+  eq(r.data.encounter.round, 1, 'round restored');
+  eq(
+    JSON.parse(srv.query('SELECT conditions AS c FROM combatants WHERE id = ?', prevGob.id).c).find(
+      (c: any) => c.name === 'Aveuglé',
+    )?.duration,
+    2,
+    'duration back to 2 (#169)',
+  );
+  eq(
+    srv.query('SELECT hit_points AS h FROM combatants WHERE id = ?', prevBran.id).h,
+    7,
+    'prev never touches hit points',
+  );
+  eq(
+    srv.query('SELECT turn_snapshot AS s FROM encounters WHERE id = ?', encPrev.id).s,
+    null,
+    'snapshot consumed (single-step history)',
+  );
+
+  // double prev consécutif → 400 « plus d'historique »
+  r = await api(base, 'POST', `/api/encounters/${encPrev.id}/prev-turn`, {
+    token: fx.gm.token,
+  });
+  eq(r.status, 400, 'second consecutive prev → 400');
+
+  // ressurection : advance jusqu'à la fin du tour de Bran → Engourdi expire,
+  // prev le ressuscite (tracker + fiche)
+  await api(base, 'POST', `/api/encounters/${encPrev.id}/next-turn`, { token: fx.gm.token }); // fin gobelin
+  r = await api(base, 'POST', `/api/encounters/${encPrev.id}/next-turn`, {
+    token: fx.gm.token,
+  }); // fin Bran → Engourdi expire, round 2
+  eq(r.data.encounter.round, 2, 'round wrapped');
+  ok(
+    !JSON.parse(
+      srv.query('SELECT conditions AS c FROM combatants WHERE id = ?', prevBran.id).c,
+    ).some((c: any) => c.name === 'Engourdi'),
+    'condition expired by the advance',
+  );
+  ok(
+    !srv
+      .query('SELECT conditions AS c FROM characters WHERE id = ?', fx.charBran.id)
+      .c.includes('Engourdi'),
+    'expired condition left the sheet',
+  );
+  r = await api(base, 'POST', `/api/encounters/${encPrev.id}/prev-turn`, {
+    token: fx.gm.token,
+  });
+  eq(r.status, 200, 'prev resurrects the expired condition');
+  eq(r.data.encounter.round, 1, 'round unwound to 1');
+  ok(
+    JSON.parse(
+      srv.query('SELECT conditions AS c FROM combatants WHERE id = ?', prevBran.id).c,
+    ).some((c: any) => c.name === 'Engourdi' && c.duration === 1),
+    'expired condition back with its duration (#169)',
+  );
+  ok(
+    srv
+      .query('SELECT conditions AS c FROM characters WHERE id = ?', fx.charBran.id)
+      .c.includes('Engourdi'),
+    'resurrected condition mirrors back to the sheet',
+  );
+  // defeated inchangé par le prev
+  eq(
+    srv.query('SELECT defeated AS d FROM combatants WHERE id = ?', prevBran.id).d,
+    0,
+    'defeated untouched',
+  );
+
+  // rencontre terminée → prev refusé
+  await api(base, 'POST', `/api/encounters/${encPrev.id}/next-turn`, { token: fx.gm.token }); // re-snapshot
+  await api(base, 'PATCH', `/api/encounters/${encPrev.id}`, {
+    token: fx.gm.token,
+    body: { status: 'ended' },
+  });
+  r = await api(base, 'POST', `/api/encounters/${encPrev.id}/prev-turn`, {
+    token: fx.gm.token,
+  });
+  eq(r.status, 400, 'prev after encounter ended → 400');
+  await api(base, 'DELETE', `/api/encounters/${encPrev.id}`, { token: fx.gm.token });
+
   // clean up: end the main encounter so later modules' mirrors skip it
   await api(base, 'PATCH', `/api/encounters/${enc.id}`, {
     token: fx.gm.token,
