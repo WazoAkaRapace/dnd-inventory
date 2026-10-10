@@ -172,6 +172,69 @@ if (result.ok) {
   console.error('✗ invariant — le scénario devait aboutir');
 }
 
+// ---------- transfert entre personnages : composition spend → gain ----------
+
+// Le contrat du transfert (#160) : le donneur paie `amounts` via spendCoins
+// (casse minimale depuis SA bourse), le receveur encaisse `amounts` tel quel
+// via gainCoins. La composition doit être ÉQUILIBRÉE en valeur.
+{
+  const giver = purse(15, 2, 0, 3, 1);
+  const receiver = purse(0, 0, 0, 0, 0);
+  const sent = purse(7, 5, 0, 1, 0); // 7 PC + 5 PA + 1 PO = 187 PC
+  const pay = spendCoins(giver, sent);
+  check('transfert — le donneur peut payer', pay.ok, true);
+  if (pay.ok) {
+    check(
+      'transfert — valeur débitée = valeur demandée',
+      coinsTotalCp(giver) - coinsTotalCp(pay.purse),
+      coinsTotalCp(sent),
+    );
+    const got = gainCoins(receiver, sent);
+    check(
+      'transfert — composition équilibrée (perte donneur = gain receveur)',
+      coinsTotalCp(got) - coinsTotalCp(receiver),
+      coinsTotalCp(giver) - coinsTotalCp(pay.purse),
+    );
+    check(
+      'transfert — receveur encaisse la répartition demandée, sans regroupement',
+      got,
+      purse(7, 5, 0, 1, 0),
+    );
+  }
+}
+
+// Transfert avec casse : payer 8 PA depuis une bourse sans PA casse 1 PO en
+// 10 PA — le donneur rend la monnaie, le receveur encaisse les 8 PA demandées.
+{
+  const giver = purse(0, 0, 0, 1, 0);
+  const sent = purse(0, 8, 0, 0, 0);
+  const pay = spendCoins(giver, sent);
+  check('transfert avec casse — payable', pay.ok, true);
+  if (pay.ok) {
+    check(
+      'transfert avec casse — le donneur finit avec la monnaie rendue (2 PA)',
+      pay.purse,
+      purse(0, 2, 0, 0, 0),
+    );
+    check(
+      'transfert avec casse — valeur conservée de part et d’autre',
+      coinsTotalCp(giver) - coinsTotalCp(sent),
+      coinsTotalCp(pay.purse),
+    );
+  }
+}
+
+// Transfert refusé : bourse insuffisante → rien ne bouge.
+{
+  const giver = purse(0, 0, 0, 1, 0);
+  const sent = purse(0, 0, 0, 3, 0);
+  const pay = spendCoins(giver, sent);
+  check('transfert refusé — fonds insuffisants (manque 200 PC)', pay, {
+    ok: false,
+    shortfallCp: 200,
+  });
+}
+
 if (failures > 0) {
   console.error(`\n${failures} échec(s)`);
   process.exit(1);

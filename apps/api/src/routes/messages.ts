@@ -227,6 +227,8 @@ const EN: Record<string, string> = {
   'non autorisé': 'unauthorized',
   'not banned': 'not banned',
   'not enough quantity to transfer': 'not enough quantity to transfer',
+  'montant de transfert invalide': 'invalid transfer amount',
+  'bourse insuffisante': 'insufficient funds',
   not_found: 'not_found',
   'only the GM can create custom items': 'only the GM can create custom items',
   'only the GM can delete items': 'only the GM can delete items',

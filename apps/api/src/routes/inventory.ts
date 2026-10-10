@@ -6,8 +6,13 @@
 import {
   type AddInventoryPayload,
   type CharacterInventory,
+  type CoinAmounts,
+  coinsTotalCp,
   computeInventoryWeights,
+  EMPTY_COINS,
+  gainCoins,
   type PatchInventoryPayload,
+  spendCoins,
   type TransferPayload,
   WEAPON_AMMUNITION,
 } from '@table-sync/shared';
@@ -1141,6 +1146,136 @@ export async function inventoryRoutes(app: FastifyInstance) {
           actorName: r.actor_name,
           at: r.at,
         })),
+      });
+    },
+  );
+
+  // ---------- Transfer coins between characters (issue #160) ----------
+  // Le donneur saisit un montant libre par dénomination (ou un total) ; le
+  // serveur convertit via spendCoins (casse minimale) depuis la bourse du
+  // DONNEUR, et le receveur encaisse exactement la répartition dépensée
+  // (gainCoins, sans regroupement). Deux événements character:change
+  // action 'coins', un par personnage.
+  app.post(
+    '/characters/:id/transfer-coins',
+    async (
+      req: FastifyRequest<{
+        Params: { id: string };
+        Body: {
+          toCharacterId: number;
+          amounts: Partial<Record<'cp' | 'sp' | 'ep' | 'gp' | 'pp', number>>;
+        };
+      }>,
+      reply: FastifyReply,
+    ) => {
+      const userId = requireUser(req, reply);
+      if (userId === null) return;
+      const fromCharId = Number(req.params.id);
+      const body = req.body || ({} as typeof req.body);
+      const toCharacterId = Number(body.toCharacterId);
+
+      const drizzle = getDrizzle();
+      const fromChar = getCharacter(drizzle, fromCharId);
+      const toChar = getCharacter(drizzle, toCharacterId);
+      if (!fromChar || !toChar)
+        return reply.code(404).send({ error: apiMsg(req, 'character not found') });
+      if (fromChar.party_id !== toChar.party_id) {
+        return reply.code(400).send({ error: apiMsg(req, 'characters must be in the same party') });
+      }
+      if (!isOwnerOrGM(fromChar, userId)) {
+        return reply
+          .code(403)
+          .send({ error: apiMsg(req, 'only the owner or GM can transfer from this character') });
+      }
+
+      // Montants : entiers >= 0 par dénomination, total strictement positif.
+      const amounts: CoinAmounts = { ...EMPTY_COINS };
+      for (const unit of ['cp', 'sp', 'ep', 'gp', 'pp'] as const) {
+        const v = (body.amounts ?? {})[unit];
+        if (v === undefined) continue;
+        if (typeof v !== 'number' || !Number.isInteger(v) || v < 0) {
+          return reply.code(400).send({ error: apiMsg(req, 'montant de transfert invalide') });
+        }
+        amounts[unit] = v;
+      }
+      if (coinsTotalCp(amounts) <= 0) {
+        return reply.code(400).send({ error: apiMsg(req, 'montant de transfert invalide') });
+      }
+
+      // Bourse du donneur : spendCoins fait la conversion (casse minimale) —
+      // le receveur encaisse la RÉPARTITION DÉPENSÉE, pas la demande brute.
+      const purse: CoinAmounts = {
+        cp: fromChar.copper,
+        sp: fromChar.silver,
+        ep: fromChar.electrum,
+        gp: fromChar.gold,
+        pp: fromChar.platinum,
+      };
+      const spend = spendCoins(purse, amounts);
+      if (!spend.ok) {
+        return reply.code(400).send({
+          error: apiMsg(req, 'bourse insuffisante'),
+          shortfallCp: spend.shortfallCp,
+        });
+      }
+      // Le receveur encaisse la répartition DEMANDÉE (le donneur a bien été
+      // débité de sa valeur : spendCoins couvre exactement `amounts`, en
+      // pièces exactes + casse + menue monnaie) — gainCoins sans regroupement.
+      const receiverPurse: CoinAmounts = {
+        cp: toChar.copper,
+        sp: toChar.silver,
+        ep: toChar.electrum,
+        gp: toChar.gold,
+        pp: toChar.platinum,
+      };
+      const credited = gainCoins(receiverPurse, amounts);
+
+      getDb().transaction(() => {
+        drizzle
+          .update(characters)
+          .set({
+            copper: spend.purse.cp,
+            silver: spend.purse.sp,
+            electrum: spend.purse.ep,
+            gold: spend.purse.gp,
+            platinum: spend.purse.pp,
+          })
+          .where(eq(characters.id, fromCharId))
+          .run();
+        drizzle
+          .update(characters)
+          .set({
+            copper: credited.cp,
+            silver: credited.sp,
+            electrum: credited.ep,
+            gold: credited.gp,
+            platinum: credited.pp,
+          })
+          .where(eq(characters.id, toCharacterId))
+          .run();
+      })();
+
+      // Un événement par personnage (v2 : action 'coins' réveille le journal
+      // de bourse, actorUserId obligatoire pour la suppression d'écho).
+      bus.emitChange({
+        type: 'character:change',
+        partyId: fromChar.party_id,
+        characterId: fromCharId,
+        action: 'coins',
+        actorUserId: userId,
+      });
+      bus.emitChange({
+        type: 'character:change',
+        partyId: toChar.party_id,
+        characterId: toCharacterId,
+        action: 'coins',
+        actorUserId: userId,
+      });
+
+      return reply.code(200).send({
+        from: { characterId: fromCharId, purse: spend.purse },
+        to: { characterId: toCharacterId, purse: credited },
+        breaks: spend.breaks,
       });
     },
   );

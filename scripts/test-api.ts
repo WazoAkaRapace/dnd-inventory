@@ -20,6 +20,7 @@ import { run as authParties } from './api-tests/mod-auth-parties.ts';
 import { run as authRefresh } from './api-tests/mod-auth-refresh.ts';
 import { run as campaign } from './api-tests/mod-carnet.ts';
 import { run as characters } from './api-tests/mod-characters.ts';
+import { run as coinTransfer } from './api-tests/mod-coin-transfer.ts';
 import { run as combat } from './api-tests/mod-combat.ts';
 import { run as containerTransfer } from './api-tests/mod-container-transfer.ts';
 import { run as email } from './api-tests/mod-email.ts';
@@ -50,6 +51,7 @@ const MODULES: Array<{
   { name: 'characters', run: characters },
   { name: 'items', run: items },
   { name: 'inventory + locations', run: inventory },
+  { name: 'transfert de bourse (#160)', run: coinTransfer },
   { name: 'item images', run: itemImages },
   { name: 'item annotations', run: itemAnnotations },
   { name: 'gm assistant', run: gma },
