@@ -5839,6 +5839,13 @@ export interface Combatant {
    * and for combatants whose HP is not redacted.
    */
   feeling?: number;
+  /**
+   * True when a PLAYER combatant's HP is redacted for non-GM viewers but the
+   * character is at 0 HP (dying, not defeated — #148). Derived server-side so
+   * the tracker's 🩸 badge reads the apparent state without the numbers (#168).
+   * Undefined for GM views and for combatants whose HP is not redacted.
+   */
+  dying?: boolean;
 }
 
 export type EncounterStatus = 'setup' | 'active' | 'ended';

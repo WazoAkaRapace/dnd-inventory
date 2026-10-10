@@ -178,9 +178,26 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
   ok(own.hitPoints !== null, 'own combatant keeps HP');
   const otherPlayer = r.data.encounter.combatants.find((c: any) => c.id === alyaCombatant.id);
   eq(otherPlayer.hitPoints, null, "another player's HP redacted");
+  eq(otherPlayer.dying, undefined, 'healthy redacted player: no dying flag (#168)');
   const hiddenHp = r.data.encounter.combatants.find((c: any) => c.type === 'monster');
   eq(hiddenHp.hitPoints, null, 'monster HP redacted for players');
   ok(hiddenHp.feeling !== undefined, 'monster gets a feeling tier');
+
+  // #168 — un joueur à 0 PV (mourant, pas vaincu) : la vue rédigée porte
+  // l'indicateur dying=true (l'état apparent sans les nombres).
+  r = await api(base, 'PATCH', `/api/combatants/${alyaCombatant.id}`, {
+    token: fx.gm.token,
+    body: { hitPoints: 0 },
+  });
+  eq(r.status, 200, 'GM drops Alya to 0');
+  r = await api(base, 'GET', `/api/encounters/${enc.id}`, { token: fx.player.token });
+  const dyingPlayer = r.data.encounter.combatants.find((c: any) => c.id === alyaCombatant.id);
+  eq(dyingPlayer.dying, true, 'redacted dying player carries dying=true (#168)');
+  // restaure l'état pour la suite du module
+  await api(base, 'PATCH', `/api/combatants/${alyaCombatant.id}`, {
+    token: fx.gm.token,
+    body: { hitPoints: alyaCombatant.hitPoints ?? 10 },
+  });
 
   r = await api(base, 'GET', `/api/encounters/${enc.id}`, { token: fx.outsider.token });
   eq(r.status, 403, 'detail non-member → 403');

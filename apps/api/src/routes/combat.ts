@@ -451,12 +451,19 @@ export async function combatRoutes(app: FastifyInstance) {
             feeling =
               ratio > 0.72 + jitter ? 3 : ratio > 0.47 + jitter ? 2 : ratio > 0.22 + jitter ? 1 : 0;
           }
+          // Joueurs vus par un autre joueur : la vie est rédigée, mais l'état
+          // APPARENT « à terre » reste une info de table (le SRD le montre à
+          // tous) — indicateur dérivé côté serveur, même philosophie que le
+          // feeling des monstres : l'état sans les nombres (#168).
+          const dying =
+            c.type === 'player' && !c.defeated && (c.hitPoints ?? 0) <= 0 ? true : undefined;
           return {
             ...c,
             hitPoints: null,
             maxHitPoints: null,
             armorClass: null,
             ...(feeling !== undefined ? { feeling } : {}),
+            ...(dying !== undefined ? { dying } : {}),
           };
         });
       }
