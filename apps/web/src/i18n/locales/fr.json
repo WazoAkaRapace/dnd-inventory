@@ -2096,5 +2096,15 @@
   "cast.lancer.sur": "Lancer sur {{target}}",
   "cast.ca.annonce.autre": "{{mod}} · CA de {{name}}",
   "cast.ca.annonce.autre.aria": "{{mod}} à la CA de {{name}} par {{spell}}",
-  "cast.ca.annonce.a.lever.main": "Jusqu'à 8 h — à lever à la main"
+  "cast.ca.annonce.a.lever.main": "Jusqu'à 8 h — à lever à la main",
+  "bourse.donner": "Donner à…",
+  "bourse.donner.titre": "Donner à un personnage",
+  "bourse.donner.cta": "Donner",
+  "bourse.donnee": "Pièces transférées",
+  "transfert.destinataire": "Destinataire",
+  "transfert.choisir": "Choisir",
+  "transfert.conteneur.transferer.itemname": "Transférer le conteneur — {{itemName}}",
+  "transfert.conteneur.contenu": "{{count}} objet à l’intérieur part avec le coffre",
+  "transfert.conteneur.contenu_other": "{{count}} objets à l’intérieur partent avec le coffre",
+  "inv.transferer.conteneur.name": "Transférer {{name}} à un autre personnage"
 }

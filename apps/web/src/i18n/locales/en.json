@@ -2097,5 +2097,15 @@
   "cast.lancer.sur": "Cast on {{target}}",
   "cast.ca.annonce.autre": "{{mod}} · {{name}}'s AC",
   "cast.ca.annonce.autre.aria": "{{mod}} to {{name}}'s AC from {{spell}}",
-  "cast.ca.annonce.a.lever.main": "Up to 8 h — lift by hand"
+  "cast.ca.annonce.a.lever.main": "Up to 8 h — lift by hand",
+  "bourse.donner": "Give to…",
+  "bourse.donner.titre": "Give to a character",
+  "bourse.donner.cta": "Give",
+  "bourse.donnee": "Coins transferred",
+  "transfert.destinataire": "Recipient",
+  "transfert.choisir": "Choose",
+  "transfert.conteneur.transferer.itemname": "Transfer container — {{itemName}}",
+  "transfert.conteneur.contenu": "{{count}} item inside leaves with the container",
+  "transfert.conteneur.contenu_other": "{{count}} items inside leave with the container",
+  "inv.transferer.conteneur.name": "Transfer {{name}} to another character"
 }
