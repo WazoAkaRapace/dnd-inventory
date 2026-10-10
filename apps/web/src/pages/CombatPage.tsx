@@ -407,6 +407,21 @@ export default function CombatPage() {
     }
   };
 
+  // #169 — undo the LAST advance (single-step history server-side): restores
+  // the pre-advance turn/round AND the conditions that advance expired or
+  // decremented. PV/defeated/initiative stay as they are (table reality).
+  const prevTurn = async () => {
+    if (!activeEncounter) return;
+    try {
+      setFocusId(null);
+      await api.post(`/api/encounters/${activeEncounter.id}/prev-turn`);
+      pushToast(t('combat.retour.au.tour.precedent.conditions'), 'success');
+      await loadEncounter(activeEncounter.id, true);
+    } catch (err: any) {
+      pushToast(err.response?.data?.error || t('combat.erreur'), 'error');
+    }
+  };
+
   // Player-side close: same advance as nextTurn, but the server allows it only
   // from the owner of a combatant holding the current turn.
   const [endingTurn, setEndingTurn] = useState(false);
@@ -621,6 +636,7 @@ export default function CombatPage() {
           onRollAll={rollAllInitiatives}
           rollingInit={rollingInit}
           onNextTurn={nextTurn}
+          onPrevTurn={prevTurn}
           onEndMyTurn={endMyTurn}
           endMyTurnBusy={endingTurn}
           onEnd={() => patchEncounter({ status: 'ended' })}
@@ -938,6 +954,7 @@ function CombatTheatre({
   onRollAll,
   rollingInit,
   onNextTurn,
+  onPrevTurn,
   onEndMyTurn,
   endMyTurnBusy,
   onEnd,
@@ -965,6 +982,7 @@ function CombatTheatre({
   onRollAll: () => void;
   rollingInit: boolean;
   onNextTurn: () => void;
+  onPrevTurn: () => void;
   onEndMyTurn: () => void;
   endMyTurnBusy: boolean;
   onEnd: () => void;
@@ -994,6 +1012,12 @@ function CombatTheatre({
   const needsInitiative =
     status === 'setup' && combatants.some((c) => !c.defeated && c.initiative === null);
   const next = status === 'active' ? findNext(combatants, encounter.turnIndex) : null;
+
+  // #169 — the prev button guards itself client-side at the earliest undoable
+  // position (round 1, first active combatant); the real single-step history
+  // gate lives server-side and answers 400 (« Plus d'historique »).
+  const firstActiveIdx = combatants.findIndex((c) => !c.defeated);
+  const prevDisabled = encounter.round === 1 && encounter.turnIndex <= Math.max(0, firstActiveIdx);
 
   const canSetInitiative = (c: Combatant) =>
     !!c.characterId &&
@@ -1029,6 +1053,16 @@ function CombatTheatre({
   const stageFooter =
     isGM && status === 'active' ? (
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-parchment-200 pt-4">
+        <button
+          type="button"
+          onClick={onPrevTurn}
+          disabled={prevDisabled}
+          className="btn-secondary min-h-[44px] text-sm disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label={t('combat.tour.precedent.revenir.au.tour.d')}
+          title={t('combat.tour.precedent.revenir.au.tour.d')}
+        >
+          {t('combat.tour.precedent')}
+        </button>
         <button type="button" onClick={onNextTurn} className="btn-primary min-h-[44px] text-sm">
           {t('combat.tour.suivant')}
         </button>

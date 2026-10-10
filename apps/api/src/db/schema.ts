@@ -674,6 +674,9 @@ export const encounters = sqliteTable(
     round: integer('round').notNull().default(0), // 0 = setup, >=1 = in combat
     turnIndex: integer('turn_index').notNull().default(0),
     status: text('status').notNull().default('setup'),
+    // #169 — undo du dernier advance : position + conditions d'avant tour
+    // (historique à cran unique, écrasé à chaque advance, NULL après un prev)
+    turnSnapshot: text('turn_snapshot'),
     createdAt: text('created_at')
       .notNull()
       .default(sql`(datetime('now'))`),
