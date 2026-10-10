@@ -20,16 +20,14 @@
 
 import type {
   CampaignCountdown,
-  CampaignDay,
   CampaignPayload,
-  CampaignSeason,
   CreateDmQuestPayload,
   DmNote,
   DmQuest,
   DmQuestStatus,
   PatchDmQuestPayload,
 } from '@table-sync/shared';
-import { CAMPAIGN_SEASONS, DM_QUEST_STATUSES } from '@table-sync/shared';
+import { DM_QUEST_STATUSES } from '@table-sync/shared';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
@@ -47,6 +45,7 @@ import {
   TabButton,
 } from '../components/ui';
 import { appLocale } from '../i18n';
+import WeekCalendar from './character/WeekCalendar';
 import { useResyncOnReconnect, useSyncEvent } from '../sync';
 import { parseSqliteDate, toRoman } from '../utils';
 import NpcPage from './NpcPage';
@@ -56,11 +55,6 @@ type NotebookTab = 'notes' | 'quests' | 'calendar' | 'npcs';
 const TABS: NotebookTab[] = ['notes', 'quests', 'calendar', 'npcs'];
 
 type SetCampaign = (updater: (prev: CampaignPayload | null) => CampaignPayload | null) => void;
-
-/** Semaine dérivée — jamais stockée : ⌈jour / 7⌉. */
-function weekOf(day: number): number {
-  return Math.ceil(day / 7);
-}
 
 /** Ordre de lecture du registre des quêtes : en cours, préparation, puis le
  *  registre compact (terminées et échouées coulent ensemble). */
@@ -76,18 +70,6 @@ const QUEST_STATUS_GLYPH: Record<DmQuestStatus, string> = {
   done: '⚫',
   failed: '⚫',
 };
-
-// 🌩️ (U+1F329) et non ⛈️ (U+26C8) pour l'orage : le jumeau à présentation
-// emoji native — l'ancien bloc peut rendre en glyphe texte monochrome selon
-// la police. Idem ☀️/❄️ ci-dessous : la classe emoji-glyph force la police
-// emoji colorée sur la pastille.
-const WEATHER_PRESETS: { emoji: string; labelKey: string }[] = [
-  { emoji: '☀️', labelKey: 'carnet.cal.meteo.clear' },
-  { emoji: '🌧️', labelKey: 'carnet.cal.meteo.rain' },
-  { emoji: '🌩️', labelKey: 'carnet.cal.meteo.storm' },
-  { emoji: '❄️', labelKey: 'carnet.cal.meteo.snow' },
-  { emoji: '🌫️', labelKey: 'carnet.cal.meteo.fog' },
-];
 
 interface TabProps {
   campaign: CampaignPayload;
@@ -266,101 +248,21 @@ export default function DmNotebookPage() {
   );
 }
 
-// ---------- Onglet Calendrier : la grande mesure + points de conduite ----------
+// ---------- Onglet Calendrier : la vue semaine partagée + les échéances ----------
 
-function CalendarTab({ campaign, partyId, reload, onError, setCampaign }: TabProps) {
+/** Rebuild #159 : le carnet MD vit sur le MÊME composant semaine que la
+ *  fiche (journal de table, zone MD par jour, correction libre, saison à côté
+ *  de la tête de semaine) ; au-dessus restent les comptes à rebours — les
+ *  lignes à points de conduite, inchangées. La grande figure Cinzel et le
+ *  registre « Jours passés » partent : la vue semaine couvre la retouche. */
+function CalendarTab({ campaign, partyId, reload, onError }: TabProps) {
   const { t } = useTranslation();
-  const { state, countdowns, days } = campaign;
-
-  const [editingDay, setEditingDay] = useState(false);
-  const [dayDraft, setDayDraft] = useState(String(state.day));
-  const [weatherDraft, setWeatherDraft] = useState(state.weather ?? '');
-  const [noteDraft, setNoteDraft] = useState(state.note ?? '');
   const [showCountdownForm, setShowCountdownForm] = useState(false);
   const [newLabel, setNewLabel] = useState('');
   const [newTarget, setNewTarget] = useState('');
 
-  useEffect(() => {
-    setWeatherDraft(state.weather ?? '');
-  }, [state.weather]);
-
-  useEffect(() => {
-    setNoteDraft(state.note ?? '');
-  }, [state.note]);
-
-  useEffect(() => {
-    setDayDraft(String(state.day));
-  }, [state.day]);
-
-  async function patchState(partial: Record<string, unknown>) {
-    try {
-      await api.patch(`/api/parties/${partyId}/campaign`, partial);
-      await reload(true);
-    } catch {
-      onError(t('carnet.cal.err.horloge'));
-    }
-  }
-
-  /** +1 jour — l'interaction signée : optimiste, le jour qui s'achève est
-   *  figé au registre (météo + journal), le nouveau jour démarre clair. */
-  async function advance() {
-    const prev = campaign;
-    const archived: CampaignDay = {
-      id: -1, // transitoire : remplacé par la vraie ligne au rechargement
-      partyId: state.partyId,
-      day: state.day,
-      weather: state.weather,
-      note: state.note,
-    };
-    setCampaign((c) =>
-      c === null
-        ? c
-        : {
-            ...c,
-            state: { ...state, day: state.day + 1, weather: null, note: null },
-            days: [archived, ...days.filter((d) => d.day !== archived.day)].slice(0, 30),
-          },
-    );
-    try {
-      await api.post(`/api/parties/${partyId}/campaign/advance`, { steps: 1 });
-      await reload(true);
-    } catch {
-      setCampaign(() => prev);
-      onError(t('carnet.cal.err.horloge'));
-    }
-  }
-
-  function commitDay() {
-    const parsed = Number(dayDraft);
-    setEditingDay(false);
-    if (Number.isInteger(parsed) && parsed >= 1 && parsed !== state.day) {
-      patchState({ day: parsed });
-    } else {
-      setDayDraft(String(state.day));
-    }
-  }
-
-  async function commitWeather(value: string) {
-    const trimmed = value.trim();
-    if ((state.weather ?? '') === trimmed) return;
-    await patchState({ weather: trimmed || null });
-  }
-
-  async function commitNote(value: string) {
-    const trimmed = value.trim();
-    if ((state.note ?? '') === trimmed) return;
-    await patchState({ note: trimmed || null });
-  }
-
-  /** Retouche a posteriori d'un jour passé (météo et/ou journal). */
-  async function patchDay(id: number, patch: { weather?: string | null; note?: string | null }) {
-    try {
-      await api.patch(`/api/campaign-days/${id}`, patch);
-      await reload(true);
-    } catch {
-      onError(t('carnet.cal.err.horloge'));
-    }
-  }
+  const countdowns = campaign.countdowns;
+  const state = campaign.state;
 
   async function createCountdown(e: React.FormEvent) {
     e.preventDefault();
@@ -401,205 +303,78 @@ function CalendarTab({ campaign, partyId, reload, onError, setCampaign }: TabPro
 
   return (
     <div className="space-y-5">
+      <WeekCalendar
+        partyId={Number(partyId)}
+        charId={null}
+        isGM
+        onError={onError}
+        onNotice={() => {
+          /* le carnet n'a pas de toast : la méta d'horloge de la tête annonce */
+        }}
+      />
+
+      {/* Comptes à rebours — lignes d'annexe à points de conduite */}
       <article className="card p-5 sm:p-6">
-        {/* La grande mesure + l'unique porte sang de l'onglet */}
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <span className="block text-xs font-medium tracking-wide text-ink-400 uppercase">
-              {t('carnet.cal.jour')}
-            </span>
-            {editingDay ? (
-              <form
-                className="mt-1 flex items-baseline gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  commitDay();
-                }}
-              >
-                <label className="sr-only" htmlFor="carnet-jour-edit">
-                  {t('carnet.cal.jour')}
-                </label>
-                <input
-                  id="carnet-jour-edit"
-                  className="input w-28 font-display text-3xl"
-                  type="number"
-                  min={1}
-                  value={dayDraft}
-                  onChange={(e) => setDayDraft(e.target.value)}
-                  onBlur={commitDay}
-                />
-              </form>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setEditingDay(true)}
-                className="mt-0.5 block font-display text-6xl leading-none text-ink-900 transition-colors hover:text-blood-400"
-                aria-label={t('carnet.cal.modifier.jour')}
-                title={t('carnet.cal.modifier.jour')}
-              >
-                {state.day}
-              </button>
-            )}
-            <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-ink-500">
-              <span>{t('carnet.cal.semaine', { week: weekOf(state.day) })}</span>
-              <span aria-hidden="true">·</span>
-              <label className="sr-only" htmlFor="carnet-saison">
-                {t('carnet.cal.saison.label')}
-              </label>
-              <select
-                id="carnet-saison"
-                className="cursor-pointer border-none bg-transparent p-0 text-sm text-ink-500 hover:text-ink-800 focus:text-ink-800"
-                value={state.season}
-                onChange={(e) => patchState({ season: e.target.value as CampaignSeason })}
-              >
-                {CAMPAIGN_SEASONS.map((s) => (
-                  <option key={s} value={s}>
-                    {t(`carnet.cal.saison.${s}`)}
-                  </option>
-                ))}
-              </select>
-            </p>
-          </div>
-          <button type="button" className="btn-primary" onClick={() => advance()}>
-            {t('carnet.cal.plus.un.jour')}
-          </button>
-        </div>
-
-        {/* Météo du jour — préréglages + texte libre */}
-        <div className="mt-5 border-t border-parchment-200 pt-4">
-          <label className="label" htmlFor="carnet-meteo">
-            {t('carnet.cal.meteo')}
-          </label>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
+        <h2 className="section-title">{t('carnet.rebours.titre')}</h2>
+        {countdowns.length === 0 && !showCountdownForm ? (
+          <p className="mt-2 text-sm text-ink-400">{t('carnet.rebours.vide')}</p>
+        ) : (
+          <ul className="mt-2 list-none">
+            {countdowns.map((c) => (
+              <CountdownRow
+                key={c.id}
+                countdown={c}
+                day={state.day}
+                onSave={(label, target) => saveCountdown(c.id, label, target)}
+                onDelete={() => removeCountdown(c.id)}
+              />
+            ))}
+          </ul>
+        )}
+        {showCountdownForm ? (
+          <form className="mt-3 flex flex-wrap items-center gap-2" onSubmit={createCountdown}>
+            <label className="sr-only" htmlFor="rebours-label">
+              {t('carnet.rebours.label')}
+            </label>
             <input
-              id="carnet-meteo"
+              id="rebours-label"
               className="input max-w-xs flex-1"
-              value={weatherDraft}
-              onChange={(e) => setWeatherDraft(e.target.value)}
-              onBlur={() => commitWeather(weatherDraft)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  commitWeather(weatherDraft);
-                }
-              }}
-              placeholder={t('carnet.cal.meteo.placeholder')}
+              value={newLabel}
+              onChange={(e) => setNewLabel(e.target.value)}
+              placeholder={t('carnet.rebours.label.placeholder')}
             />
-            <fieldset className="flex min-w-0 items-center gap-1 border-0 p-0">
-              <legend className="sr-only">{t('carnet.cal.meteo.presets')}</legend>
-              {WEATHER_PRESETS.map((p) => (
-                <button
-                  type="button"
-                  key={p.labelKey}
-                  className="rounded-full border border-parchment-300 px-2.5 py-1 text-sm hover:border-blood-500"
-                  title={t(p.labelKey)}
-                  aria-label={t(p.labelKey)}
-                  onClick={() => {
-                    const value = `${p.emoji} ${t(p.labelKey)}`;
-                    setWeatherDraft(value);
-                    commitWeather(value);
-                  }}
-                >
-                  <span aria-hidden="true" className="emoji-glyph">
-                    {p.emoji}
-                  </span>
-                </button>
-              ))}
-            </fieldset>
-          </div>
-        </div>
-
-        {/* Note du jour — le journal se fige au registre quand le jour s'achève */}
-        <div className="mt-5 border-t border-parchment-200 pt-4">
-          <label className="label" htmlFor="carnet-note">
-            {t('carnet.cal.note')}
-          </label>
-          <textarea
-            id="carnet-note"
-            className="input mt-1"
-            rows={2}
-            value={noteDraft}
-            onChange={(e) => setNoteDraft(e.target.value)}
-            onBlur={() => commitNote(noteDraft)}
-            placeholder={t('carnet.cal.note.placeholder')}
-          />
-        </div>
-
-        {/* Comptes à rebours — lignes d'annexe à points de conduite */}
-        <div className="mt-5 border-t border-parchment-200 pt-4">
-          <h2 className="section-title">{t('carnet.rebours.titre')}</h2>
-          {countdowns.length === 0 && !showCountdownForm ? (
-            <p className="mt-2 text-sm text-ink-400">{t('carnet.rebours.vide')}</p>
-          ) : (
-            <ul className="mt-2 list-none">
-              {countdowns.map((c) => (
-                <CountdownRow
-                  key={c.id}
-                  countdown={c}
-                  day={state.day}
-                  onSave={(label, target) => saveCountdown(c.id, label, target)}
-                  onDelete={() => removeCountdown(c.id)}
-                />
-              ))}
-            </ul>
-          )}
-          {showCountdownForm ? (
-            <form className="mt-3 flex flex-wrap items-center gap-2" onSubmit={createCountdown}>
-              <label className="sr-only" htmlFor="rebours-label">
-                {t('carnet.rebours.label')}
-              </label>
-              <input
-                id="rebours-label"
-                className="input max-w-xs flex-1"
-                value={newLabel}
-                onChange={(e) => setNewLabel(e.target.value)}
-                placeholder={t('carnet.rebours.label.placeholder')}
-              />
-              <label className="sr-only" htmlFor="rebours-target">
-                {t('carnet.rebours.cible')}
-              </label>
-              <input
-                id="rebours-target"
-                className="input w-24 font-mono"
-                type="number"
-                min={1}
-                value={newTarget}
-                onChange={(e) => setNewTarget(e.target.value)}
-                placeholder={t('carnet.rebours.cible')}
-              />
-              <button type="submit" className="btn-primary px-3 py-1.5 text-sm">
-                {t('carnet.rebours.creer')}
-              </button>
-              <button
-                type="button"
-                className="btn-ghost px-3 py-1.5 text-sm text-ink-500"
-                onClick={() => setShowCountdownForm(false)}
-              >
-                {t('carnet.rebours.annuler')}
-              </button>
-            </form>
-          ) : (
-            <div className="mt-3">
-              <button
-                type="button"
-                className="btn-ghost text-sm text-ink-500"
-                onClick={() => setShowCountdownForm(true)}
-              >
-                {t('carnet.rebours.ajouter')}
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Jours passés — registre compact inversé, retouchable */}
-        {days.length > 0 && (
-          <div className="mt-5 border-t border-parchment-200 pt-4">
-            <h2 className="section-title">{t('carnet.jours.passes')}</h2>
-            <ul className="mt-2 max-h-52 list-none overflow-y-auto pr-1">
-              {days.map((d) => (
-                <DayLedgerRow key={d.day} day={d} onPatch={(patch) => patchDay(d.id, patch)} />
-              ))}
-            </ul>
+            <label className="sr-only" htmlFor="rebours-target">
+              {t('carnet.rebours.cible')}
+            </label>
+            <input
+              id="rebours-target"
+              className="input w-24 font-mono"
+              type="number"
+              min={1}
+              value={newTarget}
+              onChange={(e) => setNewTarget(e.target.value)}
+              placeholder={t('carnet.rebours.cible')}
+            />
+            <button type="submit" className="btn-primary px-3 py-1.5 text-sm">
+              {t('carnet.rebours.creer')}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost px-3 py-1.5 text-sm text-ink-500"
+              onClick={() => setShowCountdownForm(false)}
+            >
+              {t('carnet.rebours.annuler')}
+            </button>
+          </form>
+        ) : (
+          <div className="mt-3">
+            <button
+              type="button"
+              className="btn-ghost text-sm text-ink-500"
+              onClick={() => setShowCountdownForm(true)}
+            >
+              {t('carnet.rebours.ajouter')}
+            </button>
           </div>
         )}
       </article>
@@ -714,112 +489,6 @@ function CountdownRow({
       >
         ×
       </ConfirmButton>
-    </li>
-  );
-}
-
-/** Une ligne du registre des jours passés : Jour N · météo, journal en
- *  seconde ligne, retouche inline (✎). */
-function DayLedgerRow({
-  day,
-  onPatch,
-}: {
-  day: CampaignDay;
-  onPatch: (patch: { weather?: string | null; note?: string | null }) => Promise<void>;
-}) {
-  const { t } = useTranslation();
-  const [editing, setEditing] = useState(false);
-  const [weather, setWeather] = useState(day.weather ?? '');
-  const [note, setNote] = useState(day.note ?? '');
-
-  useEffect(() => {
-    setWeather(day.weather ?? '');
-    setNote(day.note ?? '');
-  }, [day.weather, day.note]);
-
-  if (editing) {
-    return (
-      <li className="grid grid-cols-[5rem_minmax(0,1fr)] gap-x-3 gap-y-2 py-2">
-        <span className="text-right font-mono text-sm text-ink-500">
-          {t('carnet.jours.passe', { day: day.day })}
-        </span>
-        <div className="space-y-2">
-          <div>
-            <label className="sr-only" htmlFor={`jour-edit-meteo-${day.id}`}>
-              {t('carnet.cal.meteo')} — {t('carnet.jours.passe', { day: day.day })}
-            </label>
-            <input
-              id={`jour-edit-meteo-${day.id}`}
-              className="input"
-              value={weather}
-              onChange={(e) => setWeather(e.target.value)}
-              placeholder={t('carnet.cal.meteo.placeholder')}
-            />
-          </div>
-          <div>
-            <label className="sr-only" htmlFor={`jour-edit-note-${day.id}`}>
-              {t('carnet.cal.note')} — {t('carnet.jours.passe', { day: day.day })}
-            </label>
-            <textarea
-              id={`jour-edit-note-${day.id}`}
-              className="input"
-              rows={2}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder={t('carnet.cal.note.placeholder')}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="btn-primary px-3 py-1.5 text-sm"
-              onClick={async () => {
-                await onPatch({
-                  weather: weather.trim() || null,
-                  note: note.trim() || null,
-                });
-                setEditing(false);
-              }}
-            >
-              {t('common.save')}
-            </button>
-            <button
-              type="button"
-              className="btn-ghost px-3 py-1.5 text-sm text-ink-500"
-              onClick={() => setEditing(false)}
-            >
-              {t('carnet.rebours.annuler')}
-            </button>
-          </div>
-        </div>
-      </li>
-    );
-  }
-
-  return (
-    <li className="border-b border-parchment-100 last:border-b-0">
-      {/* Toute la ligne est la porte d'édition — le ✎ n'est que le rappel */}
-      <button
-        type="button"
-        onClick={() => setEditing(true)}
-        className="-mx-2 grid w-full grid-cols-[5rem_minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-0.5 rounded-lg px-2 py-2 text-left text-sm transition-colors hover:bg-parchment-100/70"
-        aria-label={t('carnet.jours.modifier', { day: day.day })}
-      >
-        <span className="text-right font-mono text-ink-500">
-          {t('carnet.jours.passe', { day: day.day })}
-        </span>
-        <span className="min-w-0 truncate text-ink-600">
-          {day.weather ?? t('carnet.cal.meteo.inconnue')}
-        </span>
-        <span aria-hidden="true" className="shrink-0 p-1 text-ink-400">
-          ✎
-        </span>
-        {day.note && (
-          <span className="col-start-2 col-end-4 block whitespace-pre-line text-ink-500">
-            {day.note}
-          </span>
-        )}
-      </button>
     </li>
   );
 }

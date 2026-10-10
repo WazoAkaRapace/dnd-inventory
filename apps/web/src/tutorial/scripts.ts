@@ -10,6 +10,7 @@ import type { Step } from 'react-joyride';
 export type TutorialScriptId =
   | 'shell'
   | 'survival'
+  | 'calendar'
   | 'stats'
   | 'skills'
   | 'spells'
@@ -24,6 +25,7 @@ export type TutorialScriptId =
 export type TutorialTab =
   | 'inventory'
   | 'survival'
+  | 'calendar'
   | 'stats'
   | 'spells'
   | 'skills'
@@ -170,6 +172,13 @@ export const TUTORIAL_SCRIPTS: Record<TutorialScriptId, TutorialScriptDef> = {
     steps: [
       { id: 'fil', target: tuto('messages-fil') },
       { id: 'partout', target: tuto('messages-fil') },
+    ],
+  },
+  calendar: {
+    id: 'calendar',
+    steps: [
+      { id: 'semaine', target: tuto('calendrier') },
+      { id: 'avancer', target: tuto('calendrier') },
     ],
   },
 };

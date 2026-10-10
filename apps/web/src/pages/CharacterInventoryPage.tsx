@@ -69,6 +69,7 @@ import { LocationWeightBar } from './character/LocationWeightBar';
 import { NewLocationModal } from './character/NewLocationModal';
 import { CHARACTER_TABS, type CharacterTab, SheetTabBar } from './character/SheetTabBar';
 import { SurvivalPanel, type SurvivalConsumeResult } from './character/SurvivalPanel';
+import WeekCalendar from './character/WeekCalendar';
 import { ContainerTransferModal, TransferModal } from './character/TransferModal';
 import {
   apiError,
@@ -1296,6 +1297,15 @@ export default function CharacterInventoryPage() {
             onError={(msg) => pushToast(msg, 'error')}
             onNotice={(msg) => pushToast(msg)}
             onConcentrationCheck={setConcCheck}
+          />
+        )}
+        {activeTab === 'calendar' && (
+          <WeekCalendar
+            partyId={Number(partyId)}
+            charId={Number(charId)}
+            isGM={isGM}
+            onError={(msg) => pushToast(msg, 'error')}
+            onNotice={(msg) => pushToast(msg)}
           />
         )}
         {activeTab === 'stats' && (

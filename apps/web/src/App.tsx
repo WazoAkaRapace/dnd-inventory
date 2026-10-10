@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import api from './api';
 import { useAuth } from './auth';
+import CampaignDayChip from './CampaignDayChip';
 import CombatWidget from './components/CombatWidget';
 import ConcentrationAlert from './components/ConcentrationAlert';
 import IOSViewportAnchor from './components/IOSViewportAnchor';
@@ -100,6 +101,12 @@ function Nav() {
   const { override } = useHeaderState();
 
   const routeTitle = useRouteTitle(loc.pathname);
+  // Horloge de campagne (#159) : le chip « Jour N » vit sur les pages du
+  // groupe, à gauche du titre — caché quand une page override l'en-tête
+  // (CombatPage affiche le nom de sa rencontre : le titre n'est plus « le
+  // groupe », le chip n'a plus d'ancre).
+  const partyId = loc.pathname.match(/^\/party\/(\d+)/)?.[1] ?? null;
+  const showDayChip = partyId !== null && !override;
   if (!user) return null;
 
   // A page can override the header (e.g., CombatPage shows the encounter name).
@@ -116,6 +123,7 @@ function Nav() {
     <header className="sticky top-0 z-30 bg-night-900 text-night-50 shadow-md pt-[env(safe-area-inset-top)]">
       <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
+          {showDayChip && partyId && <CampaignDayChip partyId={Number(partyId)} />}
           {headerBack ? (
             <>
               {headerBack.onClick ? (

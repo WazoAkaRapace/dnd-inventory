@@ -74,6 +74,7 @@ Les cibles sont **des conteneurs de section stables et toujours présents** (tit
 | `pnj-liste` | En-tête + grille PNJ | `apps/web/src/pages/NpcPage.tsx` | les deux |
 | `notes-liste` | En-tête « Notes (n) » | `apps/web/src/pages/CharacterNotesTab.tsx` | les deux |
 | `messages-fil` | Carte « Correspondance » (fil + composeur) | `apps/web/src/components/MessageThread.tsx` | les deux |
+| `calendrier` | Carte « Calendrier » (vue semaine) | `apps/web/src/pages/character/WeekCalendar.tsx` | les deux |
 
 ## 4. Habillage commun (bulle)
 
@@ -191,6 +192,14 @@ Se joue à l'arrivée sur la fiche (drapeau absent ou réinitialisé), quel que 
 |---|---|---|---|---|---|
 | 1 | `fil` | `messages-fil` | les deux | **Le canal secret** Échange en privé avec le MD : indices, secrets, révélations que la table ne doit pas entendre. Ce fil appartient à ce personnage — l'historique y reste. | **The secret channel** Trade privately with the GM: clues, secrets, revelations the table must not hear. This thread belongs to this character — the history stays here. |
 | 2 | `partout` | `messages-fil` | les deux | **Partout, même hors de la fiche** Un message qui arrive s'affiche en bannière où que tu sois, une pastille compte les non-lus — et si l'app est fermée, une notification sonne. | **Anywhere, even outside the sheet** An incoming message drops a banner wherever you are, a badge counts the unread — and if the app is closed, a notification fires. |
+
+## 15 bis. Script « Calendrier » (2 étapes · onglet `calendar`)
+
+| # | id | Cible | Vue | Texte FR | Texte EN |
+|---|---|---|---|---|---|
+| 1 | `semaine` | `calendrier` | les deux | **L'horloge de la table** Sept jours par page, le jour courant souligné d'or. Déplie un jour : le journal de table s'écrit à plusieurs, et « Ma note » reste privée à ce personnage. | **The table's clock** Seven days per page, the current day lined in gold. Expand a day: the table journal is written together, and « Ma note » stays private to this character. |
+| 2 | `avancer` | `calendrier` | les deux | **Le temps avance** « Jour suivant » fait avancer l'horloge pour toute la table — le jour s'achève, son journal se fige, le suivant démarre clair. | **Time moves** « Jour suivant » advances the clock for the whole table — the day ends, its journal freezes, the next one starts clear. |
+
 
 ## 16. Réinitialisation — section « Tutoriel » de « Mon compte »
 
