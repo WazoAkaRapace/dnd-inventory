@@ -47,13 +47,14 @@ playerTest.describe('Calendrier partagé (#159)', () => {
   playerTest("le chip « Jour N » de l'en-tête mène à la fiche", async ({ page }) => {
     const chip = page.getByRole('link', { name: 'Calendrier de campagne — jour 1' });
     await expect(chip).toBeVisible();
-    // Le chip vit à GAUCHE du titre de la page (fiche : « Personnage »).
+    // Le chip vit à DROITE du titre de la page (fiche : « Personnage ») —
+    // retour UI 2026-10-10 (il était à gauche au premier jet).
     const title = page.getByText('Personnage', { exact: true }).first();
     const chipBox = await chip.boundingBox();
     const titleBox = await title.boundingBox();
     expect(chipBox).not.toBeNull();
     expect(titleBox).not.toBeNull();
-    expect(chipBox!.x).toBeLessThan(titleBox!.x);
+    expect(chipBox!.x).toBeGreaterThan(titleBox!.x);
   });
 
   playerTest('le jour courant porte l’or, le feuilletage ±7 fonctionne', async ({ page }) => {
@@ -72,6 +73,17 @@ playerTest.describe('Calendrier partagé (#159)', () => {
     // Retour : la semaine 1 réaffiche le jour courant doré.
     await page.getByRole('button', { name: 'Semaine précédente' }).click();
     await expect(currentRow).toHaveClass(/border-gold-400/);
+  });
+
+  playerTest('les jours sont listés du dernier au premier (chrono inversée)', async ({ page }) => {
+    // Retour UI 2026-10-10 : le DERNIER jour de la semaine en haut.
+    const d7 = dayRow(page, 7);
+    const d1 = dayRow(page, 1);
+    const d7Box = await d7.boundingBox();
+    const d1Box = await d1.boundingBox();
+    expect(d7Box).not.toBeNull();
+    expect(d1Box).not.toBeNull();
+    expect(d7Box!.y).toBeLessThan(d1Box!.y);
   });
 
   playerTest('le journal de table écrit par un joueur survit au rechargement', async ({ page }) => {

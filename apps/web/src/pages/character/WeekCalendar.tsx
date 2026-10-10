@@ -59,7 +59,10 @@ function materialize(
   const byDay = new Map(data.days.map((d) => [d.day, d]));
   const ledgerByDay = new Map(ledger.map((d) => [d.day, d.id]));
   const rows: CalendarRow[] = [];
-  for (let i = 0; i < 7; i++) {
+  // Ordre inversé : le DERNIER jour de la semaine en haut (retour UI
+  // 2026-10-10) — le journal se lit comme une chrono décroissante, le jour
+  // courant ouvre la liste dès qu'on est en milieu de semaine.
+  for (let i = 6; i >= 0; i--) {
     const day = from + i;
     const row = byDay.get(day);
     const isCurrent = day === clock.day;

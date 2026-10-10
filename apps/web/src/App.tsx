@@ -123,7 +123,6 @@ function Nav() {
     <header className="sticky top-0 z-30 bg-night-900 text-night-50 shadow-md pt-[env(safe-area-inset-top)]">
       <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
         <div className="flex items-center gap-3 min-w-0">
-          {showDayChip && partyId && <CampaignDayChip partyId={Number(partyId)} />}
           {headerBack ? (
             <>
               {headerBack.onClick ? (
@@ -157,6 +156,9 @@ function Nav() {
           )}
         </div>
         <div className="flex items-center gap-2 sm:gap-4">
+          {/* Jour de campagne : à droite du titre (retour UI 2026-10-10 — il
+              était à gauche au premier jet). Tap = onglet Calendrier. */}
+          {showDayChip && partyId && <CampaignDayChip partyId={Number(partyId)} />}
           {/* Mount point for the player's combat strip (CombatWidget portals
               here on the player's own sheet, lg+). Empty and invisible
               everywhere else. */}
