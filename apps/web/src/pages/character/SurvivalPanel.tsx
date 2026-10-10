@@ -29,7 +29,7 @@ import {
   findClassFeature,
   findClassFeatureClass,
 } from '@table-sync/shared/classFeatures';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../../api';
 import { CONDITION_ICONS } from '../../components/ConditionsEditor';
@@ -148,7 +148,7 @@ export function SurvivalPanel({
   const [smiteBusy, setSmiteBusy] = useState(false);
 
   // Traits du catalogue avec compteur → pips « Ressources de classe »
-  useEffect(() => {
+  const loadResourceFeatures = useCallback(() => {
     let cancelled = false;
     api
       .get(`/api/characters/${charId}/features`)
@@ -164,8 +164,14 @@ export function SurvivalPanel({
     return () => {
       cancelled = true;
     };
-  }, [charId, character.hitDiceUsed, character.currentHp, character.level]);
-  // Note de dépendances (ex-suppression Biome) : refetch délibéré après un repos (compteurs rechargés côté API) ou un changement de niveau — pas seulement au montage.
+  }, [charId]);
+  useEffect(() => {
+    // Note de dépendances (ex-suppression Biome) : refetch délibéré après un
+    // changement de dés/PV/niveau — le refetch POST-repos, lui, est explicite
+    // dans doRest (un repos peut ne toucher AUCUNE de ces valeurs : court sans
+    // dé dépensé, long à PV pleins et dés à 0 — #166).
+    return loadResourceFeatures();
+  }, [loadResourceFeatures, character.hitDiceUsed, character.currentHp, character.level]);
 
   // Count available food/water from tagged inventory items
   // Water: skip items marked 'empty' in notes
@@ -413,6 +419,10 @@ export function SurvivalPanel({
       setRestSheet(null);
       setRestDice({});
       setRestHealed('');
+      // Les pips de ressources dépendent du refetch des traits : un repos peut
+      // ne changer NI dés NI PV (court sans dé dépensé, long déjà plein) —
+      // l'effet à dépendances ne re-déclencherait pas. Refetch explicite (#166).
+      loadResourceFeatures();
       await onSaved();
     } catch (err: any) {
       onError(err.response?.data?.error || t('survie.erreur.lors.du.repos'));
