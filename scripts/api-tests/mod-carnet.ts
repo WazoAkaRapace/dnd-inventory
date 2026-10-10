@@ -13,11 +13,18 @@ export async function run(base: string, fx: Fixtures, srv: ServerHandle): Promis
   eq(r.status, 403, 'carnet player → 403');
   r = await api(base, 'GET', '/api/parties/999999/campaign', { token: fx.gm.token });
   eq(r.status, 403, 'carnet party not member → 403');
+  // #159 — calendrier partagé : tout membre peut avancer le jour (403 → 200)
   r = await api(base, 'POST', `/api/parties/${P}/campaign/advance`, {
     token: fx.player.token,
     body: {},
   });
-  eq(r.status, 403, 'advance player → 403');
+  eq(r.status, 200, 'advance player → 200 (#159)');
+  eq(r.data.state.day, 2, "l'avance joueur crée la ligne d'horloge et avance (1 → 2)");
+  // ramène le pointeur à 1 pour garder la suite du module sur son état initial
+  await api(base, 'PATCH', `/api/parties/${P}/campaign`, {
+    token: fx.gm.token,
+    body: { day: 1 },
+  });
 
   // ---------- GET : état par défaut, ligne d'horloge créée au premier accès ----------
   r = await api(base, 'GET', `/api/parties/${P}/campaign`, { token: fx.gm.token });

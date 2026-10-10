@@ -19,6 +19,7 @@ import {
 import { run as authParties } from './api-tests/mod-auth-parties.ts';
 import { run as authRefresh } from './api-tests/mod-auth-refresh.ts';
 import { run as campaign } from './api-tests/mod-carnet.ts';
+import { run as campaignCalendar } from './api-tests/mod-campaign-calendar.ts';
 import { run as characters } from './api-tests/mod-characters.ts';
 import { run as coinTransfer } from './api-tests/mod-coin-transfer.ts';
 import { run as combat } from './api-tests/mod-combat.ts';
@@ -60,6 +61,7 @@ const MODULES: Array<{
   { name: 'features + notes', run: featuresNotes },
   { name: 'npcs + monsters', run: npcsMonsters },
   { name: 'carnet du MD', run: campaign },
+  { name: 'calendrier partagé (#159)', run: campaignCalendar },
   { name: 'combat', run: combat },
   { name: 'transfert de conteneur (#161)', run: containerTransfer },
   { name: 'correspondance secrète', run: messages },

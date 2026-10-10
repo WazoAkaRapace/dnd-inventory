@@ -22,6 +22,7 @@ import { UnreadBadge } from '../../useMessagesUnread';
 export type CharacterTab =
   | 'inventory'
   | 'survival'
+  | 'calendar'
   | 'stats'
   | 'spells'
   | 'skills'
@@ -42,6 +43,13 @@ export const CHARACTER_TABS: {
   short?: string;
 }[] = [
   { key: 'survival', label: 'onglet.survie', icon: '🩸', primary: true, short: 'onglet.survie' },
+  {
+    key: 'calendar',
+    label: 'onglet.calendrier',
+    icon: '📅',
+    primary: true,
+    short: 'onglet.cal',
+  },
   {
     key: 'stats',
     label: 'onglet.caracteristiques',

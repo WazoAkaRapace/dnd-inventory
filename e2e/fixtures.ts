@@ -97,6 +97,7 @@ async function injectSession(page: Page, session: SeedSession) {
         'dnd-inv-tour-tabs',
         JSON.stringify([
           'survival',
+          'calendar',
           'stats',
           'spells',
           'skills',

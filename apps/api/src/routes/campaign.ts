@@ -1,15 +1,20 @@
 /**
  * Carnet du MD routes: campaign clock (day/season/weather + named countdowns),
- * free-form notes and quests — ALL strictly GM-only, party-scoped.
+ * free-form notes and quests — GM-only, party-scoped — PLUS the shared
+ * calendar (#159): every member reads the calendar, writes the table journal,
+ * writes their per-character private day note and advances the day. The MD
+ * keeps the private knobs (weather, season, countdowns, DM note, day
+ * correction).
  *
  * The clock never touches character sheets: food/water/rests stay on the
- * feuilles, advancing the day is a pure carnet concern. Everything broadcasts
- * 'campaign:change' (signal only — the payload stays behind these GM-gated
- * routes; player clients receive the event and ignore it).
+ * feuilles, advancing the day is a pure calendar concern. Everything
+ * broadcasts 'campaign:change' (signal only — the payload stays behind these
+ * routes; player clients receive the event and refetch).
  */
 
 import type {
   AdvanceCampaignPayload,
+  CampaignCalendarDay,
   CampaignCountdown,
   CampaignDay,
   CampaignState,
@@ -24,31 +29,37 @@ import type {
   PatchCampaignStatePayload,
   PatchDmNotePayload,
   PatchDmQuestPayload,
+  PutCampaignDayNotePayload,
+  PutCampaignTableNotePayload,
   ReorderPayload,
 } from '@table-sync/shared';
 import { CAMPAIGN_SEASONS, DM_QUEST_STATUSES } from '@table-sync/shared';
-import { asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getDrizzle } from '../db/drizzle.ts';
 import { getDb } from '../db/index.ts';
 import { cols } from '../db/projections.ts';
 import {
   campaignCountdowns,
+  campaignDayNotes,
   campaignDays,
   campaignState,
+  characters,
   dmNotes,
   dmQuests,
 } from '../db/schema.ts';
 import { bus } from '../sync/bus.ts';
-import { isPartyGM, isPartyMember, requireUser } from './helpers.ts';
+import { isOwnerOrGM, isPartyGM, isPartyMember, requireUser } from './helpers.ts';
 import { apiMsg } from './messages.ts';
 
 const MAX_DAY = 100000; // ~274 ans de campagne — au-delà, c'est une erreur de saisie
 const MAX_WEATHER_LEN = 200;
 const MAX_NOTE_LEN = 500; // le journal d'un jour tient en quelques lignes
+const MAX_TABLE_NOTE_LEN = 2000; // journal de table partagé : plus généreux
 const MAX_TITLE_LEN = 200;
 const MAX_LABEL_LEN = 120;
 const DAYS_LEDGER_LIMIT = 30; // jours passés servis (les plus récents d'abord)
+const CALENDAR_RANGE_LIMIT = 60; // jours max par requête du calendrier partagé
 
 // ---------- Mappers ----------
 
@@ -69,6 +80,7 @@ function mapDay(row: any): CampaignDay {
     day: row.day,
     weather: row.weather ?? null,
     note: row.note ?? null,
+    tableNote: row.table_note ?? null,
   };
 }
 
@@ -122,6 +134,21 @@ function gmGuard(
   }
   if (!isPartyGM(partyId, userId)) {
     reply.code(403).send({ error: apiMsg(req, 'GM only') });
+    return false;
+  }
+  return true;
+}
+
+/** Membership gate alone — the shared calendar (#159) trusts every member
+ *  (read the calendar, write the table journal, advance the day). */
+function memberGuard(
+  req: FastifyRequest,
+  reply: FastifyReply,
+  partyId: number,
+  userId: number,
+): boolean {
+  if (!isPartyMember(partyId, userId)) {
+    reply.code(403).send({ error: apiMsg(req, 'not a member') });
     return false;
   }
   return true;
@@ -245,8 +272,9 @@ export async function campaignRoutes(app: FastifyInstance) {
       const userId = requireUser(req, reply);
       if (userId === null) return;
       const partyId = Number(req.params.partyId);
-      if (!gmGuard(req, reply, partyId, userId)) return;
-
+      // #159 — calendrier partagé : TOUT membre avance le jour (le MD garde
+      // la correction libre et les autres molettes via PATCH /campaign).
+      if (!memberGuard(req, reply, partyId, userId)) return;
       const body = req.body || ({} as AdvanceCampaignPayload);
       const steps = body.steps === undefined ? 1 : Number(body.steps);
       if (!Number.isInteger(steps) || steps < 1 || steps > 30) {
@@ -272,12 +300,230 @@ export async function campaignRoutes(app: FastifyInstance) {
         .from(campaignState)
         .where(eq(campaignState.partyId, partyId))
         .get();
-      bus.emitChange({ type: 'campaign:change', partyId, action: 'clock', actorUserId: userId });
+      bus.emitChange({ type: 'campaign:change', partyId, action: 'calendar', actorUserId: userId });
       return reply.send({ state: mapState(updated) });
     },
   );
 
+  // ---------- Calendrier partagé (#159) : lecture pour tout membre ----------
+
+  app.get(
+    '/parties/:partyId/campaign/calendar',
+    async (
+      req: FastifyRequest<{
+        Params: { partyId: string };
+        Querystring: { from?: string; to?: string };
+      }>,
+      reply: FastifyReply,
+    ) => {
+      const userId = requireUser(req, reply);
+      if (userId === null) return;
+      const partyId = Number(req.params.partyId);
+      const isGM = isPartyMember(partyId, userId) && isPartyGM(partyId, userId);
+      if (!memberGuard(req, reply, partyId, userId)) return;
+
+      const query = (req.query ?? {}) as { from?: string; to?: string };
+      const state = ensureCampaignState(getDrizzle(), partyId);
+      const from = query.from === undefined ? state.day : Number(query.from);
+      const to = query.to === undefined ? state.day : Number(query.to);
+      if (
+        !Number.isInteger(from) ||
+        !Number.isInteger(to) ||
+        from < 1 ||
+        to < from ||
+        to - from + 1 > CALENDAR_RANGE_LIMIT ||
+        to > MAX_DAY
+      ) {
+        return reply.code(400).send({ error: apiMsg(req, 'day out of range') });
+      }
+
+      const days = getDrizzle()
+        .select(cols(campaignDays))
+        .from(campaignDays)
+        .where(
+          and(
+            eq(campaignDays.partyId, partyId),
+            gte(campaignDays.day, from),
+            lte(campaignDays.day, to),
+          ),
+        )
+        .orderBy(asc(campaignDays.day))
+        .all();
+      const calendarDays: CampaignCalendarDay[] = days.map((row: any) => ({
+        day: row.day,
+        weather: row.weather ?? null,
+        tableNote: row.table_note ?? null,
+        // La note MD (colonne `note`) n'existe que pour le MD — un joueur
+        // ne voit jamais le journal privé du MD.
+        dmNote: isGM ? (row.note ?? null) : null,
+      }));
+      return reply.send({
+        state: { day: state.day, season: state.season, weather: state.weather ?? null },
+        days: calendarDays,
+        isGM,
+      });
+    },
+  );
+
+  // ---------- Journal de table (partagé, tout membre) ----------
+
+  app.put(
+    '/parties/:partyId/campaign/table-note',
+    async (
+      req: FastifyRequest<{ Params: { partyId: string }; Body: PutCampaignTableNotePayload }>,
+      reply: FastifyReply,
+    ) => {
+      const userId = requireUser(req, reply);
+      if (userId === null) return;
+      const partyId = Number(req.params.partyId);
+      if (!memberGuard(req, reply, partyId, userId)) return;
+
+      const body = (req.body ?? {}) as PutCampaignTableNotePayload;
+      const day = Number(body.day);
+      if (!Number.isInteger(day) || day < 1 || day > MAX_DAY) {
+        return reply.code(400).send({ error: apiMsg(req, 'day out of range') });
+      }
+      if (typeof body.note !== 'string' || body.note.length > MAX_TABLE_NOTE_LEN) {
+        return reply.code(400).send({ error: apiMsg(req, 'invalid note') });
+      }
+      const note = body.note.trim() || null;
+      // Éditer un jour < state.day corrige l'historique, un jour > state.day
+      // planifie — les deux sont légitimes (même grammaire que le registre MD).
+      // La météo et la note MD de la ligne existante restent intactes.
+      const drizzle = getDrizzle();
+      drizzle
+        .insert(campaignDays)
+        .values({ partyId, day, tableNote: note })
+        .onConflictDoUpdate({
+          target: [campaignDays.partyId, campaignDays.day],
+          set: { tableNote: note },
+        })
+        .run();
+      const row = drizzle
+        .select(cols(campaignDays))
+        .from(campaignDays)
+        .where(and(eq(campaignDays.partyId, partyId), eq(campaignDays.day, day)))
+        .get() as any;
+      bus.emitChange({
+        type: 'campaign:change',
+        partyId,
+        action: 'calendar',
+        actorUserId: userId,
+      });
+      return reply.send({ day: mapDay(row) });
+    },
+  );
+
+  // ---------- Note privée par personnage/jour (owner-or-GM) ----------
+
+  app.get(
+    '/parties/:partyId/campaign/day-note',
+    async (
+      req: FastifyRequest<{
+        Params: { partyId: string };
+        Querystring: { characterId?: string; day?: string };
+      }>,
+      reply: FastifyReply,
+    ) => {
+      const userId = requireUser(req, reply);
+      if (userId === null) return;
+      const partyId = Number(req.params.partyId);
+      if (!memberGuard(req, reply, partyId, userId)) return;
+
+      const query = (req.query ?? {}) as { characterId?: string; day?: string };
+      const characterId = Number(query.characterId);
+      const day = Number(query.day);
+      if (!Number.isInteger(day) || day < 1 || day > MAX_DAY) {
+        return reply.code(400).send({ error: apiMsg(req, 'day out of range') });
+      }
+      const char = getDrizzle()
+        .select(cols(characters))
+        .from(characters)
+        .where(eq(characters.id, characterId))
+        .get() as any;
+      if (!char || char.party_id !== partyId) {
+        return reply.code(404).send({ error: apiMsg(req, 'character not found') });
+      }
+      if (!isOwnerOrGM(char, userId)) {
+        return reply.code(403).send({ error: apiMsg(req, 'Réservé au propriétaire ou au MD') });
+      }
+      const row = getDrizzle()
+        .select(cols(campaignDayNotes))
+        .from(campaignDayNotes)
+        .where(
+          and(
+            eq(campaignDayNotes.partyId, partyId),
+            eq(campaignDayNotes.characterId, characterId),
+            eq(campaignDayNotes.day, day),
+          ),
+        )
+        .get() as any;
+      return reply.send({ note: row?.note ?? null });
+    },
+  );
+
+  app.put(
+    '/parties/:partyId/campaign/day-note',
+    async (
+      req: FastifyRequest<{ Params: { partyId: string }; Body: PutCampaignDayNotePayload }>,
+      reply: FastifyReply,
+    ) => {
+      const userId = requireUser(req, reply);
+      if (userId === null) return;
+      const partyId = Number(req.params.partyId);
+      if (!memberGuard(req, reply, partyId, userId)) return;
+
+      const body = (req.body ?? {}) as PutCampaignDayNotePayload;
+      const characterId = Number(body.characterId);
+      const day = Number(body.day);
+      if (!Number.isInteger(day) || day < 1 || day > MAX_DAY) {
+        return reply.code(400).send({ error: apiMsg(req, 'day out of range') });
+      }
+      const char = getDrizzle()
+        .select(cols(characters))
+        .from(characters)
+        .where(eq(characters.id, characterId))
+        .get() as any;
+      if (!char || char.party_id !== partyId) {
+        return reply.code(404).send({ error: apiMsg(req, 'character not found') });
+      }
+      if (!isOwnerOrGM(char, userId)) {
+        return reply.code(403).send({ error: apiMsg(req, 'Réservé au propriétaire ou au MD') });
+      }
+      if (typeof body.note !== 'string' || body.note.length > MAX_TABLE_NOTE_LEN) {
+        return reply.code(400).send({ error: apiMsg(req, 'invalid note') });
+      }
+      const note = body.note.trim() || null;
+      // Note privée : aucun broadcast party-wide — la réponse API suffit et
+      // l'invalidation est locale au propriétaire.
+      const drizzle = getDrizzle();
+      if (note === null) {
+        drizzle
+          .delete(campaignDayNotes)
+          .where(
+            and(
+              eq(campaignDayNotes.partyId, partyId),
+              eq(campaignDayNotes.characterId, characterId),
+              eq(campaignDayNotes.day, day),
+            ),
+          )
+          .run();
+        return reply.send({ note: null });
+      }
+      drizzle
+        .insert(campaignDayNotes)
+        .values({ partyId, characterId, day, note, updatedAt: sql`datetime('now')` })
+        .onConflictDoUpdate({
+          target: [campaignDayNotes.partyId, campaignDayNotes.characterId, campaignDayNotes.day],
+          set: { note, updatedAt: sql`datetime('now')` },
+        })
+        .run();
+      return reply.send({ note });
+    },
+  );
+
   // ---------- Correct the clock / season / weather ----------
+
   app.patch(
     '/parties/:partyId/campaign',
     async (

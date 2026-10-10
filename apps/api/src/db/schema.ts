@@ -744,7 +744,9 @@ export const campaignState = sqliteTable(
 );
 
 /** Jours passés : une ligne par jour archivé (upsert à chaque avance de
- *  l'horloge) — n'entre au registre que si le jour porte météo OU note. */
+ *  l'horloge) — n'entre au registre que si le jour porte météo OU note.
+ *  `note` = journal privé du MD ; `table_note` = journal de table PARTAGÉ
+ *  (calendrier #159 — éditable par tout membre du groupe). */
 export const campaignDays = sqliteTable(
   'campaign_days',
   {
@@ -755,11 +757,35 @@ export const campaignDays = sqliteTable(
     day: integer('day').notNull(),
     weather: text('weather'),
     note: text('note'),
+    tableNote: text('table_note'),
     createdAt: text('created_at')
       .notNull()
       .default(sql`(datetime('now'))`),
   },
   (t) => [unique('campaign_days_party_day_unique').on(t.partyId, t.day)],
+);
+
+/** Notes privées par personnage et par jour (calendrier partagé #159) —
+ *  chacune sa note, invisible des autres joueurs (owner-or-GM à la lecture). */
+export const campaignDayNotes = sqliteTable(
+  'campaign_day_notes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    partyId: integer('party_id')
+      .notNull()
+      .references(() => parties.id, { onDelete: 'cascade' }),
+    characterId: integer('character_id')
+      .notNull()
+      .references(() => characters.id, { onDelete: 'cascade' }),
+    day: integer('day').notNull(),
+    note: text('note').notNull(),
+    updatedAt: text('updated_at')
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (t) => [
+    unique('campaign_day_notes_party_character_day_unique').on(t.partyId, t.characterId, t.day),
+  ],
 );
 
 /** Échéances nommées — la cible est un jour absolu, l'affichage « J−N » est dérivé. */

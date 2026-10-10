@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import api from './api';
 import { useAuth } from './auth';
+import CampaignDayChip from './CampaignDayChip';
 import CombatWidget from './components/CombatWidget';
 import ConcentrationAlert from './components/ConcentrationAlert';
 import IOSViewportAnchor from './components/IOSViewportAnchor';
@@ -100,6 +101,12 @@ function Nav() {
   const { override } = useHeaderState();
 
   const routeTitle = useRouteTitle(loc.pathname);
+  // Horloge de campagne (#159) : le chip « Jour N » vit sur les pages du
+  // groupe, à gauche du titre — caché quand une page override l'en-tête
+  // (CombatPage affiche le nom de sa rencontre : le titre n'est plus « le
+  // groupe », le chip n'a plus d'ancre).
+  const partyId = loc.pathname.match(/^\/party\/(\d+)/)?.[1] ?? null;
+  const showDayChip = partyId !== null && !override;
   if (!user) return null;
 
   // A page can override the header (e.g., CombatPage shows the encounter name).
@@ -149,6 +156,9 @@ function Nav() {
           )}
         </div>
         <div className="flex items-center gap-2 sm:gap-4">
+          {/* Jour de campagne : à droite du titre (retour UI 2026-10-10 — il
+              était à gauche au premier jet). Tap = onglet Calendrier. */}
+          {showDayChip && partyId && <CampaignDayChip partyId={Number(partyId)} />}
           {/* Mount point for the player's combat strip (CombatWidget portals
               here on the player's own sheet, lg+). Empty and invisible
               everywhere else. */}
